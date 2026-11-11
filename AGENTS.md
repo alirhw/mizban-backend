@@ -58,4 +58,29 @@ Django Ninja modular monolith. Frontend (Next.js) is a separate later phase.
   it is applied anywhere shared.
 - One task = at most ~400 changed lines. If the work is bigger, split it.
 - Domain errors are raised as `core.exceptions` DomainError subclasses and surface
-  only through the standard envelope: {"error_code", "message", "details"}.
+  only through the standard envelope: {"error_code", "message", "details"}
+
+## Multi-agent operation (the book's team model, run in Antigravity)
+This project is built by a team of specialist agents led by an Orchestrator,
+defined under `.agents/`:
+- `.agents/agents/` - the 18 role definitions (Orchestrator, Analyst, UX,
+  Architect, Planner, the engineers, Reviewer, Security, DevOps, SRE, Docs).
+  Each states its mission, inputs/outputs, owned paths and workflow.
+- `.agents/skills/` - the standing procedures (booking-lock, slot-generation,
+  wallet-ledger, otp-sms, panorama-pipeline, payment-gateway-ir, gate-packet,
+  task-execution). Load the relevant skill before doing that kind of work.
+- `.agents/workflows/` - `run-task.md` (the Orchestrator's loop for one Task ID)
+  and `add-feature.md` (the 8-stage flow for a new feature).
+- `.agents/kickoff-prompts.md` - ready-to-paste conversation starters.
+Operating rules for the team:
+- The human talks to the Orchestrator only; the Orchestrator dispatches
+  specialists and brings back one gate packet per decision.
+- No agent approves its own work: engineers are checked by the Code Reviewer
+  and Test Engineer; the team is checked by the human at gates G1-G6.
+- `ownership.yaml` is binding for every agent. Where several specialists share
+  one ownership entry (e.g. `platform-engineer` covers accounts/venues/reviews;
+  `finance-engineer` covers billing/wallets), that entry governs all of them.
+  Protected paths always need a human gate.
+- Gates G1-G6 are full stops: on reaching a gate, work pauses and resumes only
+  on the human's explicit approval. Silence is not approval.
+- Every success claim carries real command output (see the gate-packet skill)..
