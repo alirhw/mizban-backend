@@ -1,0 +1,43 @@
+# Ownership map for the Miz Ban repository.
+# An agent may only write inside its own paths; the pre-edit hook enforces
+# this file. "protected" paths additionally need a human gate approval.
+agents:
+  orchestrator:
+    write: []                        # coordinates and reports; writes nothing
+    read: ["**"]
+  requirements-analyst:
+    write: ["specs/**"]
+  web-architect:
+    write: ["specs/**", "api/**", "docs/adr/**"]
+  planner:
+    write: ["specs/**"]              # tasks.md inside the feature folder
+  booking-lock-engineer:             # the concurrency-critical core (TD-004)
+    write: ["apps/bookings/**", "apps/scheduling/**"]
+    deny: ["apps/bookings/migrations/**", "apps/scheduling/migrations/**"]
+  media-engineer:                    # panoramas + Celery image pipeline (ARCH-003)
+    write: ["apps/panoramas/**"]
+  platform-engineer:                 # identity, venues, reviews
+    write: ["apps/accounts/**", "apps/venues/**", "apps/reviews/**"]
+  finance-engineer:                  # payments + wallet ledger (TD-005)
+    write: ["apps/billing/**", "apps/wallets/**"]
+    deny: ["apps/wallets/migrations/**", "apps/billing/migrations/**"]
+  backend-api-engineer:              # shared plumbing only, no domain rules
+    write: ["core/**", "config/api.py"]
+  test-engineer:
+    write: ["apps/**/tests/**"]
+  code-reviewer:
+    write: []                        # comments and verdicts only, never edits
+  security-engineer:
+    write: ["docs/security/**", "apps/**/tests/**"]
+  devops-engineer:
+    write: ["config/settings/**", ".github/**", "Dockerfile", "docker-compose.yml", ".env.example"]
+  documentation-engineer:
+    write: ["docs/**", "README.md"]
+    deny: ["docs/security/**"]
+
+protected:
+  - ".env*"
+  - "config/settings/production.py"  # fail-fast secrets/flags; human eyes only
+  - "apps/bookings/migrations/**"    # money/concurrency schema: human review
+  - "apps/wallets/migrations/**"     # ledger schema: human review
+  - "api/openapi.snapshot.json"      # contract drift only via a reviewed change

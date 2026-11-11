@@ -1,0 +1,61 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Miz Ban API",
+        "version": "1.0.0",
+        "description": "Two-sided 360-degree visual table-reservation platform - API v1."
+    },
+    "paths": {
+        "/api/v1/healthz": {
+            "get": {
+                "operationId": "config_api_healthz",
+                "summary": "Healthz",
+                "parameters": [],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HealthOut"
+                                }
+                            }
+                        }
+                    }
+                },
+                "description": "Readiness probe (Task T-004): bounded DB and Redis checks.\n\nNever exposes credentials, connection strings or internals.",
+                "tags": [
+                    "system"
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "HealthOut": {
+                "properties": {
+                    "status": {
+                        "title": "Status",
+                        "type": "string"
+                    },
+                    "db": {
+                        "title": "Db",
+                        "type": "boolean"
+                    },
+                    "redis": {
+                        "title": "Redis",
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "status",
+                    "db",
+                    "redis"
+                ],
+                "title": "HealthOut",
+                "type": "object"
+            }
+        }
+    },
+    "servers": []
+}

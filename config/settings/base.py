@@ -1,0 +1,150 @@
+"""Base settings for Miz Ban - shared by every environment.
+
+Architecture Spec section 24: shared configuration lives here; overrides
+live in development.py / production.py. All secrets come from the
+environment via django-environ; nothing secret is hard-coded.
+Business timestamps are stored in UTC (USE_TZ=True); Jalali conversion
+happens only at presentation time, in core.jalali.
+"""
+from pathlib import Path
+
+import environ
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+env = environ.Env(
+    DEBUG=(bool, False),
+    ALLOWED_HOSTS=(list, []),
+)
+_env_file = BASE_DIR / ".env"
+if _env_file.exists():
+    environ.Env.read_env(_env_file)
+
+SECRET_KEY = env("SECRET_KEY", default="")
+DEBUG = env("DEBUG")
+ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    # Domain apps (Architecture Spec section 4), ordered by the dependency
+    # graph in section 5: foundations first.
+    "apps.accounts",
+    "apps.venues",
+    "apps.panoramas",
+    "apps.scheduling",
+    "apps.bookings",
+    "apps.billing",
+    "apps.wallets",
+    "apps.reviews",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+ROOT_URLCONF = "config.urls"
+WSGI_APPLICATION = "config.wsgi.application"
+ASGI_APPLICATION = "config.asgi.application"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+# Custom user model (phone-number identity, TD-006). This must exist before
+# the first migration of any dependent app - see task T-005.
+AUTH_USER_MODEL = "accounts.User"
+
+DATABASES = {
+    "default": env.db(
+        "DATABASE_URL",
+        default="postgres://mizban:mizban@localhost:5432/mizban",
+    )
+}
+
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("CACHE_URL", default="redis://localhost:6379/1"),
+    }
+}
+
+# NOTE (ARCH-004): the cache is for venue metadata and OTP codes ONLY.
+# Slot availability and booking-lock state are never cached; PostgreSQL is
+# the single authority for what is free or occupied.
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=REDIS_URL)
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=REDIS_URL)
+CELERY_TIMEZONE = "UTC"
+
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+LANGUAGE_CODE = "fa-ir"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- Miz Ban business constants (Product Definition section 6) ---
+SLOT_DURATION_MINUTES = 90  # BR-001: each reservation slot is 90 minutes
+SLOT_BUFFER_MINUTES = 30  # BR-001: plus a 30-minute cleaning buffer
+BOOKING_MIN_LEAD_HOURS = 24  # BR-002: book at least 24h ahead
+CANCELLATION_MIN_LEAD_HOURS = 36  # BR-004: cancel at least 36h ahead
+BOOKING_LOCK_MINUTES = 10  # TD-004: temporary DB lock while paying
+
+# --- Observability (Architecture Spec section 25) ---
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+}

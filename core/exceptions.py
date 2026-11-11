@@ -1,0 +1,126 @@
+"""Domain exceptions and the standard API error envelope.
+
+Architecture Spec section 19: expected domain errors are raised anywhere
+in the service layer as DomainError subclasses and converted by ONE
+central handler into the standard body:
+
+    {"error_code": "SLOT_ALREADY_RESERVED", "message": "...", "details": {}}
+
+Unexpected exceptions become a safe generic 500; the detail goes to the
+server log / Sentry only, never to the client.
+"""
+from __future__ import annotations
+
+import logging
+
+from django.core.exceptions import PermissionDenied
+from django.http import Http404
+from ninja.errors import HttpError, ValidationError
+
+logger = logging.getLogger(__name__)
+
+
+class DomainError(Exception):
+    """Base class for expected, user-visible business errors."""
+
+    error_code = "DOMAIN_ERROR"
+    status_code = 400
+    default_message = "The request could not be completed."
+
+    def __init__(self, message: str | None = None, *, details: dict | None = None):
+        self.message = message or self.default_message
+        self.details = details or {}
+        super().__init__(self.message)
+
+
+class SlotAlreadyReservedError(DomainError):
+    """TD-004: the table already has an active lock or a confirmed booking."""
+
+    error_code = "SLOT_ALREADY_RESERVED"
+    status_code = 409
+    default_message = "This table is currently being reserved by another user for the selected time."
+
+
+class LeadTimeViolationError(DomainError):
+    """BR-002: slots must start at least 24 hours from now."""
+
+    error_code = "LEAD_TIME_VIOLATION"
+    status_code = 400
+    default_message = "Bookings must be made at least 24 hours before the slot start time."
+
+
+class CancellationWindowClosedError(DomainError):
+    """BR-004: cancellation is only allowed 36+ hours before the slot."""
+
+    error_code = "CANCELLATION_WINDOW_CLOSED"
+    status_code = 400
+    default_message = "Reservations can only be cancelled at least 36 hours before the slot start time."
+
+
+class InsufficientWalletBalanceError(DomainError):
+    """TD-005: the wallet may never go negative."""
+
+    error_code = "WALLET_INSUFFICIENT_BALANCE"
+    status_code = 400
+    default_message = "The wallet balance is not enough for this operation."
+
+
+def error_body(error_code: str, message: str, details: dict | None = None) -> dict:
+    return {"error_code": error_code, "message": message, "details": details or {}}
+
+
+def register_exception_handlers(api) -> None:
+    """Attach the section-19 error contract to a NinjaAPI instance."""
+
+    @api.exception_handler(DomainError)
+    def _domain_error(request, exc: DomainError):
+        return api.create_response(
+            request,
+            error_body(exc.error_code, exc.message, exc.details),
+            status=exc.status_code,
+        )
+
+    @api.exception_handler(ValidationError)
+    def _validation_error(request, exc: ValidationError):
+        return api.create_response(
+            request,
+            error_body(
+                "VALIDATION_ERROR",
+                "The request payload failed validation.",
+                {"errors": exc.errors},
+            ),
+            status=422,
+        )
+
+    @api.exception_handler(Http404)
+    def _not_found(request, exc: Http404):
+        return api.create_response(
+            request,
+            error_body("NOT_FOUND", "The requested resource was not found."),
+            status=404,
+        )
+
+    @api.exception_handler(PermissionDenied)
+    def _forbidden(request, exc: PermissionDenied):
+        return api.create_response(
+            request,
+            error_body("FORBIDDEN", "You do not have permission to perform this action."),
+            status=403,
+        )
+
+    @api.exception_handler(Exception)
+    def _unexpected(request, exc: Exception):
+        # Ninja's own HTTP errors (401/404 raised by the framework) keep
+        # their status; everything else is a safe, generic 500.
+        if isinstance(exc, HttpError):
+            return api.create_response(
+                request,
+                error_body("HTTP_ERROR", exc.message),
+                status=exc.status_code,
+            )
+        logger.exception("Unhandled API error: %s", exc)
+        return api.create_response(
+            request,
+            error_body("INTERNAL_ERROR", "An unexpected error occurred."),
+            status=500,
+        )
