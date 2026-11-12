@@ -83,6 +83,17 @@ DATABASES = {
     )
 }
 
+# PostgreSQL connection-level bounded wait options (Task T-014 / Spike 02):
+# lock_timeout = 5000ms (5s) prevents unbounded waits on row / table locks.
+# statement_timeout = 10000ms (10s) acts as a safety ceiling for query execution.
+if DATABASES["default"].get("ENGINE") == "django.db.backends.postgresql":
+    DATABASES["default"].setdefault("OPTIONS", {})
+    _existing_options = DATABASES["default"]["OPTIONS"].get("options", "")
+    _timeout_flags = "-c lock_timeout=5000 -c statement_timeout=10000"
+    DATABASES["default"]["OPTIONS"]["options"] = (
+        f"{_existing_options} {_timeout_flags}".strip()
+    )
+
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 CACHES = {
     "default": {

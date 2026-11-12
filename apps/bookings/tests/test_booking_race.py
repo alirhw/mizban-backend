@@ -10,7 +10,7 @@ Acceptance criteria:
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import time, timedelta
 
 from django.db import connection
 from django.utils import timezone
@@ -69,18 +69,19 @@ def test_two_simultaneous_initiates_exactly_one_wins():
 def test_expired_lock_reacquisition():
     """An expired PENDING_PAYMENT lock (lock_expires_at in the past) does not block a new lock."""
     pin = table_pin_factory()
-    slot = pin.next_bookable_slot()
+    now = timezone.now()
+    # Choose a slot 2 days ahead to ensure it remains well beyond the 24h lead-time window after lock expiration
+    target_date = (now + timedelta(days=2)).date()
+    target_time = time(10, 0)
     user_a = user_factory()
     user_b = user_factory()
-
-    now = timezone.now()
 
     # 1. Customer A acquires lock at `now`
     booking_a = create_booking_lock(
         user=user_a,
         table_pin=pin,
-        slot_date=slot.date,
-        slot_start_time=slot.start_time,
+        slot_date=target_date,
+        slot_start_time=target_time,
         now=now,
     )
     assert booking_a.status == BookingStatus.PENDING_PAYMENT
@@ -91,8 +92,8 @@ def test_expired_lock_reacquisition():
     booking_b = create_booking_lock(
         user=user_b,
         table_pin=pin,
-        slot_date=slot.date,
-        slot_start_time=slot.start_time,
+        slot_date=target_date,
+        slot_start_time=target_time,
         now=elapsed_now,
     )
     assert booking_b.pk != booking_a.pk

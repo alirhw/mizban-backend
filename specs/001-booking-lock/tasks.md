@@ -5,7 +5,12 @@
 | **T-011** | Booking model, status lifecycle, constraints, indexes, and Jalali presentation helpers | `booking-lock-engineer` | Done (Gate G4 Approved) | None |
 | **T-012** | Atomic lock service (`create_booking_lock`, `select_for_update`, concurrency race test) | `booking-lock-engineer` | Done (Gate G4 Approved) | T-011 |
 | **T-013** | Initiate-booking endpoint and API integration (`POST /api/v1/bookings/initiate/`) | `backend-api-engineer` | Done (Gate G4 Approved) | T-012 |
-| **T-014** | Validate PostgreSQL Concurrency and Deadlock Behavior (Spike 02 / M1) | `booking-lock-engineer` | Next | T-013 |
+| **T-014** | Validate PostgreSQL Concurrency and Deadlock Behavior (Spike 02 / M1) | `booking-lock-engineer` | Done (Gate G4 Approved) | T-013 |
+
+### Gate T-014 Approval Notes:
+1. **Milestone 1 Concurrency Spike Passed:** Concurrency and deadlock behavior validated under heavy multi-way contention (Spike 02 / M1). Exactly 1 winner per slot, 0 deadlocks, 0 duplicate rows, bounded latencies across 255 tested operations.
+2. **PostgreSQL Version Canonical Alignment:** Live testing confirmed against PostgreSQL 16.15 (`PostgreSQL 16.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit`). `docker-compose.yml` and documentation aligned canonically to `postgres:16-alpine`.
+3. **Lock & Statement Timeouts:** Enforced via `DATABASES["default"]["OPTIONS"]["options"]` in `config/settings/base.py` (`-c lock_timeout=5000 -c statement_timeout=10000`), verified active at runtime (`SHOW lock_timeout;` = `5s`, `SHOW statement_timeout;` = `10s`).
 
 ### Gate T-013 Approval Notes:
 1. **Thin Views & Error Envelope:** `POST /api/v1/bookings/initiate/` validated via Pydantic schemas, business logic encapsulated in `services.py`, errors mapped to standard envelope (400, 403, 409, 422).

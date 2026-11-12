@@ -1,7 +1,7 @@
-# Local development stack (Task T-002): PostgreSQL 18, Redis 8, Django (gunicorn).
+# Local development stack (Task T-002): PostgreSQL 16, Redis 8, Django (gunicorn).
 services:
   db:
-    image: postgres:18
+    image: postgres:16-alpine
     ports:
       - "5433:5432"
     environment:
