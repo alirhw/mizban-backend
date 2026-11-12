@@ -37,11 +37,30 @@ REQ-LOCK-006  Selected design add-ons shall be recorded on the booking
   (BookingAddon) with their price snapshot, marked payable-in-person
   (BR-003); only the table fee is charged online (spec 002, billing).
 
-## 4. State machine (Architecture Spec section 7)
+## 4. State machine (Architecture Spec section 7 & Task T-011)
+```text
 INITIATED -> PENDING_PAYMENT --(payment verified before expiry)--> CONFIRMED
-PENDING_PAYMENT --(timeout / payment failed)--> EXPIRED
-CONFIRMED --(customer cancel >= 36h before slot)--> CANCELLED (refund to wallet)
+INITIATED -> EXPIRED (hold creation timeout)
+INITIATED -> CANCELLED (aborted before gateway)
+PENDING_PAYMENT --(lock expiry / payment failed / timeout)--> EXPIRED
+PENDING_PAYMENT --(customer abort / cancellation during checkout)--> CANCELLED
+CONFIRMED --(customer cancel >= 36h before slot, BR-004)--> CANCELLED (refund to wallet)
 CONFIRMED --(slot end passed)--> COMPLETED
+EXPIRED, CANCELLED, COMPLETED: Terminal states
+```
+
+### Status Transition Table:
+| From Status | Allowed Target Statuses | Trigger / Condition |
+| :--- | :--- | :--- |
+| `INITIATED` | `PENDING_PAYMENT`, `EXPIRED`, `CANCELLED` | Lock acquired; gateway token requested; abort/timeout |
+| `PENDING_PAYMENT` | `CONFIRMED`, `EXPIRED`, `CANCELLED` | Payment verified; lock expired unpaid; payment cancelled/aborted |
+| `CONFIRMED` | `CANCELLED`, `COMPLETED` | Cancellation >= 36h before slot (BR-004); slot end passed |
+| `EXPIRED` | *(none)* | Terminal state |
+| `CANCELLED` | *(none)* | Terminal state |
+| `COMPLETED` | *(none)* | Terminal state |
+
+### Panoramas Foundation Note (Gate T-011 Approval Note 1):
+The minimal `Space` and `TablePin` models in `apps/panoramas/models.py` and migration `panoramas.0001_initial` serve as the foreign key foundation for bookings. The upcoming Panoramas phase (Tasks T-015..T-019) must **EXTEND** these existing models and migrations rather than rebuilding or replacing them.
 
 ## 5. API
 POST /api/v1/bookings/initiate/

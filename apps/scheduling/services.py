@@ -40,6 +40,14 @@ class Slot:
     is_bookable: bool
     disabled_reason: Optional[str] = None
 
+    @property
+    def date(self) -> date:
+        return self.start.astimezone(TEHRAN).date()
+
+    @property
+    def start_time(self) -> time:
+        return self.start.astimezone(TEHRAN).time()
+
 
 def generate_slots(
     open_time: time,

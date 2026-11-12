@@ -65,6 +65,14 @@ class InsufficientWalletBalanceError(DomainError):
     default_message = "The wallet balance is not enough for this operation."
 
 
+class InvalidStatusTransitionError(DomainError):
+    """Booking state machine: illegal transition between states."""
+
+    error_code = "INVALID_STATUS_TRANSITION"
+    status_code = 400
+    default_message = "The requested status transition is not permitted."
+
+
 def error_body(error_code: str, message: str, details: dict | None = None) -> dict:
     return {"error_code": error_code, "message": message, "details": details or {}}
 
