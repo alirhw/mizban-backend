@@ -179,3 +179,89 @@ def create_booking_lock(
                 booking.save(update_fields=["amount_in_person_toman", "updated_at"])
 
         return booking
+
+
+def initiate_booking(
+    *,
+    user: Any,
+    table_pin_id: int,
+    slot_date: Union[date, str],
+    slot_start_time: Union[time, str],
+    venue_id: Optional[int] = None,
+    addon_ids: Iterable[int] = (),
+    now: Optional[datetime] = None,
+) -> Booking:
+    """Initiate a booking lock from an API request (Task T-013).
+
+    Validates:
+    - Role: caller must be CUSTOMER (raises PermissionDenied -> 403).
+    - TablePin: exists and is_active (raises Http404 or TableNotBookableError -> 400).
+    - Venue: if venue_id provided, must match pin.venue_id (VenueMismatchError -> 400).
+    - BR-005: venue must be approved and have active subscription (VenueNotBookableError -> 400).
+    - Operating hours: slot must be within venue operating hours if configured (InvalidSlotError -> 400).
+    - Date / time parsing: converts Gregorian/Jalali strings to canonical date and time.
+    - Concurrency & lead time: delegates to atomic create_booking_lock (TD-004).
+    """
+    from django.core.exceptions import PermissionDenied
+    from django.http import Http404
+
+    from apps.accounts.models import UserRole
+    from apps.bookings.schemas import resolve_time
+    from apps.panoramas.models import TablePin
+    from apps.scheduling.services import get_venue_slots_for_date
+    from apps.venues.models import SubscriptionStatus
+    from core.exceptions import (
+        InvalidSlotError,
+        TableNotBookableError,
+        VenueMismatchError,
+        VenueNotBookableError,
+    )
+    from core.jalali import resolve_date
+
+    if now is None:
+        now = dj_timezone.now()
+    elif dj_timezone.is_naive(now):
+        now = now.replace(tzinfo=timezone.utc)
+    else:
+        now = now.astimezone(timezone.utc)
+
+    # 1. Role enforcement: CUSTOMER only
+    if not user or getattr(user, "role", None) != UserRole.CUSTOMER:
+        raise PermissionDenied("Only customers can initiate bookings.")
+
+    # 2. Date and time resolution
+    resolved_date = resolve_date(slot_date)
+    resolved_time = resolve_time(slot_start_time)
+
+    # 3. TablePin and Venue resolution
+    pin = TablePin.objects.select_related("venue").filter(pk=table_pin_id).first()
+    if not pin:
+        raise Http404("Table pin not found.")
+
+    if not pin.is_active:
+        raise TableNotBookableError("This table is currently not available for reservations.")
+
+    if venue_id is not None and pin.venue_id != venue_id:
+        raise VenueMismatchError("The specified table does not belong to this venue.")
+
+    venue = pin.venue
+    # BR-005: Admin-approved and active subscription
+    if not venue.is_approved or venue.subscription_status != SubscriptionStatus.ACTIVE:
+        raise VenueNotBookableError("This venue is not currently accepting reservations.")
+
+    # 4. Validate that requested slot is in operating hours
+    if venue.operating_hours.exists():
+        slots = get_venue_slots_for_date(venue, on_date=resolved_date, now=now)
+        if not any(s.start_time == resolved_time for s in slots):
+            raise InvalidSlotError("The requested slot is outside the venue's operating hours.")
+
+    # 5. Acquire atomic booking lock (TD-004)
+    return create_booking_lock(
+        user=user,
+        table_pin=pin,
+        slot_date=resolved_date,
+        slot_start_time=resolved_time,
+        addon_ids=addon_ids,
+        now=now,
+    )
+

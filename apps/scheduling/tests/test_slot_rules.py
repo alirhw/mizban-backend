@@ -177,3 +177,55 @@ def test_scheduling_api_endpoint():
     assert "start_jalali" in data[0]
     assert "end_jalali" in data[0]
     assert data[0]["start_jalali"] != ""
+
+
+@pytest.mark.django_db
+def test_scheduling_api_endpoint_with_t011_availability_filter():
+    """GET /api/v1/scheduling/venues/{venue_id}/slots?table_pin_id=X filters occupied slots."""
+    from apps.bookings.models import Booking, BookingStatus
+    from apps.panoramas.tests.factories import TablePinFactory
+
+    client = Client()
+    owner = UserFactory(role=UserRole.VENUE_OWNER)
+    customer = UserFactory(role=UserRole.CUSTOMER)
+    venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    pin = TablePinFactory(venue=venue)
+
+    # TablePinFactory auto-generates 7-day operating hours (08:00-23:00).
+    # Update weekday 0 (Monday) to 09:00 - 13:00 (producing 09:00 and 11:00 slots)
+    from apps.venues.models import OperatingHours
+    OperatingHours.objects.filter(venue=venue, weekday=0).update(
+        open_time=time(9, 0),
+        close_time=time(13, 0),
+    )
+
+    # 1. Unbooked: both slots (09:00 and 11:00) returned
+    resp = client.get(f"/api/v1/scheduling/venues/{venue.id}/slots?date=2026-01-05&table_pin_id={pin.id}")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
+
+    # 2. Book 09:00 slot as CONFIRMED -> only 11:00 slot returned
+    Booking.objects.create(
+        table_pin=pin,
+        customer=customer,
+        slot_date=date(2026, 1, 5),
+        slot_start_time=time(9, 0),
+        status=BookingStatus.CONFIRMED,
+    )
+    resp = client.get(f"/api/v1/scheduling/venues/{venue.id}/slots?date=2026-01-05&table_pin_id={pin.id}")
+    assert resp.status_code == 200
+    slots = resp.json()
+    assert len(slots) == 1
+    assert slots[0]["start_jalali"] != ""
+
+    # 3. Request without table_pin_id -> returns all venue slots (both slots)
+    resp_venue = client.get(f"/api/v1/scheduling/venues/{venue.id}/slots?date=2026-01-05")
+    assert resp_venue.status_code == 200
+    assert len(resp_venue.json()) == 2
+
+    # 4. Request with table_pin_id of another venue -> 404
+    other_venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    other_pin = TablePinFactory(venue=other_venue)
+    resp_404 = client.get(f"/api/v1/scheduling/venues/{venue.id}/slots?date=2026-01-05&table_pin_id={other_pin.id}")
+    assert resp_404.status_code == 404
+

@@ -7,6 +7,7 @@ Jalali input at the boundary. Never store a Jalali value in the database.
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from typing import Union
 from zoneinfo import ZoneInfo
 
 import jdatetime
@@ -53,3 +54,24 @@ def jalali_slot_window(value: str, fmt: str = JALALI_DATE_FORMAT) -> tuple[datet
     start = datetime.combine(gdate, time.min, tzinfo=TEHRAN).astimezone(timezone.utc)
     end = datetime.combine(gdate, time.max, tzinfo=TEHRAN).astimezone(timezone.utc)
     return start, end
+
+
+def resolve_date(date_input: Union[date, datetime, str]) -> date:
+    """Resolve a date input which may be date, datetime, ISO string, or Jalali string.
+
+    Supports:
+    - date / datetime instances
+    - Jalali string formats: '1404/10/15', '1404-10-15'
+    - ISO Gregorian format: '2026-01-05'
+    """
+    if isinstance(date_input, datetime):
+        return date_input.date()
+    if isinstance(date_input, date):
+        return date_input
+
+    date_str = str(date_input).strip()
+    if "/" in date_str or date_str.startswith("13") or date_str.startswith("14"):
+        return parse_jalali_date(date_str.replace("-", "/"))
+
+    return date.fromisoformat(date_str)
+

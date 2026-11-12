@@ -73,6 +73,39 @@ class InvalidStatusTransitionError(DomainError):
     default_message = "The requested status transition is not permitted."
 
 
+class VenueNotBookableError(DomainError):
+    """BR-005: A venue is publicly visible/bookable only when admin-approved and active."""
+
+    error_code = "VENUE_NOT_BOOKABLE"
+    status_code = 400
+    default_message = "This venue is not currently available for reservations."
+
+
+class TableNotBookableError(DomainError):
+    """Table is inactive or not available."""
+
+    error_code = "TABLE_NOT_BOOKABLE"
+    status_code = 400
+    default_message = "The selected table is currently not available for reservations."
+
+
+class VenueMismatchError(DomainError):
+    """Table pin does not belong to the requested venue."""
+
+    error_code = "VENUE_MISMATCH"
+    status_code = 400
+    default_message = "The specified table does not belong to this venue."
+
+
+class InvalidSlotError(DomainError):
+    """Slot is not within the venue operating hours."""
+
+    error_code = "INVALID_SLOT"
+    status_code = 400
+    default_message = "The selected slot is outside the venue's operating hours."
+
+
+
 def error_body(error_code: str, message: str, details: dict | None = None) -> dict:
     return {"error_code": error_code, "message": message, "details": details or {}}
 

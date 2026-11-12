@@ -103,7 +103,7 @@ Scenario: Expired lock frees the table
   call happens inside the lock transaction).
 
 ## 8. Out of scope
-- Gateway checkout + verify callback (billing spec, task T-014).
+- Gateway checkout + verify callback (billing spec, phase PH-05 / tasks T-020..T-024).
 - Cancellation + wallet refund (spec of its own; BR-004).
 - Slot generation itself (scheduling spec, task T-010).
 

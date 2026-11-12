@@ -135,12 +135,14 @@ def get_venue_slots_for_date(
     venue: Union[Venue, int],
     on_date: Union[date, datetime, str],
     now: Optional[datetime] = None,
+    table_pin: Optional[Any] = None,
 ) -> list[Slot]:
     """Retrieve generated slots for a given venue and date.
 
     Looks up the venue's OperatingHours for on_date.weekday() (0=Monday..6=Sunday).
     If the venue is closed on that weekday, returns an empty list.
     Availability is dynamically computed and NEVER cached (ARCH-004).
+    If table_pin is provided, filters available slots using the T-011 availability filter.
     """
     from apps.venues.models import Venue
 
@@ -157,9 +159,16 @@ def get_venue_slots_for_date(
     if not operating_hours:
         return []
 
-    return generate_slots(
+    slots = generate_slots(
         open_time=operating_hours.open_time,
         close_time=operating_hours.close_time,
         on_date=target_date,
         now=now,
     )
+
+    if table_pin is not None:
+        from apps.bookings.services import filter_available_slots_for_table
+
+        slots = filter_available_slots_for_table(table_pin=table_pin, slots=slots, now=now)
+
+    return slots
