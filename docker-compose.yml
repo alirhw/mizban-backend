@@ -52,5 +52,28 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    profiles: ["worker"]
+    build: .
+    command: celery -A config worker --loglevel=info
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      SECRET_KEY: dev-only-secret-key
+      ALLOWED_HOSTS: "*"
+      DATABASE_URL: postgres://${POSTGRES_USER:-mizban}:${POSTGRES_PASSWORD:-mizban}@db:5432/${POSTGRES_DB:-mizban}
+      REDIS_URL: redis://redis:6379/0
+      CACHE_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   pgdata:

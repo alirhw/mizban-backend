@@ -448,10 +448,7 @@ class TestPanoramaUploadAPI:
 
     def test_dispatch_seam_handles_broker_error_without_raising(self):
         """The dispatch_panorama_processing seam catches all broker exceptions and logs warning."""
-        fake_task = MagicMock()
-        fake_task.delay.side_effect = RuntimeError("Broker connection timeout")
-
-        with patch.dict("sys.modules", {"apps.panoramas.tasks": MagicMock(process_panorama_image=fake_task)}):
+        with patch("apps.panoramas.tasks.process_panorama_image.delay", side_effect=RuntimeError("Broker connection timeout")):
             result = services.dispatch_panorama_processing(uuid.uuid4())
             assert result is False
 

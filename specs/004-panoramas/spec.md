@@ -38,17 +38,54 @@ Provide the core visual reservation domain for Miz Ban:
   - **Path Traversal Prevention:** Client-supplied filenames are never used in storage keys. Files are stored at `panoramas/{venue_id}/{uuid}.<ext>` using cryptographically random UUIDv4.
   - **Single Dispatch Seam & Broker Resilience:** Processing is dispatched via `transaction.on_commit(lambda: dispatch_panorama_processing(panorama.id))`. If the message broker is unreachable, the upload succeeds with HTTP 202 and the record remains safely in `UPLOADED` status.
   - **Zero Orphan Cleanup:** If database record creation or transaction fails after storage write, any uploaded file in `default_storage` is automatically removed.
+- **REQ-PANO-007 (Celery Asynchronous Image Conversion Pipeline - T-017):**
+  - **Single Dispatch Seam Wiring:** `dispatch_panorama_processing` calls `tasks.process_panorama_image.delay(str(panorama_image_id))`.
+  - **Idempotency & Lifecycle:** Only process records in `UPLOADED`, `PROCESSING`, or `FAILED`. If `status == READY`, the task is an immediate no-op (`ALREADY_READY`) avoiding duplicate files and redundant processing.
+  - **Pillow Conversion Standards:**
+    - Decompression-bomb limits (`Image.MAX_IMAGE_PIXELS`) enforced.
+    - EXIF orientation transposed (`ImageOps.exif_transpose`).
+    - Color mode normalized to RGB.
+    - Strict 2:1 equirectangular aspect ratio check ($1.75 \le \text{aspect} \le 2.25$). Non-2:1 files fail immediately.
+    - **No-upscale rule:** Images smaller than 4096x2048 retain their native dimensions. Images exceeding 4096x2048 are downscaled preserving the 2:1 ratio using Lanczos resampling.
+    - Main WebP encoded at quality 82 (`method=4`).
+    - LQIP thumbnail (512x256 max) encoded at quality 60 (`method=4`).
+  - **Atomic Output Writes:** Writes to storage use temporary filenames followed by atomic rename (`os.replace` / storage replacement) to prevent partial files on worker crashes.
+  - **Strict Output Verification:** Before updating the DB or deleting the original, outputs are reopened and validated for existence, format (`WEBP`), readability (`im.verify()`), and dimensions.
+  - **Safe DB Commit & Clean Deletion:** Database fields (`webp_file`, `thumb_file`, `width`, `height`, `file_size_bytes`, `processed_at`) and status transition to `READY` commit first; the raw heavy original is unlinked from storage only after DB success.
+  - **Error Handling & Bounded Retries:** On failure, status transitions to `FAILED` with a sanitized user-facing error message (metadata only in logs; no stack traces or raw bytes leaked), keeping the original file for re-upload/retry. Bounded retries (max 3) apply only to transient exceptions, never deterministic validation failures.
+  - **Roadmap Target Reporting:** The 1.5 MB output size is an operational target. If a rich panorama exceeds 1.5 MB, it is logged for tracking without silently reducing quality below 82.
 
 ---
 
-## 3. Scope & Endpoints
+## 3. Worker Operations & Startup
+
+### Supported Image Formats:
+- Equirectangular 2:1 photographs in **JPEG**, **PNG**, or **WebP** formats up to 20 MB.
+
+### Worker Startup Commands:
+- **Local Development CLI:**
+  ```powershell
+  # Ensure Redis and Postgres are running, then launch Celery worker:
+  celery -A config worker --loglevel=info
+  ```
+- **Docker Compose:**
+  ```powershell
+  # Launch the dedicated Celery worker service:
+  docker compose --profile worker up -d worker
+  # Or run both web and worker together:
+  docker compose --profile web --profile worker up -d
+  ```
+
+---
+
+## 4. Scope & Endpoints
 
 - **POST /api/v1/panoramas/spaces/{space_id}/upload** (Alias: `/spaces/{space_id}/images`)
   - **Role:** Venue owner (restricted to venues they own; IDOR protected) or Admin.
   - **Payload:** `multipart/form-data` with `file: UploadedFile`.
   - **Success Response:** HTTP 202 Accepted (`PanoramaUploadOut`).
 - **Task T-015:** Domain models, constraints, state machine, and TablePin deletion protection (Done).
-- **Task T-016:** Panorama upload API (magic bytes validation, UUID storage, 202 Accepted) (Implemented).
-- **Task T-017:** Celery image processing worker (Pillow, 4096x2048 WebP, 512x256 thumbnail, original deletion) (Next).
-- **Task T-018:** Owner editor APIs (Space CRUD, Pin placement, pitch/yaw coordinates).
+- **Task T-016:** Panorama upload API (magic bytes validation, UUID storage, 202 Accepted) (Done).
+- **Task T-017:** Celery image processing worker (Pillow, 4096x2048 WebP, 512x256 thumbnail, original deletion) (Implemented).
+- **Task T-018:** Owner editor APIs (Space CRUD, Pin placement, pitch/yaw coordinates) (Next).
 - **Task T-019:** Customer viewer API (Pannellum scene JSON, pins with real-time booking availability).

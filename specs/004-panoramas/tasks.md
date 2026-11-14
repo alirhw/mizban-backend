@@ -3,10 +3,40 @@
 | Task ID | Description | Owner | Status | Dependencies |
 | :--- | :--- | :--- | :--- | :--- |
 | **T-015** | Resolve Space Ownership and Define Panorama Domain Models | `web-architect` / `database-engineer` | Done (Gate G4 Approved) | T-014 |
-| **T-016** | 360 Panorama Upload Endpoint & Validation (Magic bytes, UUID, 202) | `backend-api-engineer` | Implemented (Awaiting Gate G4 Approval) | T-015 |
-| **T-017** | Celery Asynchronous Image Conversion Pipeline (WebP, thumb, cleanup) | `media-engineer` | Next | T-016 |
-| **T-018** | Venue Owner Panorama & Table Pin Editor API (Space CRUD, Pin drops) | `backend-api-engineer` | Pending | T-017 |
+| **T-016** | 360 Panorama Upload Endpoint & Validation (Magic bytes, UUID, 202) | `backend-api-engineer` | Done (Gate G4 Approved) | T-015 |
+| **T-017** | Celery Asynchronous Image Conversion Pipeline (WebP, thumb, cleanup) | `media-engineer` | Implemented (Awaiting Gate G4 Approval) | T-016 |
+| **T-018** | Venue Owner Panorama & Table Pin Editor API (Space CRUD, Pin drops) | `backend-api-engineer` | Next | T-017 |
 | **T-019** | Customer Panorama Viewer & Visual Table Selection API | `backend-api-engineer` | Pending | T-018 |
+
+---
+
+### Gate T-017 Decisions & Implementation Notes:
+1. **Celery Worker Configuration & Compose Service:**
+   - Added `worker` service to `docker-compose.yml` (`celery -A config worker --loglevel=info`).
+   - Configured `CELERY_ACCEPT_CONTENT`, `CELERY_TASK_SERIALIZER`, `CELERY_RESULT_SERIALIZER`, `CELERY_TASK_TRACK_STARTED`, and `CELERY_TASK_TIME_LIMIT = 300` in `config/settings/base.py`.
+   - Documented worker operations, CLI commands, and supported image formats in `specs/004-panoramas/spec.md`.
+2. **Task Implementation & Dispatch Seam Wiring:**
+   - Implemented `@shared_task(name="panoramas.process_panorama_image")` in `apps/panoramas/tasks.py`.
+   - Connected `dispatch_panorama_processing` seam in `apps/panoramas/services.py` directly to `process_panorama_image.delay`.
+3. **Idempotency & Lifecycle Flow:**
+   - Tasks checks status on arrival: if `status == READY`, returns `ALREADY_READY` immediately without creating duplicate files or re-deleting files.
+   - Transitions `UPLOADED -> PROCESSING -> READY / FAILED`.
+4. **Pillow Equirectangular Conversion Standards:**
+   - Safe opening with `Image.MAX_IMAGE_PIXELS = 89478485` decompression-bomb protection.
+   - EXIF orientation transposed (`ImageOps.exif_transpose`).
+   - Color mode normalized to RGB.
+   - Equirectangular 2:1 aspect ratio strictly enforced.
+   - **No-upscale rule:** Images smaller than 4096x2048 retain native dimensions (e.g. 2048x1024 stays 2048x1024). Oversized images downscale preserving 2:1 ratio using Lanczos resampling.
+   - Main WebP encoded at quality 82 (`method=4` for balanced high performance and optimal size).
+   - LQIP thumbnail (512x256 max) encoded at quality 60 (`method=4`).
+5. **Atomic Output Writes & Output Verification:**
+   - `atomic_storage_save` writes to temporary files first before atomic rename (`os.replace`).
+   - Output verification checks format, readability (`im.verify()`), and dimensions BEFORE updating database and BEFORE deleting the raw original.
+6. **Deletion & Failure Safety:**
+   - Raw heavy original file is deleted ONLY AFTER verified outputs and successful DB commit.
+   - On error: status transitions to `FAILED` with sanitized error message (metadata only in logs, no raw content leaked), preserving the original file for re-upload/retry. Bounded retries (max 3) apply only to transient exceptions.
+7. **Roadmap Target Reporting:**
+   - Files $>1.5$ MB are logged as info metadata without silently reducing quality below 82.
 
 ---
 

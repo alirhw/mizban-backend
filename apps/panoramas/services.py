@@ -160,8 +160,8 @@ def dispatch_panorama_processing(panorama_image_id: uuid.UUID) -> bool:
             task_func.delay(str(panorama_image_id))
             logger.info("Enqueued panorama processing for image_id=%s", panorama_image_id)
         else:
-            logger.info(
-                "Dispatch seam: task process_panorama_image not wired (T-017 pending) for image_id=%s",
+            logger.warning(
+                "Dispatch seam: process_panorama_image task not found or missing delay method for image_id=%s",
                 panorama_image_id,
             )
         return True
