@@ -3,10 +3,33 @@
 | Task ID | Description | Owner | Status | Dependencies |
 | :--- | :--- | :--- | :--- | :--- |
 | **T-015** | Resolve Space Ownership and Define Panorama Domain Models | `web-architect` / `database-engineer` | Done (Gate G4 Approved) | T-014 |
-| **T-016** | 360 Panorama Upload Endpoint & Validation (Magic bytes, UUID, 202) | `backend-api-engineer` | Next | T-015 |
-| **T-017** | Celery Asynchronous Image Conversion Pipeline (WebP, thumb, cleanup) | `media-engineer` | Pending | T-016 |
+| **T-016** | 360 Panorama Upload Endpoint & Validation (Magic bytes, UUID, 202) | `backend-api-engineer` | Implemented (Awaiting Gate G4 Approval) | T-015 |
+| **T-017** | Celery Asynchronous Image Conversion Pipeline (WebP, thumb, cleanup) | `media-engineer` | Next | T-016 |
 | **T-018** | Venue Owner Panorama & Table Pin Editor API (Space CRUD, Pin drops) | `backend-api-engineer` | Pending | T-017 |
 | **T-019** | Customer Panorama Viewer & Visual Table Selection API | `backend-api-engineer` | Pending | T-018 |
+
+---
+
+### Gate T-016 Decisions & Implementation Notes:
+1. **Endpoint & Contract:**
+   - Implemented `POST /api/v1/panoramas/spaces/{space_id}/upload` with alias `/spaces/{space_id}/images`.
+   - Returns HTTP 202 Accepted with schema `PanoramaUploadOut` (`id`, `space_id`, `venue_id`, `status: "UPLOADED"`, `original_file`, `file_size_bytes`, `width`, `height`, `created_at`, `message`).
+2. **Access Control & IDOR Guard:**
+   - Restricted to `VENUE_OWNER` (only for venues they own) and `ADMIN` / staff users.
+   - Non-owners receive HTTP 403 `FORBIDDEN`. Unauthenticated callers receive HTTP 401. Non-existent space returns HTTP 404 `NOT_FOUND`.
+3. **Application & Reverse-Proxy Limits:**
+   - Application hard limit: 20 MB (`MAX_PANORAMA_FILE_SIZE = 20 * 1024 * 1024` bytes). Oversized uploads fail with HTTP 400 `FILE_TOO_LARGE`.
+   - Documented reverse-proxy deployment rule: `client_max_body_size 25M;` in Nginx / ingress to support multipart envelope overhead.
+4. **Content Validation & Decompression Safety:**
+   - Content verification via magic bytes fallback chain (JPEG, PNG, WebP) and Pillow `im.verify()`. Spoofed extensions, corrupt streams, and unpermitted formats (GIF, PDF) return HTTP 400 `INVALID_IMAGE`.
+   - Decompression-bomb limits (`Image.MAX_IMAGE_PIXELS`) prevent DOS attacks, returning HTTP 400 `IMAGE_DECOMPRESSION_BOMB`.
+5. **Storage & Path Traversal Prevention:**
+   - Stored with UUIDv4 filename under `panoramas/{venue_id}/{uuid}.<ext>` via `default_storage`. Client-provided filenames are completely discarded.
+6. **Single Dispatch Seam & Broker Resilience:**
+   - `dispatch_panorama_processing` dispatched via `transaction.on_commit()`.
+   - Broker outages log a warning and return False; upload succeeds (202 Accepted) with record remaining `UPLOADED`.
+7. **Failure Cleanup:**
+   - If database transaction fails, any newly created file in `default_storage` is automatically cleaned up, guaranteeing zero orphan files.
 
 ---
 

@@ -105,6 +105,30 @@ class InvalidSlotError(DomainError):
     default_message = "The selected slot is outside the venue's operating hours."
 
 
+class FileTooLargeError(DomainError):
+    """File size exceeds the maximum allowed limit."""
+
+    error_code = "FILE_TOO_LARGE"
+    status_code = 400
+    default_message = "File size exceeds the maximum allowed limit of 20MB."
+
+
+class InvalidImageError(DomainError):
+    """Uploaded file is not a valid or supported image."""
+
+    error_code = "INVALID_IMAGE"
+    status_code = 400
+    default_message = "The uploaded file is not a valid or supported image."
+
+
+class ImageDecompressionBombError(DomainError):
+    """Uploaded image exceeds decompression bomb safety limits."""
+
+    error_code = "IMAGE_DECOMPRESSION_BOMB"
+    status_code = 400
+    default_message = "The uploaded image exceeds maximum pixel limits."
+
+
 
 def error_body(error_code: str, message: str, details: dict | None = None) -> dict:
     return {"error_code": error_code, "message": message, "details": details or {}}
