@@ -69,7 +69,7 @@ class Booking(models.Model):
     )
     table_pin = models.ForeignKey(
         "panoramas.TablePin",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="bookings",
     )
     customer = models.ForeignKey(

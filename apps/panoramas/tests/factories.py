@@ -1,7 +1,7 @@
-"""Factories for panoramas app (TablePin, Space)."""
+"""Factories for panoramas app (Space, PanoramaImage, TablePin)."""
 import factory
 
-from apps.panoramas.models import Space, TablePin
+from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
 from apps.venues.tests.factories import VenueFactory
 
 
@@ -11,6 +11,20 @@ class SpaceFactory(factory.django.DjangoModelFactory):
 
     venue = factory.SubFactory(VenueFactory)
     name = factory.Sequence(lambda n: f"Space {n}")
+    description = factory.Sequence(lambda n: f"Description for space {n}")
+    display_order = factory.Sequence(lambda n: n)
+    is_active = True
+
+
+class PanoramaImageFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = PanoramaImage
+
+    space = factory.SubFactory(SpaceFactory)
+    status = PanoramaStatus.UPLOADED
+    width = 4096
+    height = 2048
+    file_size_bytes = 1024 * 1024 * 2
 
 
 class TablePinFactory(factory.django.DjangoModelFactory):
@@ -22,6 +36,9 @@ class TablePinFactory(factory.django.DjangoModelFactory):
     space = factory.SubFactory(SpaceFactory, venue=factory.SelfAttribute("..venue"))
     table_number = factory.Sequence(lambda n: f"T{n}")
     capacity = 4
+    pitch = 10.5
+    yaw = -45.0
+    description = "Near the window"
     is_active = True
 
     @factory.post_generation
