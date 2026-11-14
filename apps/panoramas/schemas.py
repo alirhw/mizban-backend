@@ -1,11 +1,13 @@
-"""Pydantic in/out schemas for the panoramas app (Task T-016)."""
+"""Pydantic in/out schemas for the panoramas app (Tasks T-016 & T-018)."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+import math
+from typing import List, Optional
 from uuid import UUID
 
 from ninja import Schema
+from pydantic import field_validator
 
 
 class PanoramaUploadOut(Schema):
@@ -21,3 +23,149 @@ class PanoramaUploadOut(Schema):
     height: Optional[int] = None
     created_at: datetime
     message: str = "Panorama image uploaded successfully and queued for processing."
+
+
+class TablePinCreateIn(Schema):
+    """Payload to drop/create a new table pin in a space (Task T-018)."""
+
+    table_number: str
+    capacity: int = 2
+    pitch: Optional[float] = None
+    yaw: Optional[float] = None
+    panorama_image_id: Optional[UUID] = None
+    description: str = ""
+    is_active: bool = True
+
+    @field_validator("pitch")
+    @classmethod
+    def validate_pitch(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if math.isnan(v) or math.isinf(v):
+                raise ValueError("Pitch cannot be NaN or infinite.")
+            if not (-90.0 <= v <= 90.0):
+                raise ValueError("Pitch must be between -90.0 and 90.0 degrees inclusive.")
+        return v
+
+    @field_validator("yaw")
+    @classmethod
+    def validate_yaw(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if math.isnan(v) or math.isinf(v):
+                raise ValueError("Yaw cannot be NaN or infinite.")
+            if not (-180.0 <= v <= 180.0):
+                raise ValueError("Yaw must be between -180.0 and 180.0 degrees inclusive.")
+        return v
+
+    @field_validator("capacity")
+    @classmethod
+    def validate_capacity(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("Capacity must be strictly positive (greater than 0).")
+        return v
+
+    @field_validator("table_number")
+    @classmethod
+    def validate_table_number(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("Table number cannot be empty or blank.")
+        return s
+
+
+class TablePinUpdateIn(Schema):
+    """Payload to update an existing table pin (Task T-018)."""
+
+    table_number: Optional[str] = None
+    capacity: Optional[int] = None
+    pitch: Optional[float] = None
+    yaw: Optional[float] = None
+    panorama_image_id: Optional[UUID] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("pitch")
+    @classmethod
+    def validate_pitch(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if math.isnan(v) or math.isinf(v):
+                raise ValueError("Pitch cannot be NaN or infinite.")
+            if not (-90.0 <= v <= 90.0):
+                raise ValueError("Pitch must be between -90.0 and 90.0 degrees inclusive.")
+        return v
+
+    @field_validator("yaw")
+    @classmethod
+    def validate_yaw(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if math.isnan(v) or math.isinf(v):
+                raise ValueError("Yaw cannot be NaN or infinite.")
+            if not (-180.0 <= v <= 180.0):
+                raise ValueError("Yaw must be between -180.0 and 180.0 degrees inclusive.")
+        return v
+
+    @field_validator("capacity")
+    @classmethod
+    def validate_capacity(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v <= 0:
+            raise ValueError("Capacity must be strictly positive (greater than 0).")
+        return v
+
+    @field_validator("table_number")
+    @classmethod
+    def validate_table_number(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            s = v.strip()
+            if not s:
+                raise ValueError("Table number cannot be empty or blank.")
+            return s
+        return v
+
+
+class TablePinOut(Schema):
+    """Response returned when an owner creates, views, or updates a table pin."""
+
+    id: int
+    venue_id: int
+    space_id: Optional[int]
+    panorama_image_id: Optional[UUID]
+    table_number: str
+    capacity: int
+    pitch: Optional[float]
+    yaw: Optional[float]
+    description: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PublicTablePinOut(Schema):
+    """Publicly visible pin placed in a 360 panorama scene."""
+
+    id: int
+    table_number: str
+    capacity: int
+    pitch: Optional[float]
+    yaw: Optional[float]
+    description: str
+
+
+class PublicPanoramaOut(Schema):
+    """Public response for GET /api/v1/spaces/{space_id}/panorama/ (Task T-018).
+
+    Only returned when:
+    - Venue is publicly visible under BR-005 (approved + subscription active)
+    - Space is active
+    - Active READY panorama image exists
+    Otherwise HTTP 404 is returned.
+    """
+
+    space_id: int
+    space_name: str
+    venue_id: int
+    venue_name: str
+    panorama_image_id: UUID
+    image_url: str
+    thumbnail_url: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    pins: List[PublicTablePinOut]

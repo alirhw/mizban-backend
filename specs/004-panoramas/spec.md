@@ -1,7 +1,7 @@
 # Spec 004 — 360-Degree Panorama Floor Plan and Visual Table Pins
 
 **Feature:** 004 — Panoramas & Table Pins  
-**Status:** In Progress (Task T-016 Implemented)  
+**Status:** In Progress (Task T-018 Done)  
 **Governing ADR:** ADR-005 (Space Domain Ownership & TablePin Protection)  
 **Architecture Rules:** ARCH-003 (Asynchronous Image Processing), ARCH-001 (Thin Views), ARCH-006 (UTC Instants), TR-002 / TD-003 (Strict Ingress Limits & Content Validation)  
 **Technical Decisions:** TD-003 (Pannellum 360 Viewer, Celery WebP Pipeline)  
@@ -54,6 +54,30 @@ Provide the core visual reservation domain for Miz Ban:
   - **Safe DB Commit & Clean Deletion:** Database fields (`webp_file`, `thumb_file`, `width`, `height`, `file_size_bytes`, `processed_at`) and status transition to `READY` commit first; the raw heavy original is unlinked from storage only after DB success.
   - **Error Handling & Bounded Retries:** On failure, status transitions to `FAILED` with a sanitized user-facing error message (metadata only in logs; no stack traces or raw bytes leaked), keeping the original file for re-upload/retry. Bounded retries (max 3) apply only to transient exceptions, never deterministic validation failures.
   - **Roadmap Target Reporting:** The 1.5 MB output size is an operational target. If a rich panorama exceeds 1.5 MB, it is logged for tracking without silently reducing quality below 82.
+- **REQ-PANO-008 (TablePin Editor and Public Panorama Read - T-018):**
+  - **Coordinate Conventions & Bounds:**
+    - Pitch: vertical angle in $[-90.0, 90.0]$ degrees (elevation).
+    - Yaw: horizontal angle in $[-180.0, 180.0]$ degrees (azimuth).
+    - Coordinates strictly reject `NaN` and `Infinity` in Pydantic v2 schemas and are enforced at DB level via `CheckConstraint`.
+    - Capacity must be strictly positive ($> 0$). Table number cannot be empty or whitespace.
+  - **Owner Authorization & IDOR Protection:**
+    - All pin mutations (`POST`, `PUT`, `PATCH`, `DELETE`, `POST .../deactivate`) require an authenticated caller with `VENUE_OWNER` or `ADMIN` role.
+    - Scoped strictly to the owner's venue: Owner B attempting to mutate pins in Owner A's venue returns HTTP 403 `FORBIDDEN`.
+    - Customer role callers receive HTTP 403 `FORBIDDEN`. Unauthenticated callers receive HTTP 401.
+    - Non-existent space or pin returns HTTP 404 `NOT_FOUND`.
+    - Venue is derived server-side from `space.venue`, never trusting client-supplied venue id.
+    - Table numbers must be unique per venue (`unique_table_number_per_venue`); duplicate within the venue returns HTTP 409 `TABLE_NUMBER_ALREADY_EXISTS`.
+  - **TablePin Deletion Protection (ADR-005):**
+    - Hard deletion of a pin with existing bookings raises `ProtectedError` and surfaces through the central error envelope as HTTP 409 `TABLE_PIN_PROTECTED` with instructions to deactivate instead.
+    - Pins without bookings are hard-deleted cleanly with HTTP 204 No Content.
+    - Soft-deactivation is available via `POST /api/v1/panoramas/pins/{pin_id}/deactivate` (or `is_active=False` in PUT/PATCH).
+  - **Public Panorama Read Endpoint (`GET /api/v1/spaces/{space_id}/panorama` & `/api/v1/panoramas/spaces/{space_id}/panorama`):**
+    - Single bounded query using `select_related` and `prefetch_related` (guarantees zero N+1 queries).
+    - Visibility rules (BR-005): Only accessible when venue is approved (`is_approved=True`), subscription is active (`subscription_status=ACTIVE`), space is active (`is_active=True`), and an active `READY` panorama image with a valid `webp_file` exists.
+    - Zero Information Leak: If ANY visibility or ready condition fails, returns HTTP 404 `NOT_FOUND` (never revealing whether the space exists, whether processing is pending, or whether the venue is unapproved).
+    - Never exposes `original_file` or internal storage keys.
+    - Returns WebP image URL, thumbnail URL, and active table pins (`is_active=True`). Deactivated pins are excluded.
+  - **Explicit Out-of-Scope Rule:** Space CRUD is NOT part of T-018 and is not implemented in this task.
 
 ---
 
@@ -86,6 +110,7 @@ Provide the core visual reservation domain for Miz Ban:
   - **Success Response:** HTTP 202 Accepted (`PanoramaUploadOut`).
 - **Task T-015:** Domain models, constraints, state machine, and TablePin deletion protection (Done).
 - **Task T-016:** Panorama upload API (magic bytes validation, UUID storage, 202 Accepted) (Done).
-- **Task T-017:** Celery image processing worker (Pillow, 4096x2048 WebP, 512x256 thumbnail, original deletion) (Implemented).
-- **Task T-018:** Owner editor APIs (Space CRUD, Pin placement, pitch/yaw coordinates) (Next).
-- **Task T-019:** Customer viewer API (Pannellum scene JSON, pins with real-time booking availability).
+- **Task T-017:** Celery image processing worker (Pillow, 4096x2048 WebP, 512x256 thumbnail, original deletion) (Done).
+- **Task T-018:** TablePin owner APIs (create, update, delete, deactivate) and Public Panorama read endpoint (Done).
+- **Task T-018b:** Venue Owner Space CRUD API (Dedicated task with its own gate) (Next).
+- **Task T-019:** Customer panorama viewer & WebGL/Pannellum performance spike (Pending).

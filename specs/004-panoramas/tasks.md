@@ -4,13 +4,46 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **T-015** | Resolve Space Ownership and Define Panorama Domain Models | `web-architect` / `database-engineer` | Done (Gate G4 Approved) | T-014 |
 | **T-016** | 360 Panorama Upload Endpoint & Validation (Magic bytes, UUID, 202) | `backend-api-engineer` | Done (Gate G4 Approved) | T-015 |
-| **T-017** | Celery Asynchronous Image Conversion Pipeline (WebP, thumb, cleanup) | `media-engineer` | Implemented (Awaiting Gate G4 Approval) | T-016 |
-| **T-018** | Venue Owner Panorama & Table Pin Editor API (Space CRUD, Pin drops) | `backend-api-engineer` | Next | T-017 |
-| **T-019** | Customer Panorama Viewer & Visual Table Selection API | `backend-api-engineer` | Pending | T-018 |
+| **T-017** | Celery Asynchronous Image Conversion Pipeline (WebP, thumb, cleanup) | `media-engineer` | Done (Gate G4 Approved) | T-016 |
+| **T-018** | Venue Owner Panorama & Table Pin Editor API (Space CRUD excluded, Pin CRUD, Public Read) | `backend-api-engineer` | Done (Gate G4 Approved) | T-017 |
+| **T-018b** | Venue Owner Space CRUD API (Dedicated task with its own gate) | `backend-api-engineer` | Next | T-018 |
+| **T-019** | Customer Panorama Viewer & WebGL/Pannellum Performance Spike | `media-engineer` / `frontend-engineer` | Pending | T-018 |
 
 ---
 
-### Gate T-017 Decisions & Implementation Notes:
+### Gate T-018 Decisions & Implementation Notes:
+1. **Scope Boundary (Space CRUD Excluded):**
+   - Strictly followed the project doc and Orchestrator instructions: Space CRUD is excluded from T-018 (deferred to dedicated space management task if required).
+2. **Owner TablePin CRUD Endpoints:**
+   - Implemented `POST /api/v1/panoramas/spaces/{space_id}/pins` (201 Created).
+   - Implemented `GET /api/v1/panoramas/spaces/{space_id}/pins` (200 OK).
+   - Implemented `GET /api/v1/panoramas/pins/{pin_id}` (200 OK).
+   - Implemented `PUT /api/v1/panoramas/pins/{pin_id}` and `PATCH /api/v1/panoramas/pins/{pin_id}` (200 OK).
+   - Implemented `POST /api/v1/panoramas/pins/{pin_id}/deactivate` (200 OK).
+   - Implemented `DELETE /api/v1/panoramas/pins/{pin_id}` (204 No Content or 409 Conflict).
+3. **Coordinate Conventions & Bounds Validation:**
+   - Pitch: $[-90.0, 90.0]$ degrees (vertical angle / elevation).
+   - Yaw: $[-180.0, 180.0]$ degrees (horizontal angle / azimuth).
+   - Capacity: strictly positive integer ($> 0$).
+   - Rejection of `NaN` and `Infinity` enforced in Pydantic v2 schemas (`TablePinCreateIn`, `TablePinUpdateIn`) and database constraints (`CheckConstraint`).
+4. **Ownership & IDOR Protection:**
+   - All pin mutations require authenticated `VENUE_OWNER` or `ADMIN`.
+   - Caller must own the pin's venue. Foreign owner mutations return HTTP 403 `FORBIDDEN`.
+   - Customer role callers return HTTP 403 `FORBIDDEN`. Unauthenticated callers return HTTP 401.
+   - Venue is derived server-side from `space.venue`, preventing client spoofing.
+   - Table number uniqueness is enforced per venue (`unique_table_number_per_venue`); duplicate returns HTTP 409 `TABLE_NUMBER_ALREADY_EXISTS`.
+5. **TablePin Deletion Protection (ADR-005):**
+   - Deleting a pin with existing bookings raises `ProtectedError`, surfaced as HTTP 409 `TABLE_PIN_PROTECTED` with instructions to deactivate instead.
+   - Pins without bookings are hard-deleted cleanly (HTTP 204 No Content).
+   - Soft-deactivation is available via `POST /api/v1/panoramas/pins/{pin_id}/deactivate` (sets `is_active=False`).
+6. **Public Panorama Read Endpoint (`GET /api/v1/spaces/{space_id}/panorama` & alias `/panoramas/spaces/{space_id}/panorama`):**
+   - Implemented with a single bounded query using `select_related` and `prefetch_related` (zero N+1 queries).
+   - Enforces BR-005: venue must be approved (`is_approved=True`), subscription must be active (`subscription_status=ACTIVE`), space must be active (`is_active=True`), and an active `READY` panorama image with a valid `webp_file` must exist.
+   - Zero Information Leak: If ANY visibility check fails, returns HTTP 404 `NOT_FOUND` (identical response, never revealing internal existence or processing status).
+   - Returns WebP image URL, thumbnail URL, and active table pins (`is_active=True`). Deactivated pins are excluded.
+   - Never exposes `original_file` or internal storage keys.
+
+---
 1. **Celery Worker Configuration & Compose Service:**
    - Added `worker` service to `docker-compose.yml` (`celery -A config worker --loglevel=info`).
    - Configured `CELERY_ACCEPT_CONTENT`, `CELERY_TASK_SERIALIZER`, `CELERY_RESULT_SERIALIZER`, `CELERY_TASK_TRACK_STARTED`, and `CELERY_TASK_TIME_LIMIT = 300` in `config/settings/base.py`.

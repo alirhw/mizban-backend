@@ -16,20 +16,29 @@ import logging
 from typing import Any, Optional, Tuple
 import uuid
 
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
+from django.db.models import Prefetch, ProtectedError
 from django.http import Http404
 from PIL import Image, UnidentifiedImageError
 
 from apps.accounts.models import UserRole
-from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space
+from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
+from apps.panoramas.schemas import (
+    PublicPanoramaOut,
+    PublicTablePinOut,
+    TablePinCreateIn,
+    TablePinUpdateIn,
+)
 from core.exceptions import (
     FileTooLargeError,
     ImageDecompressionBombError,
     InvalidImageError,
+    TableNumberAlreadyExistsError,
+    TablePinProtectedError,
 )
 
 logger = logging.getLogger(__name__)
@@ -243,3 +252,223 @@ def upload_panorama_for_space(
             except Exception as cleanup_exc:
                 logger.error("Failed to delete orphaned storage file %s: %s", saved_path, cleanup_exc)
         raise
+
+
+# ==============================================================================
+# TablePin & Public Panorama Services (Task T-018)
+# ==============================================================================
+
+def authorize_pin_owner(user: Any, pin_id: int) -> TablePin:
+    """Authorize that caller is the owner (or admin) of the venue owning the table pin.
+
+    Raises:
+        PermissionDenied: if caller is not an owner/admin or does not own the venue.
+        Http404: if pin does not exist.
+    """
+    if not (getattr(user, "is_staff", False) or getattr(user, "role", None) in (UserRole.VENUE_OWNER, UserRole.ADMIN)):
+        raise PermissionDenied("Only venue owners or admins can manage table pins.")
+
+    pin = TablePin.objects.select_related("venue", "space").filter(id=pin_id).first()
+    if not pin:
+        raise Http404("Table pin not found.")
+
+    if pin.venue.owner_id != user.id and not (user.is_staff or user.role == UserRole.ADMIN):
+        raise PermissionDenied("You do not own the venue for this table pin.")
+
+    return pin
+
+
+def list_table_pins_for_space(user: Any, space_id: int) -> list[TablePin]:
+    """List all table pins in a space for the venue owner."""
+    space = authorize_space_owner(user, space_id)
+    return list(space.table_pins.all().order_by("table_number"))
+
+
+def get_table_pin(user: Any, pin_id: int) -> TablePin:
+    """Retrieve a single table pin after verifying venue ownership."""
+    return authorize_pin_owner(user, pin_id)
+
+
+def create_table_pin_for_space(user: Any, space_id: int, data: TablePinCreateIn) -> TablePin:
+    """Create and place a table pin within a space (Task T-018).
+
+    Guarantees:
+    - Caller must own the space's venue (IDOR prevention).
+    - Venue is derived server-side from space.venue (client cannot spoof venue).
+    - Table number must be unique within the venue.
+    - If panorama_image_id is specified, verifies it belongs to this space.
+    - Full clean validation (pitch/yaw/capacity bounds).
+    - Atomic DB transaction.
+    """
+    space = authorize_space_owner(user, space_id)
+
+    # Check table_number uniqueness per venue
+    if TablePin.objects.filter(venue=space.venue, table_number=data.table_number).exists():
+        raise TableNumberAlreadyExistsError(
+            f"Table number '{data.table_number}' already exists in venue '{space.venue.name}'."
+        )
+
+    # Optional panorama image association check
+    panorama_image = None
+    if data.panorama_image_id:
+        panorama_image = PanoramaImage.objects.filter(id=data.panorama_image_id, space=space).first()
+        if not panorama_image:
+            raise DjangoValidationError({"panorama_image_id": "Panorama image does not belong to this space."})
+
+    with transaction.atomic():
+        pin = TablePin(
+            venue=space.venue,
+            space=space,
+            panorama_image=panorama_image,
+            table_number=data.table_number,
+            capacity=data.capacity,
+            pitch=data.pitch,
+            yaw=data.yaw,
+            description=data.description,
+            is_active=data.is_active,
+        )
+        pin.full_clean()
+        pin.save()
+        return pin
+
+
+def update_table_pin(user: Any, pin_id: int, data: TablePinUpdateIn) -> TablePin:
+    """Update table pin fields (Task T-018).
+
+    Guarantees:
+    - Caller must own the pin's venue.
+    - Validates table_number uniqueness if updated.
+    - Validates bounds via full_clean().
+    - Atomic DB transaction.
+    """
+    pin = authorize_pin_owner(user, pin_id)
+
+    if data.table_number is not None and data.table_number != pin.table_number:
+        if TablePin.objects.filter(venue=pin.venue, table_number=data.table_number).exclude(id=pin.id).exists():
+            raise TableNumberAlreadyExistsError(
+                f"Table number '{data.table_number}' already exists in venue '{pin.venue.name}'."
+            )
+        pin.table_number = data.table_number
+
+    if data.capacity is not None:
+        pin.capacity = data.capacity
+
+    if data.pitch is not None:
+        pin.pitch = data.pitch
+
+    if data.yaw is not None:
+        pin.yaw = data.yaw
+
+    if data.description is not None:
+        pin.description = data.description
+
+    if data.is_active is not None:
+        pin.is_active = data.is_active
+
+    if data.panorama_image_id is not None:
+        panorama_image = PanoramaImage.objects.filter(id=data.panorama_image_id, space=pin.space).first()
+        if not panorama_image:
+            raise DjangoValidationError({"panorama_image_id": "Panorama image does not belong to this space."})
+        pin.panorama_image = panorama_image
+
+    with transaction.atomic():
+        pin.full_clean()
+        pin.save()
+        return pin
+
+
+def deactivate_table_pin(user: Any, pin_id: int) -> TablePin:
+    """Soft-deactivate a table pin (is_active=False).
+
+    Recommended alternative when hard deletion is blocked by existing bookings (ADR-005).
+    """
+    pin = authorize_pin_owner(user, pin_id)
+    pin.deactivate()
+    return pin
+
+
+def delete_table_pin(user: Any, pin_id: int) -> None:
+    """Delete a table pin, respecting the T-015 / ADR-005 PROTECT rule.
+
+    If the table pin has existing bookings, raises TablePinProtectedError (HTTP 409)
+    advising the owner to deactivate it instead.
+    """
+    pin = authorize_pin_owner(user, pin_id)
+    with transaction.atomic():
+        try:
+            pin.delete()
+        except ProtectedError as exc:
+            raise TablePinProtectedError(
+                "Cannot delete table pin with existing booking history. Deactivate it instead."
+            ) from exc
+
+
+def get_public_panorama_for_space(space_id: int) -> dict:
+    """Public read endpoint for 360 panorama scene and active pins (Task T-018 / BR-005).
+
+    Guarantees:
+    - Bounded single query / prefetch (no N+1).
+    - Checks BR-005: venue must be approved AND subscription must be ACTIVE.
+    - Space must be active (is_active=True).
+    - An active READY panorama image must exist with a valid WebP file.
+    - Zero info leak: if any check fails, returns Http404.
+    - Returns only public pin fields and webp/thumb URLs (never original_file).
+    """
+    space = (
+        Space.objects.select_related("venue", "active_panorama")
+        .prefetch_related(
+            Prefetch(
+                "table_pins",
+                queryset=TablePin.objects.filter(is_active=True).order_by("table_number"),
+            ),
+            Prefetch(
+                "panorama_images",
+                queryset=PanoramaImage.objects.filter(status=PanoramaStatus.READY).order_by("-created_at"),
+                to_attr="ready_panoramas",
+            ),
+        )
+        .filter(id=space_id)
+        .first()
+    )
+
+    if not space or not space.is_active:
+        raise Http404("Space not found.")
+
+    if not space.venue.is_publicly_visible:
+        raise Http404("Space not found.")
+
+    ready_panorama = None
+    if space.active_panorama and space.active_panorama.status == PanoramaStatus.READY:
+        ready_panorama = space.active_panorama
+    elif getattr(space, "ready_panoramas", None):
+        ready_panorama = space.ready_panoramas[0]
+
+    if not ready_panorama or not ready_panorama.webp_file:
+        raise Http404("Space not found.")
+
+    # Active pins for this panorama (or general to the space)
+    active_pins = [
+        PublicTablePinOut(
+            id=pin.id,
+            table_number=pin.table_number,
+            capacity=pin.capacity,
+            pitch=pin.pitch,
+            yaw=pin.yaw,
+            description=pin.description,
+        )
+        for pin in space.table_pins.all()
+        if pin.panorama_image_id is None or pin.panorama_image_id == ready_panorama.id
+    ]
+
+    return {
+        "space_id": space.id,
+        "space_name": space.name,
+        "venue_id": space.venue.id,
+        "venue_name": space.venue.name,
+        "panorama_image_id": ready_panorama.id,
+        "image_url": ready_panorama.webp_file.url,
+        "thumbnail_url": ready_panorama.thumb_file.url if ready_panorama.thumb_file else None,
+        "width": ready_panorama.width,
+        "height": ready_panorama.height,
+        "pins": active_pins,
+    }

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import logging
 
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+from django.db.models import ProtectedError
 from django.http import Http404
 from ninja.errors import HttpError, ValidationError
 
@@ -129,6 +130,22 @@ class ImageDecompressionBombError(DomainError):
     default_message = "The uploaded image exceeds maximum pixel limits."
 
 
+class TablePinProtectedError(DomainError):
+    """Table pin has existing bookings and cannot be deleted (ADR-005)."""
+
+    error_code = "TABLE_PIN_PROTECTED"
+    status_code = 409
+    default_message = "Cannot delete table pin with existing booking history. Deactivate it instead."
+
+
+class TableNumberAlreadyExistsError(DomainError):
+    """Table number already exists within the venue."""
+
+    error_code = "TABLE_NUMBER_ALREADY_EXISTS"
+    status_code = 409
+    default_message = "A table with this number already exists in this venue."
+
+
 
 def error_body(error_code: str, message: str, details: dict | None = None) -> dict:
     return {"error_code": error_code, "message": message, "details": details or {}}
@@ -157,6 +174,19 @@ def register_exception_handlers(api) -> None:
             status=422,
         )
 
+    @api.exception_handler(DjangoValidationError)
+    def _django_validation_error(request, exc: DjangoValidationError):
+        details = exc.message_dict if hasattr(exc, "message_dict") else {"non_field_errors": exc.messages}
+        return api.create_response(
+            request,
+            error_body(
+                "VALIDATION_ERROR",
+                "The request payload failed validation.",
+                {"errors": details},
+            ),
+            status=422,
+        )
+
     @api.exception_handler(Http404)
     def _not_found(request, exc: Http404):
         return api.create_response(
@@ -171,6 +201,17 @@ def register_exception_handlers(api) -> None:
             request,
             error_body("FORBIDDEN", "You do not have permission to perform this action."),
             status=403,
+        )
+
+    @api.exception_handler(ProtectedError)
+    def _protected_error(request, exc: ProtectedError):
+        return api.create_response(
+            request,
+            error_body(
+                "TABLE_PIN_PROTECTED",
+                "Cannot delete table pin with existing booking history. Deactivate it instead.",
+            ),
+            status=409,
         )
 
     @api.exception_handler(Exception)
