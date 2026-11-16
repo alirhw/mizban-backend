@@ -146,6 +146,46 @@ class TableNumberAlreadyExistsError(DomainError):
     default_message = "A table with this number already exists in this venue."
 
 
+class PaymentGatewayError(DomainError):
+    """Payment gateway rejected operation or experienced communication failure (ARCH-005)."""
+
+    error_code = "PAYMENT_GATEWAY_ERROR"
+    status_code = 502
+    default_message = "Payment gateway communication failed."
+
+
+class PaymentGatewayTimeoutError(PaymentGatewayError):
+    """Payment gateway timed out during initiate or verify (ARCH-005)."""
+
+    error_code = "PAYMENT_GATEWAY_TIMEOUT"
+    status_code = 504
+    default_message = "Payment gateway request timed out."
+
+
+class PaymentVerificationFailedError(DomainError):
+    """Payment verification was rejected or declined by the gateway (ARCH-005)."""
+
+    error_code = "PAYMENT_VERIFICATION_FAILED"
+    status_code = 400
+    default_message = "Payment verification was rejected by the gateway."
+
+
+class PaymentAmountMismatchError(DomainError):
+    """Verified payment amount does not match stored booking amount (BR-003)."""
+
+    error_code = "PAYMENT_AMOUNT_MISMATCH"
+    status_code = 400
+    default_message = "Verified amount does not match booking reservation amount."
+
+
+class PaymentAlreadyProcessedError(DomainError):
+    """Payment transaction is already in a terminal state (ARCH-005)."""
+
+    error_code = "PAYMENT_ALREADY_PROCESSED"
+    status_code = 409
+    default_message = "Payment transaction has already been processed."
+
+
 
 def error_body(error_code: str, message: str, details: dict | None = None) -> dict:
     return {"error_code": error_code, "message": message, "details": details or {}}

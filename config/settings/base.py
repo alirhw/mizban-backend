@@ -140,6 +140,11 @@ BOOKING_MIN_LEAD_HOURS = 24  # BR-002: book at least 24h ahead
 CANCELLATION_MIN_LEAD_HOURS = 36  # BR-004: cancel at least 36h ahead
 BOOKING_LOCK_MINUTES = 10  # TD-004: temporary DB lock while paying
 
+# --- Payment Gateway Configuration (Task T-020 / ARCH-005) ---
+PAYMENT_GATEWAY_PROVIDER = env("PAYMENT_GATEWAY_PROVIDER", default="sandbox")
+PAYMENT_GATEWAY_TIMEOUT_SECONDS = env.float("PAYMENT_GATEWAY_TIMEOUT_SECONDS", default=8.0)
+PAYMENT_GATEWAY_CALLBACK_BASE_URL = env("PAYMENT_GATEWAY_CALLBACK_BASE_URL", default="http://127.0.0.1:8000")
+
 # --- Observability (Architecture Spec section 25) ---
 SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
