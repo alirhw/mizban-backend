@@ -1,61 +1,2445 @@
 {
-    "openapi": "3.1.0",
-    "info": {
-        "title": "Miz Ban API",
-        "version": "1.0.0",
-        "description": "Two-sided 360-degree visual table-reservation platform - API v1."
-    },
-    "paths": {
-        "/api/v1/healthz": {
-            "get": {
-                "operationId": "config_api_healthz",
-                "summary": "Healthz",
-                "parameters": [],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HealthOut"
-                                }
-                            }
-                        }
-                    }
-                },
-                "description": "Readiness probe (Task T-004): bounded DB and Redis checks.\n\nNever exposes credentials, connection strings or internals.",
-                "tags": [
-                    "system"
-                ]
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Miz Ban API",
+    "version": "1.0.0",
+    "description": "Two-sided 360-degree visual table-reservation platform - API v1."
+  },
+  "paths": {
+    "/api/v1/healthz": {
+      "get": {
+        "operationId": "config_api_healthz",
+        "summary": "Healthz",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
             }
-        }
+          }
+        },
+        "description": "Readiness probe (Task T-004): bounded DB and Redis checks.\n\nNever exposes credentials, connection strings or internals.",
+        "tags": [
+          "system"
+        ]
+      }
     },
-    "components": {
-        "schemas": {
-            "HealthOut": {
+    "/api/v1/venues/owner/venues": {
+      "get": {
+        "operationId": "apps_venues_api_list_my_venues",
+        "summary": "List owner venues",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VenueOwnerOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "List all venues belonging to the authenticated owner.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_venues_api_create_venue",
+        "summary": "Create venue",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueOwnerOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create a new venue for the authenticated owner (is_approved=False).",
+        "tags": [
+          "venues"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/venues/owner/venues/{venue_id}": {
+      "get": {
+        "operationId": "apps_venues_api_get_my_venue",
+        "summary": "Get owner venue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueOwnerOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Get owner's venue detail. Enforces IDOR check.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "apps_venues_api_update_my_venue",
+        "summary": "Update owner venue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueOwnerOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Update owner's venue. Enforces IDOR check and invalidates cache on commit.",
+        "tags": [
+          "venues"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/venues/admin/venues/{venue_id}/approve": {
+      "post": {
+        "operationId": "apps_venues_api_approve_venue_endpoint",
+        "summary": "Admin approve venue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueApprovalOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Approve a venue and invalidate its public cache.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/venues/admin/venues/{venue_id}/reject": {
+      "post": {
+        "operationId": "apps_venues_api_reject_venue_endpoint",
+        "summary": "Admin reject venue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueApprovalOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reject/unapprove a venue and invalidate its public cache.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/venues/": {
+      "get": {
+        "operationId": "apps_venues_api_list_public",
+        "summary": "List public venues",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "city",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "venue_type",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Venue Type"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VenuePublicItemOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "List approved venues with active subscription (BR-005).\n\nPrivacy: Never exposes owner phone number or internal status flags.",
+        "tags": [
+          "venues"
+        ]
+      }
+    },
+    "/api/v1/venues/{slug}": {
+      "get": {
+        "operationId": "apps_venues_api_get_public_detail",
+        "summary": "Get public venue detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenuePublicDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Public detail for an approved venue with active subscription.\n\nCached with 3600s TTL (ARCH-004). Returns 404 for unapproved venues.",
+        "tags": [
+          "venues"
+        ]
+      }
+    },
+    "/api/v1/venues/{identifier}/spaces": {
+      "post": {
+        "operationId": "apps_panoramas_api_create_space_endpoint",
+        "summary": "Create space for a venue (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identifier",
+            "schema": {
+              "title": "Identifier",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create a new space for an owned venue (Task T-018b).\n\nGuarantees:\n- Authenticated venue owners only (and only for venues they own).\n- Rejects client-spoofed venue id.\n- Rejects extra fields and validates name non-empty and display_order >= 0.",
+        "tags": [
+          "venue-spaces"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpaceCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "apps_panoramas_api_list_spaces_for_venue_endpoint",
+        "summary": "List spaces for a venue (Owner or Public)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identifier",
+            "schema": {
+              "title": "Identifier",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SpaceOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "List spaces for a venue (Task T-018b).\n\nDual behavior:\n1. If identifier is an integer venue_id:\n   - Requires authenticated venue owner/admin (401 unauthenticated, 403 foreign).\n   - Returns all spaces (active and inactive) for that venue.\n2. If identifier is a slug:\n   - Public endpoint gated by BR-005.\n   - Returns active spaces only for approved venues with active subscription.\n   - Otherwise returns 404 with zero info leak.",
+        "tags": [
+          "venue-spaces"
+        ]
+      }
+    },
+    "/api/v1/panoramas/spaces/{space_id}/upload": {
+      "post": {
+        "operationId": "apps_panoramas_api_upload_panorama_image",
+        "summary": "Upload 360 panorama equirectangular image",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanoramaUploadOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Upload a raw 360-degree panorama image for a space (Task T-016).\n\nGuarantees:\n- Authenticated venue owners only (and only for venues they own).\n- Enforces 20 MB size limit.\n- Validates magic bytes and verifies image with Pillow.\n- Stores file with generated UUID under media/panoramas/{venue_id}/{uuid}.<ext>.\n- Creates PanoramaImage in UPLOADED status.\n- Dispatches processing via transaction.on_commit seam.\n- Returns HTTP 202 Accepted.",
+        "tags": [
+          "panoramas"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
                 "properties": {
-                    "status": {
-                        "title": "Status",
-                        "type": "string"
-                    },
-                    "db": {
-                        "title": "Db",
-                        "type": "boolean"
-                    },
-                    "redis": {
-                        "title": "Redis",
-                        "type": "boolean"
-                    }
+                  "file": {
+                    "format": "binary",
+                    "title": "File",
+                    "type": "string"
+                  }
                 },
                 "required": [
-                    "status",
-                    "db",
-                    "redis"
+                  "file"
                 ],
-                "title": "HealthOut",
+                "title": "FileParams",
                 "type": "object"
+              }
             }
-        }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
     },
-    "servers": []
+    "/api/v1/panoramas/spaces/{space_id}/images": {
+      "post": {
+        "operationId": "apps_panoramas_api_upload_panorama_image_alias",
+        "summary": "Upload 360 panorama equirectangular image (alias)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanoramaUploadOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Alias for /spaces/{space_id}/upload.",
+        "tags": [
+          "panoramas"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "title": "File",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "title": "FileParams",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/panoramas/spaces/{space_id}/pins": {
+      "post": {
+        "operationId": "apps_panoramas_api_create_table_pin",
+        "summary": "Create and place a table pin in a space (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TablePinOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create and place a table pin within a space (Task T-018).\n\n- Only accessible by venue owner (or admin).\n- pitch bounds: [-90.0, 90.0]\n- yaw bounds: [-180.0, 180.0]\n- capacity > 0\n- Venue derived server-side from space.venue.",
+        "tags": [
+          "panoramas"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TablePinCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "apps_panoramas_api_list_table_pins",
+        "summary": "List all table pins in a space (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TablePinOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "List all table pins in a space for the venue owner.",
+        "tags": [
+          "panoramas"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/panoramas/pins/{pin_id}": {
+      "get": {
+        "operationId": "apps_panoramas_api_get_table_pin",
+        "summary": "Get table pin details (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pin_id",
+            "schema": {
+              "title": "Pin Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TablePinOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve details for a single table pin.",
+        "tags": [
+          "panoramas"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "apps_panoramas_api_update_table_pin",
+        "summary": "Update table pin (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pin_id",
+            "schema": {
+              "title": "Pin Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TablePinOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Update coordinates, table number, capacity, or status of a table pin.",
+        "tags": [
+          "panoramas"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TablePinUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "apps_panoramas_api_patch_table_pin",
+        "summary": "Partial update table pin (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pin_id",
+            "schema": {
+              "title": "Pin Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TablePinOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Partial update of table pin fields.",
+        "tags": [
+          "panoramas"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TablePinUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "apps_panoramas_api_delete_table_pin",
+        "summary": "Delete a table pin (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pin_id",
+            "schema": {
+              "title": "Pin Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "Delete a table pin (Task T-018).\n\nGuarded by T-015 / ADR-005 PROTECT rule:\nPins with existing bookings cannot be deleted (returns 409 TABLE_PIN_PROTECTED).\nPins without bookings are deleted cleanly (returns 204).",
+        "tags": [
+          "panoramas"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/panoramas/pins/{pin_id}/deactivate": {
+      "post": {
+        "operationId": "apps_panoramas_api_deactivate_table_pin",
+        "summary": "Deactivate a table pin (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pin_id",
+            "schema": {
+              "title": "Pin Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TablePinOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Soft-deactivate a table pin so it cannot be booked (ADR-005).",
+        "tags": [
+          "panoramas"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/panoramas/spaces/{space_id}/panorama": {
+      "get": {
+        "operationId": "apps_panoramas_api_get_public_panorama",
+        "summary": "Get public 360 panorama and active pins for a space",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPanoramaOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Public panorama scene and active pins (Task T-018 / BR-005).\n\nReturns 200 with WebP image URL and active pins if:\n- Venue is approved and subscription is ACTIVE\n- Space is active\n- A READY panorama image exists\nOtherwise returns 404 with zero info leak.",
+        "tags": [
+          "panoramas"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/panorama": {
+      "get": {
+        "operationId": "apps_panoramas_api_get_public_panorama_under_spaces",
+        "summary": "Get public 360 panorama and active pins for a space (direct /spaces route)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPanoramaOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Alias for /api/v1/spaces/{space_id}/panorama.",
+        "tags": [
+          "spaces"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}": {
+      "get": {
+        "operationId": "apps_panoramas_api_get_space_detail_endpoint",
+        "summary": "Get space detail (Dual-purpose: Owner or Public under BR-005)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve space detail (Task T-018b).\n\n- Owner/Admin: returns the space regardless of active status or BR-005.\n- Public: returns the space ONLY IF venue satisfies BR-005 and space is active.\n  Otherwise returns 404 with zero info leak.",
+        "tags": [
+          "spaces"
+        ]
+      },
+      "patch": {
+        "operationId": "apps_panoramas_api_patch_space_endpoint",
+        "summary": "Partial update space (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Partial update of space fields (Task T-018b).",
+        "tags": [
+          "spaces"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpaceUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "apps_panoramas_api_put_space_endpoint",
+        "summary": "Update space (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Full/partial update of space fields (Task T-018b).",
+        "tags": [
+          "spaces"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpaceUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "apps_panoramas_api_delete_space_endpoint",
+        "summary": "Delete or deactivate a space (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceOut"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "Delete or deactivate a space following T-015 / ADR-005 policy (Task T-018b).\n\n- If pins with bookings exist -> 409 TABLE_PIN_PROTECTED (space remains).\n- If pins or panoramas exist (no bookings) -> deactivates space, returns 200 with SpaceOut (space remains).\n- If no pins and no panoramas -> hard-deletes space, returns 204 No Content.",
+        "tags": [
+          "spaces"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/deactivate": {
+      "post": {
+        "operationId": "apps_panoramas_api_deactivate_space_endpoint",
+        "summary": "Deactivate a space (Owner)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Soft-deactivate a space (sets is_active=False).",
+        "tags": [
+          "spaces"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scheduling/venues/{venue_id}/slots": {
+      "get": {
+        "operationId": "apps_scheduling_api_get_slots",
+        "summary": "Get venue slots for a date",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "schema": {
+              "description": "Target date (YYYY-MM-DD or Jalali YYYY/MM/DD)",
+              "title": "Date",
+              "type": "string"
+            },
+            "required": true,
+            "description": "Target date (YYYY-MM-DD or Jalali YYYY/MM/DD)"
+          },
+          {
+            "in": "query",
+            "name": "table_pin_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional table pin ID to filter available slots for that table",
+              "title": "Table Pin Id"
+            },
+            "required": false,
+            "description": "Optional table pin ID to filter available slots for that table"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SlotOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve 90-minute slots for a venue on the requested date.\n\nSlot availability is computed dynamically (BR-001 / BR-002) and is NEVER cached (ARCH-004).\nIf table_pin_id is provided, filters available slots using the T-011 availability filter.",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/api/v1/bookings/initiate/": {
+      "post": {
+        "operationId": "apps_bookings_api_initiate_booking_endpoint",
+        "summary": "Initiate booking lock",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingInitiateOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Initiate a 10-minute temporary booking lock on a table pin and slot (TD-004).\n\nViews stay thin (ARCH-001): authenticate, validate via schemas,\ndelegate to services.py, map domain errors.",
+        "tags": [
+          "bookings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingInitiateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "db": {
+            "title": "Db",
+            "type": "boolean"
+          },
+          "redis": {
+            "title": "Redis",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "db",
+          "redis"
+        ],
+        "title": "HealthOut",
+        "type": "object"
+      },
+      "DesignAddonOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "fee": {
+            "title": "Fee",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "fee",
+          "is_active"
+        ],
+        "title": "DesignAddonOut",
+        "type": "object"
+      },
+      "OperatingHoursOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "integer"
+          },
+          "open_time": {
+            "format": "time",
+            "title": "Open Time",
+            "type": "string"
+          },
+          "close_time": {
+            "format": "time",
+            "title": "Close Time",
+            "type": "string"
+          },
+          "crosses_midnight": {
+            "title": "Crosses Midnight",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "weekday",
+          "open_time",
+          "close_time",
+          "crosses_midnight"
+        ],
+        "title": "OperatingHoursOut",
+        "type": "object"
+      },
+      "VenueOwnerOut": {
+        "description": "Owner view of a venue with management metadata.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "venue_type": {
+            "title": "Venue Type",
+            "type": "string"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "is_approved": {
+            "title": "Is Approved",
+            "type": "boolean"
+          },
+          "subscription_status": {
+            "title": "Subscription Status",
+            "type": "string"
+          },
+          "is_publicly_visible": {
+            "title": "Is Publicly Visible",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "operating_hours": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OperatingHoursOut"
+            },
+            "title": "Operating Hours",
+            "type": "array"
+          },
+          "design_addons": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DesignAddonOut"
+            },
+            "title": "Design Addons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "city",
+          "venue_type",
+          "address",
+          "description",
+          "is_approved",
+          "subscription_status",
+          "is_publicly_visible",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VenueOwnerOut",
+        "type": "object"
+      },
+      "VenueCreateIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "venue_type": {
+            "title": "Venue Type",
+            "type": "string"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          }
+        },
+        "required": [
+          "name",
+          "city",
+          "venue_type",
+          "address"
+        ],
+        "title": "VenueCreateIn",
+        "type": "object"
+      },
+      "VenueUpdateIn": {
+        "description": "Update schema for venue owners.\n\nExplicit fields only: is_approved and subscription_status cannot be\nmodified by owners (mass assignment prevention).",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "venue_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Type"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "title": "VenueUpdateIn",
+        "type": "object"
+      },
+      "VenueApprovalOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "is_approved": {
+            "title": "Is Approved",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "is_approved",
+          "message"
+        ],
+        "title": "VenueApprovalOut",
+        "type": "object"
+      },
+      "VenuePublicItemOut": {
+        "description": "Public catalogue listing item.\n\nPrivacy rule: Never exposes owner phone number or internal flags.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "venue_type": {
+            "title": "Venue Type",
+            "type": "string"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "city",
+          "venue_type",
+          "address",
+          "description"
+        ],
+        "title": "VenuePublicItemOut",
+        "type": "object"
+      },
+      "VenuePublicDetailOut": {
+        "description": "Public catalogue detail view.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "venue_type": {
+            "title": "Venue Type",
+            "type": "string"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "operating_hours": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OperatingHoursOut"
+            },
+            "title": "Operating Hours",
+            "type": "array"
+          },
+          "design_addons": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DesignAddonOut"
+            },
+            "title": "Design Addons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "city",
+          "venue_type",
+          "address",
+          "description"
+        ],
+        "title": "VenuePublicDetailOut",
+        "type": "object"
+      },
+      "SpaceOut": {
+        "description": "Full representation of a Space for venue owners and detail views.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "active_panorama_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Panorama Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "venue_id",
+          "name",
+          "description",
+          "display_order",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SpaceOut",
+        "type": "object"
+      },
+      "SpaceCreateIn": {
+        "additionalProperties": false,
+        "description": "Payload to create a new space under a venue (Task T-018b).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "display_order": {
+            "default": 0,
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SpaceCreateIn",
+        "type": "object"
+      },
+      "PanoramaUploadOut": {
+        "description": "Response returned when an equirectangular panorama image is uploaded (HTTP 202 Accepted).",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "space_id": {
+            "title": "Space Id",
+            "type": "integer"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "original_file": {
+            "title": "Original File",
+            "type": "string"
+          },
+          "file_size_bytes": {
+            "title": "File Size Bytes",
+            "type": "integer"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "message": {
+            "default": "Panorama image uploaded successfully and queued for processing.",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "space_id",
+          "venue_id",
+          "status",
+          "original_file",
+          "file_size_bytes",
+          "created_at"
+        ],
+        "title": "PanoramaUploadOut",
+        "type": "object"
+      },
+      "TablePinOut": {
+        "description": "Response returned when an owner creates, views, or updates a table pin.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "integer"
+          },
+          "space_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Space Id"
+          },
+          "panorama_image_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Panorama Image Id"
+          },
+          "table_number": {
+            "title": "Table Number",
+            "type": "string"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "pitch": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pitch"
+          },
+          "yaw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yaw"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "venue_id",
+          "space_id",
+          "panorama_image_id",
+          "table_number",
+          "capacity",
+          "pitch",
+          "yaw",
+          "description",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TablePinOut",
+        "type": "object"
+      },
+      "TablePinCreateIn": {
+        "description": "Payload to drop/create a new table pin in a space (Task T-018).",
+        "properties": {
+          "table_number": {
+            "title": "Table Number",
+            "type": "string"
+          },
+          "capacity": {
+            "default": 2,
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "pitch": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pitch"
+          },
+          "yaw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yaw"
+          },
+          "panorama_image_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Panorama Image Id"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "table_number"
+        ],
+        "title": "TablePinCreateIn",
+        "type": "object"
+      },
+      "TablePinUpdateIn": {
+        "description": "Payload to update an existing table pin (Task T-018).",
+        "properties": {
+          "table_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Number"
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
+          "pitch": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pitch"
+          },
+          "yaw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yaw"
+          },
+          "panorama_image_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Panorama Image Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "title": "TablePinUpdateIn",
+        "type": "object"
+      },
+      "PublicPanoramaOut": {
+        "description": "Public response for GET /api/v1/spaces/{space_id}/panorama/ (Task T-018).\n\nOnly returned when:\n- Venue is publicly visible under BR-005 (approved + subscription active)\n- Space is active\n- Active READY panorama image exists\nOtherwise HTTP 404 is returned.",
+        "properties": {
+          "space_id": {
+            "title": "Space Id",
+            "type": "integer"
+          },
+          "space_name": {
+            "title": "Space Name",
+            "type": "string"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "integer"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "panorama_image_id": {
+            "format": "uuid",
+            "title": "Panorama Image Id",
+            "type": "string"
+          },
+          "image_url": {
+            "title": "Image Url",
+            "type": "string"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "pins": {
+            "items": {
+              "$ref": "#/components/schemas/PublicTablePinOut"
+            },
+            "title": "Pins",
+            "type": "array"
+          }
+        },
+        "required": [
+          "space_id",
+          "space_name",
+          "venue_id",
+          "venue_name",
+          "panorama_image_id",
+          "image_url",
+          "pins"
+        ],
+        "title": "PublicPanoramaOut",
+        "type": "object"
+      },
+      "PublicTablePinOut": {
+        "description": "Publicly visible pin placed in a 360 panorama scene.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "table_number": {
+            "title": "Table Number",
+            "type": "string"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "pitch": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pitch"
+          },
+          "yaw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yaw"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "table_number",
+          "capacity",
+          "pitch",
+          "yaw",
+          "description"
+        ],
+        "title": "PublicTablePinOut",
+        "type": "object"
+      },
+      "SpaceUpdateIn": {
+        "additionalProperties": false,
+        "description": "Payload to update an existing space (Task T-018b).",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Order"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "title": "SpaceUpdateIn",
+        "type": "object"
+      },
+      "SlotOut": {
+        "description": "Public representation of a generated slot.",
+        "properties": {
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "is_bookable": {
+            "title": "Is Bookable",
+            "type": "boolean"
+          },
+          "disabled_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled Reason"
+          },
+          "start_jalali": {
+            "default": "",
+            "title": "Start Jalali",
+            "type": "string"
+          },
+          "end_jalali": {
+            "default": "",
+            "title": "End Jalali",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "is_bookable"
+        ],
+        "title": "SlotOut",
+        "type": "object"
+      },
+      "BookingInitiateOut": {
+        "description": "Response payload returned upon successfully acquiring a booking lock (201 Created).",
+        "properties": {
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "integer"
+          },
+          "table_pin_id": {
+            "title": "Table Pin Id",
+            "type": "integer"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          },
+          "end_at": {
+            "format": "date-time",
+            "title": "End At",
+            "type": "string"
+          },
+          "slot_date": {
+            "format": "date",
+            "title": "Slot Date",
+            "type": "string"
+          },
+          "slot_start_time": {
+            "format": "time",
+            "title": "Slot Start Time",
+            "type": "string"
+          },
+          "locked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked At"
+          },
+          "lock_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lock Expires At"
+          },
+          "amount_online_toman": {
+            "title": "Amount Online Toman",
+            "type": "integer"
+          },
+          "amount_in_person_toman": {
+            "title": "Amount In Person Toman",
+            "type": "integer"
+          },
+          "start_jalali": {
+            "default": "",
+            "title": "Start Jalali",
+            "type": "string"
+          },
+          "end_jalali": {
+            "default": "",
+            "title": "End Jalali",
+            "type": "string"
+          },
+          "jalali_start_datetime": {
+            "default": "",
+            "title": "Jalali Start Datetime",
+            "type": "string"
+          },
+          "jalali_end_datetime": {
+            "default": "",
+            "title": "Jalali End Datetime",
+            "type": "string"
+          },
+          "jalali_date": {
+            "default": "",
+            "title": "Jalali Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "booking_id",
+          "id",
+          "status",
+          "venue_id",
+          "table_pin_id",
+          "start_at",
+          "end_at",
+          "slot_date",
+          "slot_start_time",
+          "amount_online_toman",
+          "amount_in_person_toman"
+        ],
+        "title": "BookingInitiateOut",
+        "type": "object"
+      },
+      "BookingInitiateIn": {
+        "description": "Request payload for initiating a table booking lock.",
+        "properties": {
+          "table_pin_id": {
+            "description": "ID of the TablePin to reserve",
+            "title": "Table Pin Id",
+            "type": "integer"
+          },
+          "slot_date": {
+            "description": "Slot calendar date (YYYY-MM-DD or Jalali YYYY/MM/DD)",
+            "title": "Slot Date",
+            "type": "string"
+          },
+          "slot_start_time": {
+            "description": "Slot start time (HH:MM)",
+            "title": "Slot Start Time",
+            "type": "string"
+          },
+          "venue_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional venue ID for boundary validation",
+            "title": "Venue Id"
+          },
+          "addon_ids": {
+            "description": "Optional list of DesignAddon IDs",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Addon Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "table_pin_id",
+          "slot_date",
+          "slot_start_time"
+        ],
+        "title": "BookingInitiateIn",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "MinimalAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "servers": []
 }

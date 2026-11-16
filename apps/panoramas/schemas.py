@@ -7,7 +7,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from ninja import Schema
-from pydantic import field_validator
+from pydantic import ConfigDict, field_validator
 
 
 class PanoramaUploadOut(Schema):
@@ -169,3 +169,84 @@ class PublicPanoramaOut(Schema):
     width: Optional[int] = None
     height: Optional[int] = None
     pins: List[PublicTablePinOut]
+
+
+# ==============================================================================
+# Space Schemas (Task T-018b)
+# ==============================================================================
+
+class SpaceCreateIn(Schema):
+    """Payload to create a new space under a venue (Task T-018b)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str = ""
+    display_order: int = 0
+    is_active: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("Space name cannot be empty or blank.")
+        if len(s) > 100:
+            raise ValueError("Space name cannot exceed 100 characters.")
+        return s
+
+    @field_validator("display_order")
+    @classmethod
+    def validate_display_order(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Display order must be an integer greater than or equal to 0.")
+        return v
+
+
+class SpaceUpdateIn(Schema):
+    """Payload to update an existing space (Task T-018b)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+    display_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            s = v.strip()
+            if not s:
+                raise ValueError("Space name cannot be empty or blank.")
+            if len(s) > 100:
+                raise ValueError("Space name cannot exceed 100 characters.")
+            return s
+        return v
+
+    @field_validator("display_order")
+    @classmethod
+    def validate_display_order(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 0:
+            raise ValueError("Display order must be an integer greater than or equal to 0.")
+        return v
+
+
+class SpacePublicOut(Schema):
+    """Public representation of a Space within an approved, active venue (BR-005)."""
+
+    id: int
+    venue_id: int
+    name: str
+    description: str
+    display_order: int
+    is_active: bool
+    active_panorama_id: Optional[UUID] = None
+
+
+class SpaceOut(SpacePublicOut):
+    """Full representation of a Space for venue owners and detail views."""
+
+    created_at: datetime
+    updated_at: datetime

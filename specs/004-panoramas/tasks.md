@@ -6,8 +6,41 @@
 | **T-016** | 360 Panorama Upload Endpoint & Validation (Magic bytes, UUID, 202) | `backend-api-engineer` | Done (Gate G4 Approved) | T-015 |
 | **T-017** | Celery Asynchronous Image Conversion Pipeline (WebP, thumb, cleanup) | `media-engineer` | Done (Gate G4 Approved) | T-016 |
 | **T-018** | Venue Owner Panorama & Table Pin Editor API (Space CRUD excluded, Pin CRUD, Public Read) | `backend-api-engineer` | Done (Gate G4 Approved) | T-017 |
-| **T-018b** | Venue Owner Space CRUD API (Dedicated task with its own gate) | `backend-api-engineer` | Next | T-018 |
+| **T-018b** | Venue Owner Space CRUD API & Public Space Read Endpoint | `backend-api-engineer` | Done (Pending Gate Approval) | T-018 |
 | **T-019** | Customer Panorama Viewer & WebGL/Pannellum Performance Spike | `media-engineer` / `frontend-engineer` | Done (Gate G4 Approved) | T-018 |
+
+---
+
+### Gate T-018b Decisions & Implementation Notes:
+1. **Space Model Methods Added (Zero Schema Migration):**
+   - Added `Space.delete()` and `Space.deactivate()` in `apps/panoramas/models.py` following the `TablePin` pattern (ADR-005).
+   - `Space.delete()` checks if any `Booking` exists for table pins in the space (`Booking.objects.filter(table_pin__space=self).exists()`); raises `models.ProtectedError` if bookings exist.
+   - `Space.deactivate()` sets `is_active = False` and saves with `update_fields=["is_active", "updated_at"]`.
+   - Verified `makemigrations --check` detects zero schema changes (Python domain methods only).
+2. **Owner Space CRUD Endpoints:**
+   - Implemented `POST /api/v1/venues/{venue_id}/spaces/` (201 Created with `SpaceOut`, IDOR protected).
+   - Implemented `GET /api/v1/venues/{venue_id}/spaces/` (200 OK with `list[SpaceOut]`, owner receives active and inactive spaces ordered by display_order).
+   - Implemented `GET /api/v1/spaces/{space_id}/` (200 OK, dual-purpose: owner/admin sees space regardless of status; public sees space only if BR-005 holds and is_active=True, otherwise 404 with zero leak).
+   - Implemented `PATCH /api/v1/spaces/{space_id}/` and `PUT` (200 OK with `SpaceOut`, partial/full updates).
+   - Implemented `POST /api/v1/spaces/{space_id}/deactivate/` (200 OK with `SpaceOut`, explicit soft-deactivation).
+   - Implemented `DELETE /api/v1/spaces/{space_id}/` (204 No Content if 0 pins and 0 panoramas; 200 OK if pins or panoramas exist without bookings; 409 Conflict with `TABLE_PIN_PROTECTED` if pins have booking history).
+3. **Public Space Read Endpoint:**
+   - Implemented `GET /api/v1/venues/{slug}/spaces/` (200 OK with `list[SpaceOut]`, gated by BR-005: returns active spaces only for approved venues with active subscription; otherwise 404 with zero info leak).
+4. **Validation & Strict Schemas:**
+   - `SpaceCreateIn`: `name` (required, non-empty, stripped, max 100), `description: str = ""`, `display_order: int = 0` ($\ge 0$), `is_active: bool = True`, `model_config = ConfigDict(extra="forbid")`.
+   - `SpaceUpdateIn`: optional fields with identical bounds and `extra="forbid"`.
+   - `SpacePublicOut` and `SpaceOut` response schemas.
+5. **Ownership & IDOR Protection:**
+   - All mutations require authenticated `VENUE_OWNER` or `ADMIN`.
+   - Scoped strictly to the owner's venue: Owner B attempting to mutate spaces in Owner A's venue returns HTTP 403 `FORBIDDEN`.
+   - Customer role callers receive HTTP 403 `FORBIDDEN`. Unauthenticated callers receive HTTP 401.
+   - Venue is derived server-side from `venue_id`, preventing client spoofing.
+6. **Query Optimization & Zero N+1 Queries:**
+   - Verified bounded queries with `django_assert_num_queries(1)` for space detail and `django_assert_num_queries(2)` for public venue spaces list.
+7. **Test Evidence:**
+   - 42 new unit & integration tests in `apps/panoramas/tests/test_spaces_api.py`.
+   - Panoramas test suite: 119/119 passed.
+   - Full test suite: 194/194 passed, 0 failed, 0 skipped, on Django 5.2.19 and PostgreSQL 16.15.
 
 ---
 

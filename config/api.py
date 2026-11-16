@@ -11,7 +11,7 @@ from ninja import NinjaAPI, Schema
 from apps.accounts.api import router as accounts_router
 from apps.billing.api import router as billing_router
 from apps.bookings.api import router as bookings_router
-from apps.panoramas.api import router as panoramas_router, spaces_router
+from apps.panoramas.api import router as panoramas_router, spaces_router, venue_spaces_router
 from apps.reviews.api import router as reviews_router
 from apps.scheduling.api import router as scheduling_router
 from apps.venues.api import router as venues_router
@@ -65,6 +65,7 @@ def healthz(request):
 
 api.add_router("/auth", accounts_router)
 api.add_router("/venues", venues_router)
+api.add_router("/venues", venue_spaces_router)
 api.add_router("/panoramas", panoramas_router)
 api.add_router("/spaces", spaces_router)
 api.add_router("/scheduling", scheduling_router)

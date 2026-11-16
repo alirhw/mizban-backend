@@ -53,6 +53,24 @@ class Space(models.Model):
     def __str__(self) -> str:
         return f"{self.venue.name} - {self.name}"
 
+    def delete(self, using=None, keep_parents=False):
+        """Prevent deletion if any bookings exist for table pins in this space (ADR-005)."""
+        from apps.bookings.models import Booking
+
+        bookings = Booking.objects.filter(table_pin__space=self)
+        if bookings.exists():
+            raise models.ProtectedError(
+                f"Cannot delete Space '{self.name}' because it contains tables with existing booking history. "
+                "Deactivate it instead.",
+                bookings.all(),
+            )
+        return super().delete(using=using, keep_parents=keep_parents)
+
+    def deactivate(self) -> None:
+        """Soft-deactivate the space so it no longer appears in public listings or bookable slots."""
+        self.is_active = False
+        self.save(update_fields=["is_active", "updated_at"])
+
 
 class PanoramaStatus(models.TextChoices):
     UPLOADED = "UPLOADED", "Uploaded"

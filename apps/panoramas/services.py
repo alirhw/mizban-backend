@@ -30,6 +30,10 @@ from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
 from apps.panoramas.schemas import (
     PublicPanoramaOut,
     PublicTablePinOut,
+    SpaceCreateIn,
+    SpaceOut,
+    SpacePublicOut,
+    SpaceUpdateIn,
     TablePinCreateIn,
     TablePinUpdateIn,
 )
@@ -472,3 +476,173 @@ def get_public_panorama_for_space(space_id: int) -> dict:
         "height": ready_panorama.height,
         "pins": active_pins,
     }
+
+
+# ==============================================================================
+# Space Services (Task T-018b)
+# ==============================================================================
+
+def authorize_venue_owner(user: Any, venue_id: int):
+    """Authorize that caller is the owner (or admin) of the specified venue.
+
+    Raises:
+        PermissionDenied: if caller is not an owner/admin or does not own the venue.
+        Http404: if venue does not exist.
+    """
+    if not (getattr(user, "is_staff", False) or getattr(user, "role", None) in (UserRole.VENUE_OWNER, UserRole.ADMIN)):
+        raise PermissionDenied("Only venue owners or admins can manage spaces.")
+
+    from apps.venues.models import Venue
+
+    venue = Venue.objects.filter(id=venue_id).first()
+    if not venue:
+        raise Http404("Venue not found.")
+
+    if venue.owner_id != user.id and not (user.is_staff or user.role == UserRole.ADMIN):
+        raise PermissionDenied("You do not own this venue.")
+
+    return venue
+
+
+def create_space_for_venue(user: Any, venue_id: int, data: SpaceCreateIn) -> Space:
+    """Create a new space for a venue (Task T-018b).
+
+    Guarantees:
+    - Caller must own the venue (IDOR protection).
+    - Venue is derived server-side from venue_id.
+    - Atomic DB transaction.
+    """
+    venue = authorize_venue_owner(user, venue_id)
+
+    with transaction.atomic():
+        space = Space(
+            venue=venue,
+            name=data.name,
+            description=data.description,
+            display_order=data.display_order,
+            is_active=data.is_active,
+        )
+        space.full_clean()
+        space.save()
+        return space
+
+
+def list_owner_spaces(user: Any, venue_id: int) -> list[Space]:
+    """List all spaces (active and inactive) in a venue for the owner."""
+    venue = authorize_venue_owner(user, venue_id)
+    return list(venue.spaces.all().order_by("display_order", "name", "id"))
+
+
+def get_space_detail(user: Any, space_id: int) -> Space:
+    """Retrieve space details with dual-purpose access control (Task T-018b).
+
+    - Owner/Admin: returns the space regardless of active status or BR-005.
+    - Public (unauthenticated, customer, foreign owner): returns space ONLY IF
+      the venue satisfies BR-005 (approved + active subscription) AND the space
+      is active. Otherwise raises Http404 with zero info leak.
+    """
+    space = Space.objects.select_related("venue").filter(id=space_id).first()
+    if not space:
+        raise Http404("Space not found.")
+
+    is_owner = (
+        user is not None
+        and (
+            getattr(user, "is_staff", False)
+            or getattr(user, "role", None) == UserRole.ADMIN
+            or (getattr(user, "role", None) == UserRole.VENUE_OWNER and space.venue.owner_id == user.id)
+        )
+    )
+
+    if is_owner:
+        return space
+
+    # Public visibility check (BR-005 + space.is_active)
+    if not (space.venue.is_publicly_visible and space.is_active):
+        raise Http404("Space not found.")
+
+    return space
+
+
+def update_space(user: Any, space_id: int, data: SpaceUpdateIn) -> Space:
+    """Update fields on an existing space (Task T-018b).
+
+    Guarantees:
+    - Caller must own the venue of the space (IDOR protection).
+    - Atomic DB transaction with full_clean validation.
+    """
+    space = authorize_space_owner(user, space_id)
+
+    if data.name is not None:
+        space.name = data.name
+    if data.description is not None:
+        space.description = data.description
+    if data.display_order is not None:
+        space.display_order = data.display_order
+    if data.is_active is not None:
+        space.is_active = data.is_active
+
+    with transaction.atomic():
+        space.full_clean()
+        space.save()
+        return space
+
+
+def deactivate_space(user: Any, space_id: int) -> Space:
+    """Soft-deactivate a space (is_active=False)."""
+    space = authorize_space_owner(user, space_id)
+    space.deactivate()
+    return space
+
+
+def delete_space(user: Any, space_id: int) -> Tuple[Optional[Space], bool]:
+    """Delete or deactivate a space following T-015 / ADR-005 deletion policy (Task T-018b).
+
+    Policy:
+    1. If pins with bookings exist in the space -> fails safely with TablePinProtectedError (409).
+    2. If pins or panorama exist (no bookings) -> deactivates the space instead of deleting (space.deactivate(), is_active=False).
+    3. If no pins and no panorama -> hard-deletes the space (space.delete()), removed from DB.
+
+    Returns:
+        (space, False) if space was soft-deactivated.
+        (None, True) if space was hard-deleted.
+    """
+    space = authorize_space_owner(user, space_id)
+
+    from apps.bookings.models import Booking
+
+    # 1. Pins with bookings check
+    if Booking.objects.filter(table_pin__space=space).exists():
+        raise TablePinProtectedError(
+            f"Cannot delete Space '{space.name}' because it contains tables with existing booking history. "
+            "Deactivate it instead."
+        )
+
+    # 2. Associated pins or panoramas check (no bookings)
+    has_pins = space.table_pins.exists()
+    has_panoramas = space.panorama_images.exists()
+    if has_pins or has_panoramas:
+        space.deactivate()
+        return space, False
+
+    # 3. No pins and no panoramas -> hard delete
+    with transaction.atomic():
+        space.delete()
+        return None, True
+
+
+def list_public_spaces(slug: str) -> list[Space]:
+    """List active spaces for a publicly visible venue under BR-005 (Task T-018b).
+
+    Guarantees:
+    - Venue must be approved and have an active subscription (BR-005).
+    - Returns active spaces only (is_active=True).
+    - If venue is not approved, has inactive subscription, or doesn't exist, raises Http404 with zero info leak.
+    """
+    from apps.venues.models import Venue
+
+    venue = Venue.objects.filter(slug=slug).first()
+    if not venue or not venue.is_publicly_visible:
+        raise Http404("Venue not found.")
+
+    return list(venue.spaces.filter(is_active=True).order_by("display_order", "name", "id"))

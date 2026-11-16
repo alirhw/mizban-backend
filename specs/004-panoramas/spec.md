@@ -1,7 +1,7 @@
 # Spec 004 — 360-Degree Panorama Floor Plan and Visual Table Pins
 
 **Feature:** 004 — Panoramas & Table Pins  
-**Status:** In Progress (Task T-018 Done)  
+**Status:** Completed (Phase PH-04 Done)  
 **Governing ADR:** ADR-005 (Space Domain Ownership & TablePin Protection)  
 **Architecture Rules:** ARCH-003 (Asynchronous Image Processing), ARCH-001 (Thin Views), ARCH-006 (UTC Instants), TR-002 / TD-003 (Strict Ingress Limits & Content Validation)  
 **Technical Decisions:** TD-003 (Pannellum 360 Viewer, Celery WebP Pipeline)  
@@ -77,7 +77,31 @@ Provide the core visual reservation domain for Miz Ban:
     - Zero Information Leak: If ANY visibility or ready condition fails, returns HTTP 404 `NOT_FOUND` (never revealing whether the space exists, whether processing is pending, or whether the venue is unapproved).
     - Never exposes `original_file` or internal storage keys.
     - Returns WebP image URL, thumbnail URL, and active table pins (`is_active=True`). Deactivated pins are excluded.
-  - **Explicit Out-of-Scope Rule:** Space CRUD is NOT part of T-018 and is not implemented in this task.
+  - **Explicit Out-of-Scope Rule:** Space CRUD was excluded from T-018 and implemented in dedicated task T-018b.
+- **REQ-PANO-009 (Venue Owner Space CRUD and Public Space Read APIs - T-018b):**
+  - **Ownership & IDOR Protection:**
+    - All space mutations (`POST`, `PATCH`, `PUT`, `DELETE`, `POST .../deactivate`) require authenticated `VENUE_OWNER` or `ADMIN` role.
+    - Owner B attempting to mutate spaces under Owner A's venue returns HTTP 403 `FORBIDDEN`.
+    - Customer role callers receive HTTP 403 `FORBIDDEN`. Unauthenticated callers receive HTTP 401.
+    - Venue is derived server-side from `venue_id`, rejecting client spoofing.
+  - **Validation & Strict Schemas:**
+    - `name`: required, non-empty, stripped, max 100 characters. Blank or whitespace-only strings rejected with HTTP 422 `VALIDATION_ERROR`.
+    - `display_order`: integer $\ge 0$. Negative values rejected with HTTP 422.
+    - Extra fields strictly forbidden in schemas via `model_config = ConfigDict(extra="forbid")`.
+  - **Dual-Purpose Space Detail Endpoint (`GET /api/v1/spaces/{space_id}/`):**
+    - When accessed by authenticated venue owner (or Admin), returns space detail (`SpaceOut`) regardless of `is_active` or BR-005 visibility.
+    - When accessed publicly (unauthenticated, customer, foreign owner), returns space detail ONLY IF venue satisfies BR-005 (approved + active subscription) AND space is active (`is_active=True`).
+    - If ANY condition fails, returns HTTP 404 `NOT_FOUND` with zero information leak.
+  - **Public Space Listing by Venue Slug (`GET /api/v1/venues/{slug}/spaces/`):**
+    - Public listing gated by BR-005: returns active spaces only for approved venues with active subscription.
+    - Inactive spaces are excluded.
+    - Returns HTTP 404 with zero info leak if venue is unapproved, has inactive subscription, or does not exist.
+  - **Three-Tier Space Deletion & Deactivation Policy (T-015 / ADR-005):**
+    - **Tier 1 (Bookings Exist):** If any table pin in the space has booking history, `DELETE` fails safely returning HTTP 409 `TABLE_PIN_PROTECTED` (or `ProtectedError`), and space remains in DB.
+    - **Tier 2 (Pins or Panoramas Exist, No Bookings):** If space contains pins or panorama images without bookings, `DELETE` soft-deactivates the space (`space.deactivate()`, `is_active=False`), returns HTTP 200 with `SpaceOut`, and space remains in DB.
+    - **Tier 3 (No Pins and No Panoramas):** If space has zero pins and zero panoramas, `DELETE` hard-deletes the space (`space.delete()`), returning HTTP 204 No Content.
+    - Explicit soft-deactivation is available via `POST /api/v1/spaces/{space_id}/deactivate/`.
+  - **Model Method Additions:** Added `Space.delete()` and `Space.deactivate()` to `apps/panoramas/models.py` following the `TablePin` pattern.
 
 ---
 
@@ -112,5 +136,5 @@ Provide the core visual reservation domain for Miz Ban:
 - **Task T-016:** Panorama upload API (magic bytes validation, UUID storage, 202 Accepted) (Done).
 - **Task T-017:** Celery image processing worker (Pillow, 4096x2048 WebP, 512x256 thumbnail, original deletion) (Done).
 - **Task T-018:** TablePin owner APIs (create, update, delete, deactivate) and Public Panorama read endpoint (Done).
-- **Task T-018b:** Venue Owner Space CRUD API (Dedicated task with its own gate) (Next).
+- **Task T-018b:** Venue Owner Space CRUD API & Public Space Read Endpoint (Done).
 - **Task T-019:** Customer panorama viewer & WebGL/Pannellum performance spike (Done).
