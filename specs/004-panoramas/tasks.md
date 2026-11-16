@@ -7,7 +7,29 @@
 | **T-017** | Celery Asynchronous Image Conversion Pipeline (WebP, thumb, cleanup) | `media-engineer` | Done (Gate G4 Approved) | T-016 |
 | **T-018** | Venue Owner Panorama & Table Pin Editor API (Space CRUD excluded, Pin CRUD, Public Read) | `backend-api-engineer` | Done (Gate G4 Approved) | T-017 |
 | **T-018b** | Venue Owner Space CRUD API (Dedicated task with its own gate) | `backend-api-engineer` | Next | T-018 |
-| **T-019** | Customer Panorama Viewer & WebGL/Pannellum Performance Spike | `media-engineer` / `frontend-engineer` | Pending | T-018 |
+| **T-019** | Customer Panorama Viewer & WebGL/Pannellum Performance Spike | `media-engineer` / `frontend-engineer` | Done (Gate G4 Approved) | T-018 |
+
+---
+
+### Gate T-019 Decisions & Spike Findings:
+1. **Pannellum 2.5.7 Performance Validated:**
+   - 36 repeated automated runs across Desktop (1x), Mid-tier (4x CPU slowdown, DPR 2.625), and Low-end (6x CPU slowdown, DPR 2.0).
+   - Sustains 58–60 FPS on low-end emulated profile (average 59.1 FPS, 1% low 30.0 FPS, <1% dropped frames).
+   - Confirms single equirectangular 4K WebP asset is sufficient; multi-resolution pyramid tile engine is NOT needed.
+2. **Quality Setting 82 Confirmed:**
+   - Quality 82 produces ~1.39 MB (well below the 1.5 MB operational ceiling) with 37.90 dB PSNR.
+   - Retained `PANORAMA_QUALITY = 82` in Celery pipeline.
+3. **Memory Footprint Safe:**
+   - JS Heap: 0.92 MB – 3.02 MB.
+   - WebGL GPU Texture VRAM: deterministic 32.0 MB uncompressed.
+4. **Honest Recording & Open Risks:**
+   - All measurements were Chrome DevTools emulation; physical-device verification (e.g. Galaxy A31) remains an open QA field trial item.
+   - Mid-tier high-DPR 1% low dips just below 30 FPS; DPR clamping (<= 2.0) in T-027 is the documented mitigation.
+5. **Documented Fallbacks for T-027:**
+   - `MAX_TEXTURE_SIZE` guard (<4096 fallback to 2K).
+   - Two-stage progressive loading with LQIP thumbnail (`thumbnail_url`, <50ms first paint).
+   - DPR clamping on high-density displays.
+   - WebGL context-loss recovery.
 
 ---
 

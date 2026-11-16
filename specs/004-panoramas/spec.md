@@ -113,4 +113,4 @@ Provide the core visual reservation domain for Miz Ban:
 - **Task T-017:** Celery image processing worker (Pillow, 4096x2048 WebP, 512x256 thumbnail, original deletion) (Done).
 - **Task T-018:** TablePin owner APIs (create, update, delete, deactivate) and Public Panorama read endpoint (Done).
 - **Task T-018b:** Venue Owner Space CRUD API (Dedicated task with its own gate) (Next).
-- **Task T-019:** Customer panorama viewer & WebGL/Pannellum performance spike (Pending).
+- **Task T-019:** Customer panorama viewer & WebGL/Pannellum performance spike (Done).

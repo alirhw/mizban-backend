@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Miz Ban — Pannellum 2.5.7 Performance Spike Harness (T-019)</title>
+  <link rel="stylesheet" href="pannellum.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    #panorama { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+    #telemetry {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #00ff66;
+      font-family: monospace;
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      z-index: 9999;
+      pointer-events: none;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div id="panorama"></div>
+  <div id="telemetry">Initializing Pannellum 2.5.7 Spike...</div>
+
+  <script src="pannellum.js"></script>
+  <script>
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const fixtureUrl = params.get('fixture') || 'fixtures/primary_4096x2048_q82.webp';
+      const profile = params.get('profile') || 'desktop_baseline';
+      const trial = parseInt(params.get('trial') || '1', 10);
+      const durationSec = parseFloat(params.get('duration') || '5.0');
+      const rotateSpeed = parseFloat(params.get('rotate') || '-20.0');
+
+      const telemetryEl = document.getElementById('telemetry');
+      const tStart = performance.now();
+
+      let tLoad = 0;
+      let tFirstPaint = 0;
+      let firstPaintRecorded = false;
+      let steadyStateStarted = false;
+      let frameTimes = [];
+      let lastTimestamp = 0;
+      let droppedFrames30 = 0;
+      let jankFrames20 = 0;
+      let viewer = null;
+      let webglInfo = {};
+
+      function updateTelemetry(text) {
+        telemetryEl.innerText = text;
+      }
+
+      function inspectWebGL() {
+        try {
+          const canvas = document.querySelector('#panorama canvas');
+          if (!canvas) return;
+          const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+          if (!gl) return;
+          const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+          webglInfo = {
+            maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+            vendor: dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+            renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+            version: gl.getParameter(gl.VERSION),
+            shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION)
+          };
+        } catch (e) {
+          console.warn('WebGL inspect error:', e);
+        }
+      }
+
+      try {
+        viewer = pannellum.viewer('panorama', {
+          type: 'equirectangular',
+          panorama: fixtureUrl,
+          autoLoad: true,
+          autoRotate: rotateSpeed,
+          showControls: false,
+          showFullscreenCtrl: false,
+          showZoomCtrl: false,
+          compass: false,
+          hfov: 100,
+          minHfov: 50,
+          maxHfov: 120
+        });
+
+        viewer.on('load', function() {
+          tLoad = performance.now() - tStart;
+          inspectWebGL();
+          updateTelemetry(`Loaded in ${tLoad.toFixed(1)}ms. Measuring FPS...`);
+        });
+
+        viewer.on('error', function(err) {
+          console.error('Pannellum error:', err);
+          finishBenchmark({ error: String(err) });
+        });
+      } catch (err) {
+        console.error('Pannellum init error:', err);
+        finishBenchmark({ error: String(err) });
+      }
+
+      // Frame measurement loop
+      let benchmarkStartTime = 0;
+
+      function onFrame(timestamp) {
+        if (!firstPaintRecorded) {
+          const canvas = document.querySelector('#panorama canvas');
+          if (canvas) {
+            tFirstPaint = performance.now() - tStart;
+            firstPaintRecorded = true;
+          }
+        }
+
+        if (tLoad > 0 && !steadyStateStarted) {
+          steadyStateStarted = true;
+          benchmarkStartTime = timestamp;
+          lastTimestamp = timestamp;
+          requestAnimationFrame(onFrame);
+          return;
+        }
+
+        if (steadyStateStarted) {
+          const dt = timestamp - lastTimestamp;
+          lastTimestamp = timestamp;
+
+          // Ignore first warm-up frame anomaly
+          if (frameTimes.length > 0 || dt < 100) {
+            frameTimes.push(dt);
+            if (dt > 33.33) droppedFrames30++;
+            if (dt > 50.0) jankFrames20++;
+          }
+
+          const elapsedSec = (timestamp - benchmarkStartTime) / 1000.0;
+          if (elapsedSec < durationSec) {
+            if (frameTimes.length % 30 === 0) {
+              const currentFps = 1000.0 / dt;
+              updateTelemetry(`Trial ${trial} [${profile}]\nTime: ${elapsedSec.toFixed(1)}s / ${durationSec}s\nFPS: ${currentFps.toFixed(1)}\nMaxTex: ${webglInfo.maxTextureSize || 'N/A'}`);
+            }
+            requestAnimationFrame(onFrame);
+          } else {
+            finishBenchmark();
+          }
+        } else {
+          requestAnimationFrame(onFrame);
+        }
+      }
+
+      requestAnimationFrame(onFrame);
+
+      function percentile(arr, p) {
+        if (arr.length === 0) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const idx = Math.min(Math.floor((p / 100.0) * sorted.length), sorted.length - 1);
+        return sorted[idx];
+      }
+
+      function finishBenchmark(extraErr = null) {
+        const totalFrames = frameTimes.length;
+        const totalDurationMs = frameTimes.reduce((a, b) => a + b, 0);
+        const avgFps = totalDurationMs > 0 ? (totalFrames / (totalDurationMs / 1000.0)) : 0;
+        const p50Dt = percentile(frameTimes, 50);
+        const p95Dt = percentile(frameTimes, 95);
+        const p99Dt = percentile(frameTimes, 99);
+        const maxDt = frameTimes.length > 0 ? Math.max(...frameTimes) : 0;
+        const minFps = maxDt > 0 ? (1000.0 / maxDt) : 0;
+        const onePercentLowFps = p99Dt > 0 ? (1000.0 / p99Dt) : 0;
+
+        let jsHeapMb = null;
+        if (window.performance && window.performance.memory) {
+          jsHeapMb = +(window.performance.memory.usedJSHeapSize / (1024 * 1024)).toFixed(2);
+        }
+
+        const report = {
+          fixture: fixtureUrl,
+          profile: profile,
+          trial: trial,
+          duration_sec: durationSec,
+          t_first_paint_ms: +tFirstPaint.toFixed(2),
+          t_load_ms: +tLoad.toFixed(2),
+          total_frames: totalFrames,
+          avg_fps: +avgFps.toFixed(2),
+          min_fps: +minFps.toFixed(2),
+          one_percent_low_fps: +onePercentLowFps.toFixed(2),
+          p50_frametime_ms: +p50Dt.toFixed(2),
+          p95_frametime_ms: +p95Dt.toFixed(2),
+          p99_frametime_ms: +p99Dt.toFixed(2),
+          dropped_frames_30: droppedFrames30,
+          dropped_frames_30_pct: totalFrames > 0 ? +((droppedFrames30 / totalFrames) * 100).toFixed(2) : 0,
+          jank_frames_20: jankFrames20,
+          js_heap_mb: jsHeapMb,
+          webgl_info: webglInfo,
+          error: extraErr
+        };
+
+        window.SPIKE_RESULTS = report;
+        updateTelemetry(`DONE! Avg FPS: ${report.avg_fps} | 1% Low: ${report.one_percent_low_fps} | Load: ${report.t_load_ms}ms`);
+
+        // Post to python runner server
+        fetch('/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(report)
+        }).catch(e => console.log('Report post sent:', e));
+      }
+    })();
+  </script>
+</body>
+</html>
