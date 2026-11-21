@@ -9,7 +9,7 @@ from datetime import date, datetime, time
 from typing import List, Optional, Union
 
 from ninja import Field, Schema
-from pydantic import field_validator
+from pydantic import ConfigDict, field_validator
 
 from core.jalali import resolve_date
 
@@ -99,3 +99,19 @@ class BookingInitiateOut(Schema):
     @staticmethod
     def resolve_end_jalali(obj) -> str:
         return obj.jalali_end_datetime
+
+
+class BookingCancelOut(Schema):
+    """Response payload returned upon booking cancellation (200 OK, Task T-023 / BR-004)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    booking_id: int = Field(..., description="ID of the cancelled booking")
+    status: str = Field(..., description="New booking status (CANCELLED)")
+    refunded_to_wallet_toman: int = Field(
+        ..., description="Amount credited to wallet by this cancellation call (integer Toman)"
+    )
+    wallet_balance_toman: Optional[int] = Field(
+        default=None, description="Customer wallet balance after this operation if a refund occurred"
+    )
+

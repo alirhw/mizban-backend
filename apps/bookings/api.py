@@ -15,9 +15,10 @@ from ninja.responses import Status
 
 from apps.accounts.auth import auth
 from apps.bookings import services
-from apps.bookings.schemas import BookingInitiateIn, BookingInitiateOut
+from apps.bookings.schemas import BookingCancelOut, BookingInitiateIn, BookingInitiateOut
 
 router = Router(tags=["bookings"])
+
 
 
 @router.post(
@@ -41,3 +42,28 @@ def initiate_booking_endpoint(request, payload: BookingInitiateIn):
         addon_ids=payload.addon_ids,
     )
     return Status(201, booking)
+
+
+@router.post(
+    "/{booking_id}/cancel/",
+    response={200: BookingCancelOut},
+    auth=auth,
+    summary="Cancel booking and refund table fee to wallet (BR-004)",
+)
+@router.post(
+    "/{booking_id}/cancel",
+    response={200: BookingCancelOut},
+    auth=auth,
+    summary="Cancel booking (trailing-slash alias)",
+    include_in_schema=False,
+)
+def cancel_booking_endpoint(request, booking_id: int):
+    """Cancel an existing reservation booking (Task T-023 / BR-004).
+
+    Views stay thin (ARCH-001):
+    - Authenticate via request.auth.
+    - Delegate cancellation, window validation, and wallet credit to services.py.
+    - Return typed BookingCancelOut schema.
+    """
+    return services.cancel_booking(booking=booking_id, actor=request.auth)
+

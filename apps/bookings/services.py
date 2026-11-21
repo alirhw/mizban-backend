@@ -9,15 +9,26 @@ Task T-012:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
+import logging
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
 
+from django.core.exceptions import PermissionDenied
 from django.db import models, transaction
+from django.http import Http404
 from django.utils import timezone as dj_timezone
 
 from apps.bookings.models import Booking, BookingAddon, BookingStatus
-from core.exceptions import LeadTimeViolationError, SlotAlreadyReservedError
+from core.exceptions import (
+    BookingNotCancellableError,
+    CancellationWindowClosedError,
+    LeadTimeViolationError,
+    SlotAlreadyReservedError,
+)
 from core.jalali import TEHRAN
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from apps.panoramas.models import TablePin
@@ -25,6 +36,18 @@ if TYPE_CHECKING:
 LOCK_TTL = timedelta(minutes=10)
 SLOT_DURATION = timedelta(minutes=90)
 LEAD_TIME_THRESHOLD = timedelta(hours=24)
+CANCELLATION_WINDOW_THRESHOLD = timedelta(hours=36)
+
+
+@dataclass(frozen=True)
+class BookingCancelResult:
+    """Outcome of a booking cancellation operation (Task T-023 / BR-004)."""
+
+    booking_id: int
+    status: str
+    refunded_to_wallet_toman: int
+    wallet_balance_toman: Optional[int] = None
+
 
 
 def is_table_slot_occupied(
@@ -264,4 +287,150 @@ def initiate_booking(
         addon_ids=addon_ids,
         now=now,
     )
+
+
+def cancel_booking(
+    booking: int | Booking,
+    *,
+    actor: Any,
+    now: Optional[datetime] = None,
+) -> BookingCancelResult:
+    """Cancel a reservation booking and refund online platform fee to in-app wallet (BR-004 / UF-003).
+
+    Decision Tree (Task T-023):
+    (a) CONFIRMED and start_at - now >= 36h:
+        - Transition booking to CANCELLED.
+        - Credit customer's in-app wallet with 100% of amount_online_toman (table fee only;
+          amount_in_person_toman is never refunded as it was not paid online).
+        - Idempotency key: "cancel-refund-{booking_id}".
+        - Both status change and wallet credit commit atomically together.
+    (b) CONFIRMED but start_at - now < 36h:
+        - Raise CancellationWindowClosedError (HTTP 400).
+        - Booking remains CONFIRMED, zero wallet credit, zero ledger entries.
+    (c) PENDING_PAYMENT:
+        - Transition booking to CANCELLED (releases hold early).
+        - Zero wallet credit, zero ledger entries (no money was collected).
+    (d) Already CANCELLED:
+        - Idempotent return: booking remains CANCELLED, refunded_to_wallet_toman = 0.
+        - No second credit.
+    (e) Any other status (INITIATED, EXPIRED, COMPLETED):
+        - Raise BookingNotCancellableError (HTTP 409).
+        - Specifically includes EXPIRED bookings carrying refund_required payment (ADR-006: bank card only, never wallet).
+
+    Guarantees:
+    - Atomicity: executed inside transaction.atomic() with select_for_update() row lock on the Booking.
+    - Closed-loop: refunds are credited to the in-app wallet only; never to bank cards (BR-004).
+    - Freed slot is bookable immediately by other customers (is_table_slot_occupied excludes CANCELLED).
+    - Authorization: only the customer who created the booking (or staff) may cancel.
+    """
+    booking_id = booking.pk if hasattr(booking, "pk") else booking
+
+    # Check existence & permissions fast-path
+    target = Booking.objects.filter(pk=booking_id).first()
+    if not target:
+        raise Http404("Booking not found.")
+
+    if target.customer_id != actor.id and not getattr(actor, "is_staff", False):
+        raise PermissionDenied("You do not have permission to cancel this booking.")
+
+    with transaction.atomic():
+        # Acquire exclusive row lock on the Booking
+        locked_booking = (
+            Booking.objects.select_for_update()
+            .select_related("customer")
+            .filter(pk=booking_id)
+            .first()
+        )
+        if not locked_booking:
+            raise Http404("Booking not found.")
+
+        # Re-check ownership under row lock
+        if locked_booking.customer_id != actor.id and not getattr(actor, "is_staff", False):
+            raise PermissionDenied("You do not have permission to cancel this booking.")
+
+        current_time = now or dj_timezone.now()
+
+        # Case (d): Already CANCELLED -> Idempotent replay
+        if locked_booking.status == BookingStatus.CANCELLED:
+            logger.info("Booking id=%s already cancelled; returning idempotent result", locked_booking.id)
+            return BookingCancelResult(
+                booking_id=locked_booking.id,
+                status=BookingStatus.CANCELLED,
+                refunded_to_wallet_toman=0,
+                wallet_balance_toman=None,
+            )
+
+        # Case (a) & (b): CONFIRMED
+        if locked_booking.status == BookingStatus.CONFIRMED:
+            time_until_start = locked_booking.start_at - current_time
+            if time_until_start < CANCELLATION_WINDOW_THRESHOLD:
+                # Case (b): Inside 36h window -> REJECT with DomainError
+                logger.warning(
+                    "Booking id=%s cancellation rejected: inside 36h window (%s remaining)",
+                    locked_booking.id,
+                    time_until_start,
+                )
+                raise CancellationWindowClosedError(
+                    "Reservations can only be cancelled at least 36 hours before the slot start time.",
+                    details={
+                        "booking_id": locked_booking.id,
+                        "start_at": locked_booking.start_at.isoformat(),
+                        "hours_until_start": round(time_until_start.total_seconds() / 3600.0, 2),
+                    },
+                )
+
+            # Case (a): Valid cancellation >= 36h ahead -> CANCEL & refund online table fee
+            locked_booking.transition_to(BookingStatus.CANCELLED)
+
+            amount_to_refund = locked_booking.amount_online_toman
+            wallet_balance = None
+            if amount_to_refund > 0:
+                from apps.wallets.services import credit_wallet, get_or_create_wallet_for_user
+
+                wallet = get_or_create_wallet_for_user(locked_booking.customer)
+                idempotency_key = f"cancel-refund-{locked_booking.id}"
+                tx = credit_wallet(
+                    wallet=wallet,
+                    amount_toman=amount_to_refund,
+                    reason=f"Cancellation refund for booking #{locked_booking.id}",
+                    idempotency_key=idempotency_key,
+                    booking=locked_booking,
+                )
+                wallet_balance = tx.balance_after_toman
+
+            logger.info(
+                "Booking id=%s cancelled successfully. Refunded %s Toman to wallet (new balance=%s)",
+                locked_booking.id,
+                amount_to_refund,
+                wallet_balance,
+            )
+            return BookingCancelResult(
+                booking_id=locked_booking.id,
+                status=BookingStatus.CANCELLED,
+                refunded_to_wallet_toman=amount_to_refund,
+                wallet_balance_toman=wallet_balance,
+            )
+
+        # Case (c): PENDING_PAYMENT -> release hold, no refund
+        if locked_booking.status == BookingStatus.PENDING_PAYMENT:
+            locked_booking.transition_to(BookingStatus.CANCELLED)
+            logger.info("Pending hold on booking id=%s cancelled and released early", locked_booking.id)
+            return BookingCancelResult(
+                booking_id=locked_booking.id,
+                status=BookingStatus.CANCELLED,
+                refunded_to_wallet_toman=0,
+                wallet_balance_toman=None,
+            )
+
+        # Case (e): Any other status (INITIATED, EXPIRED, COMPLETED) -> 409
+        logger.warning(
+            "Booking id=%s cancellation rejected: invalid status '%s'",
+            locked_booking.id,
+            locked_booking.status,
+        )
+        raise BookingNotCancellableError(
+            f"Booking in status '{locked_booking.status}' cannot be cancelled.",
+            details={"booking_id": locked_booking.id, "current_status": locked_booking.status},
+        )
+
 

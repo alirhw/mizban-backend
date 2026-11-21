@@ -44,5 +44,22 @@
   - Read-only Django Admin in `apps/wallets/admin.py`: add/delete disabled on Wallet; add/change/delete disabled on WalletTransaction.
   - Invariants strictly enforced: closed-loop wallet (zero cash-out or withdrawal paths; BR-004/TD-005); ADR-006 late-payment refunds go to bank card only, never to wallet; no public API endpoint in this task.
   - Test suite in `apps/wallets/tests/test_wallet_ledger.py` (15 tests passed, including multi-threaded race condition on PostgreSQL).
-- [ ] **T-023 — Implement Wallet Refund and Credit Logic (BR-004)**
+- [x] **T-023 — Implement Wallet Refund and Credit Logic (BR-004)**
+  - Domain service in `apps/bookings/services.py` (`cancel_booking(booking, *, actor, now=None)`):
+    * Row-level locking on `Booking` via `select_for_update()` inside `transaction.atomic()`.
+    * Actor authorization: customer ownership verified (raises `PermissionDenied` if actor is not the booking's customer).
+    * (a) `CONFIRMED` and `start_at - now >= 36h`: transition to `CANCELLED`, credit 100% of `amount_online_toman` to customer wallet via `credit_wallet()` with `idempotency_key=f"cancel-refund-{booking.id}"` and `booking` audit FK. Transition and credit commit or roll back atomically.
+    * (b) `CONFIRMED` and `start_at - now < 36h`: raises `CancellationWindowClosedError` (`error_code="CANCELLATION_WINDOW_CLOSED"`). Booking stays `CONFIRMED`, 0 wallet credit.
+    * (c) `PENDING_PAYMENT`: transition to `CANCELLED` (releases slot hold immediately), 0 wallet credit.
+    * (d) Already `CANCELLED`: idempotent replay, returns `refunded_to_wallet_toman = 0`.
+    * (e) Any other status (`INITIATED`, `EXPIRED`, `COMPLETED`): raises `BookingNotCancellableError` (`error_code="BOOKING_NOT_CANCELLABLE"`). Explicitly blocks ADR-006 `EXPIRED` bookings with `refund_required=True` from wallet refund.
+  - Customer cancellation API endpoint in `apps/bookings/api.py`:
+    * `POST /api/v1/bookings/{booking_id}/cancel/` and `POST /api/v1/bookings/{booking_id}/cancel` (trailing-slash tolerant).
+    * Requires customer authentication (`auth=auth`).
+    * Error handling: 401 unauthenticated, 403 foreign user, 404 unknown booking, 400 window closed, 409 not cancellable.
+    * Returns `BookingCancelOut(booking_id, status, refunded_to_wallet_toman, wallet_balance_toman)`.
+  - Freed slot is immediately bookable (excluded from `is_table_slot_occupied`).
+  - Zero database schema changes / migrations created.
+  - Zero `refund_required` payments credited to wallet (ADR-006 boundary preserved).
+  - Test suite in `apps/bookings/tests/test_cancellation.py` (14 comprehensive tests passed).
 - [ ] **T-024 — Split Receipt Generation (BR-003)**

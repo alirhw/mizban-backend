@@ -1208,6 +1208,44 @@
         ]
       }
     },
+    "/api/v1/bookings/{booking_id}/cancel/": {
+      "post": {
+        "operationId": "apps_bookings_api_cancel_booking_endpoint",
+        "summary": "Cancel booking and refund table fee to wallet (BR-004)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "booking_id",
+            "schema": {
+              "title": "Booking Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingCancelOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Cancel an existing reservation booking (Task T-023 / BR-004).\n\nViews stay thin (ARCH-001):\n- Authenticate via request.auth.\n- Delegate cancellation, window validation, and wallet credit to services.py.\n- Return typed BookingCancelOut schema.",
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/billing/callback/": {
       "get": {
         "operationId": "apps_billing_api_payment_callback",
@@ -2527,6 +2565,46 @@
           "slot_start_time"
         ],
         "title": "BookingInitiateIn",
+        "type": "object"
+      },
+      "BookingCancelOut": {
+        "additionalProperties": false,
+        "description": "Response payload returned upon booking cancellation (200 OK, Task T-023 / BR-004).",
+        "properties": {
+          "booking_id": {
+            "description": "ID of the cancelled booking",
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "status": {
+            "description": "New booking status (CANCELLED)",
+            "title": "Status",
+            "type": "string"
+          },
+          "refunded_to_wallet_toman": {
+            "description": "Amount credited to wallet by this cancellation call (integer Toman)",
+            "title": "Refunded To Wallet Toman",
+            "type": "integer"
+          },
+          "wallet_balance_toman": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Customer wallet balance after this operation if a refund occurred",
+            "title": "Wallet Balance Toman"
+          }
+        },
+        "required": [
+          "booking_id",
+          "status",
+          "refunded_to_wallet_toman"
+        ],
+        "title": "BookingCancelOut",
         "type": "object"
       },
       "PaymentCallbackOut": {

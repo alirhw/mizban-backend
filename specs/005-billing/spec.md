@@ -1,7 +1,7 @@
 # Spec 005 — Payment Gateway Adapter & PaymentTransaction Schema
 
 **Feature:** 005 — Billing & Payment Processing  
-**Status:** In Progress (Task T-020 Completed)  
+**Status:** In Progress (Tasks T-020, T-021, T-022, T-023 Completed)  
 **Governing ADR:** ADR-004 (Internal Wallet Transaction Policy, Audited Ledger)  
 **Architecture Rules:** ARCH-005 (Payment Gateway & Double-Entry Ledger, no network call inside atomic transaction, exact amount verification, split receipt), ARCH-001 (Thin Views), ARCH-006 (UTC Instants)  
 **Business Rules:** BR-003 (Platform Fee Split: 100% online platform reservation fee, in-person design items payable at venue), BR-004 (Wallet Refund Policy)  
@@ -166,5 +166,41 @@ All mutations go exclusively through the service layer inside `transaction.atomi
 - **No Cash-Out / Withdrawal (BR-004 / TD-005):** Wallet funds are strictly closed-loop and can only be used for future platform reservations. Zero cash-out endpoints, functions, or admin actions exist.
 - **ADR-006 Late Callback Separation:** Involuntary late-payment conflicts (`refund_required = True`) are refunded strictly to the customer's bank card and are never credited to the wallet.
 - **Admin Audit View:** Registered in `apps/wallets/admin.py` with read-only permissions (`has_add_permission=False`, `has_delete_permission=False`, `has_change_permission=False`).
+
+---
+
+## 7. Cancellation & Wallet Refund Credit (Task T-023)
+
+**Governing Rules:** BR-004 (Wallet Refund Policy), TD-005 (Internal Wallet), ADR-006 (Late Payment Callback Policy)  
+**Status:** Implemented in `apps/bookings/services.py`, `apps/bookings/api.py`, and `apps/bookings/schemas.py`.
+
+### 7.1 Policy & 36-Hour Threshold (BR-004)
+- **Eligibility:** Voluntary customer cancellation on `CONFIRMED` bookings at least 36 hours prior to the reservation start time (`start_at - now >= 36 hours`).
+- **Refund Amount:** Exactly 100% of the online platform reservation fee (`booking.amount_online_toman`).
+- **In-Person Add-Ons:** `amount_in_person_toman` (design items/amenities) are payable at the venue in person; they are never charged online and never refunded to the wallet.
+- **Closed-Loop Destination:** Credited directly to the customer's in-app wallet via `credit_wallet()` with `idempotency_key = f"cancel-refund-{booking.id}"`. Wallet funds can only be applied to future bookings (zero cash-out / bank payout).
+- **Atomic Execution:** The `Booking` row is locked via `select_for_update()`; status transition (`CONFIRMED -> CANCELLED`) and wallet balance credit execute in a single database transaction (`transaction.atomic()`).
+
+### 7.2 Decision Table
+
+| Current Status | Condition | Outcome Status | Wallet Credit | Result / HTTP Error |
+|---|---|---|---|---|
+| `CONFIRMED` | $\ge 36\text{h}$ ahead | `CANCELLED` | 100% `amount_online_toman` | HTTP 200, `refunded_to_wallet_toman = amount` |
+| `CONFIRMED` | $< 36\text{h}$ ahead | `CONFIRMED` (unchanged) | 0 Toman | HTTP 400 (`CancellationWindowClosedError`, code `CANCELLATION_WINDOW_CLOSED`) |
+| `PENDING_PAYMENT` | Any time | `CANCELLED` | 0 Toman | HTTP 200, slot hold released immediately |
+| `CANCELLED` | Any time | `CANCELLED` (idempotent) | 0 Toman | HTTP 200, `refunded_to_wallet_toman = 0` |
+| `INITIATED`, `EXPIRED`, `COMPLETED` | Any time | Unchanged | 0 Toman | HTTP 409 (`BookingNotCancellableError`, code `BOOKING_NOT_CANCELLABLE`) |
+
+### 7.3 Separation from ADR-006 Involuntary Late Conflicts
+- An `EXPIRED` booking with an associated `PaymentTransaction(refund_required=True)` represents an involuntary late payment conflict (slot taken by another user).
+- Per ADR-006, involuntary conflicts must be refunded to the customer's **bank card** (via banking settlement), NEVER to the in-app wallet.
+- Attempting to cancel an `EXPIRED` booking via `cancel_booking` or `POST /api/v1/bookings/{id}/cancel/` raises `BookingNotCancellableError` (HTTP 409), ensuring late-conflict transactions are never converted to wallet credits.
+
+### 7.4 API Endpoint
+- **URL:** `POST /api/v1/bookings/{booking_id}/cancel/` (and `/cancel`, trailing-slash tolerant).
+- **Authentication:** `auth=auth` (Customer JWT). Only the customer who owns the booking may cancel (HTTP 403 `PermissionDenied` otherwise).
+- **Response Schema:** `BookingCancelOut(booking_id, status, refunded_to_wallet_toman, wallet_balance_toman)`.
+- **Occupancy Impact:** Once cancelled, `is_table_slot_occupied` immediately excludes the booking, releasing the slot for other customers without delay.
+
 
 

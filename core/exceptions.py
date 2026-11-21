@@ -58,6 +58,19 @@ class CancellationWindowClosedError(DomainError):
     default_message = "Reservations can only be cancelled at least 36 hours before the slot start time."
 
 
+# Alias for explicit convention in BR-004
+CancellationWindowViolationError = CancellationWindowClosedError
+
+
+class BookingNotCancellableError(DomainError):
+    """Booking cannot be cancelled in its current status (BR-004 / ARCH-001)."""
+
+    error_code = "BOOKING_NOT_CANCELLABLE"
+    status_code = 409
+    default_message = "The booking is not in a cancellable status."
+
+
+
 class InsufficientWalletBalanceError(DomainError):
     """TD-005: the wallet may never go negative."""
 
