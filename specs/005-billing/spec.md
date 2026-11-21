@@ -1,7 +1,7 @@
 # Spec 005 — Payment Gateway Adapter & PaymentTransaction Schema
 
 **Feature:** 005 — Billing & Payment Processing  
-**Status:** In Progress (Tasks T-020, T-021, T-022, T-023 Completed)  
+**Status:** Complete (Tasks T-020, T-021, T-022, T-023, T-024 Completed)  
 **Governing ADR:** ADR-004 (Internal Wallet Transaction Policy, Audited Ledger)  
 **Architecture Rules:** ARCH-005 (Payment Gateway & Double-Entry Ledger, no network call inside atomic transaction, exact amount verification, split receipt), ARCH-001 (Thin Views), ARCH-006 (UTC Instants)  
 **Business Rules:** BR-003 (Platform Fee Split: 100% online platform reservation fee, in-person design items payable at venue), BR-004 (Wallet Refund Policy)  
@@ -201,6 +201,52 @@ All mutations go exclusively through the service layer inside `transaction.atomi
 - **Authentication:** `auth=auth` (Customer JWT). Only the customer who owns the booking may cancel (HTTP 403 `PermissionDenied` otherwise).
 - **Response Schema:** `BookingCancelOut(booking_id, status, refunded_to_wallet_toman, wallet_balance_toman)`.
 - **Occupancy Impact:** Once cancelled, `is_table_slot_occupied` immediately excludes the booking, releasing the slot for other customers without delay.
+
+---
+
+## 8. Split Receipt (Task T-024)
+
+**Governing Rules:** BR-003 (Platform Fee Split: 100% online platform reservation fee, in-person design items payable at venue), ARCH-005 (Split Receipt), ARCH-001 (Thin Views), ARCH-006 (UTC Instants + Jalali Presentation)  
+**Status:** Implemented in `apps/bookings/services.py`, `apps/bookings/schemas.py`, `apps/bookings/api.py`, and `core/exceptions.py`.
+
+### 8.1 Pure-Read Contract & Two-Section Structure
+A split receipt is a **read-only, structured JSON document** for ONE booking. It performs zero writes, zero payments, zero settlements, and zero wallet interactions.
+
+1. **Header:**
+   - `booking_id`, `status`, `venue_name`, `venue_slug`, `table_number`
+   - Aware UTC instants: `start_at`, `end_at` (ARCH-006)
+   - Local convenience fields: `slot_date`, `slot_start_time`
+   - Jalali presentation helpers: `jalali_date`, `jalali_start_datetime`, `jalali_end_datetime`
+2. **Section 1 — `paid_online` (100% Platform Share):**
+   - Single line for the table reservation fee (`amount_online_toman`), labelled as paid online / 100% platform share.
+   - Safe payment display from the booking's `SUCCESS` `PaymentTransaction` (if one exists and stores them):
+     - `provider_name` (nullable string)
+     - `card_pan_masked` (nullable masked PAN, e.g. `603799******1234`)
+   - **Never exposed:** raw gateway payloads, full card PAN, `provider_reference`, `redirect_url`, `tracking_code`, `idempotency_key`, or `error_message`.
+3. **Section 2 — `payable_in_person` (Venue Design Add-Ons):**
+   - Labelled as payable in person at the venue.
+   - Itemised list (`items`) built from `BookingAddon` price snapshots (`addon_id`, `title`, `unit_fee_toman`, `line_total_toman`). Raising `DesignAddon.fee` after booking never alters the receipt.
+   - Section total `total_in_person_toman` (0 with `items: []` when no add-ons were selected).
+4. **Totals (all integer Toman, `_toman` suffix):**
+   - `total_online_toman`
+   - `total_in_person_toman`
+   - `grand_total_toman = total_online_toman + total_in_person_toman`
+
+### 8.2 Availability Rule
+- A receipt exists **only** for bookings whose online fee was settled: `CONFIRMED` or `COMPLETED`.
+- Any other status (`INITIATED`, `PENDING_PAYMENT`, `EXPIRED`, `CANCELLED`) raises `ReceiptNotAvailableError` (`error_code="RECEIPT_NOT_AVAILABLE"`, HTTP 409). Cancelled booking refunds are audited in the wallet ledger, not on a receipt.
+
+### 8.3 Consistency Rule
+- `total_in_person_toman` is computed from the `BookingAddon.price_snapshot_toman` lines and asserted equal to `booking.amount_in_person_toman`.
+- If they ever disagree (e.g., corrupted stored total), `get_split_receipt` raises `ReceiptDataInconsistencyError` (`error_code="RECEIPT_DATA_INCONSISTENCY"`, HTTP 500) rather than silently returning conflicting totals.
+
+### 8.4 API Endpoint & Performance
+- **URL:** `GET /api/v1/bookings/{booking_id}/receipt/` (and `/receipt`, trailing-slash tolerant).
+- **Authentication & Ownership:** `auth=auth`. Strictly the booking's own customer only (unauthenticated $\to$ 401; foreign customer, venue owner, or admin $\to$ 403; unknown booking $\to$ 404).
+- **Response Schema:** `SplitReceiptOut` (with `extra="forbid"` on root and all nested schemas).
+- **Bounded Query Performance:** Executed in 3 constant SQL queries (`Booking+Venue+TablePin`, `BookingAddon+DesignAddon`, and `SUCCESS` `PaymentTransaction` safe columns via `.only()`), guaranteeing zero N+1 queries.
+- **Migrations:** Zero schema changes and zero migrations.
+
 
 
 

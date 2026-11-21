@@ -62,4 +62,18 @@
   - Zero database schema changes / migrations created.
   - Zero `refund_required` payments credited to wallet (ADR-006 boundary preserved).
   - Test suite in `apps/bookings/tests/test_cancellation.py` (14 comprehensive tests passed).
-- [ ] **T-024 — Split Receipt Generation (BR-003)**
+- [x] **T-024 — Split Receipt Generation (BR-003)**
+  - Pure-read domain service `get_split_receipt(booking, *, actor)` in `apps/bookings/services.py`:
+    * Bounded 3-query read (`select_related("venue", "table_pin")` + `prefetch_related` for `BookingAddon+DesignAddon` and safe columns of `SUCCESS` `PaymentTransaction`).
+    * Header: booking id, status, venue name/slug, table_number, aware UTC `start_at`/`end_at`, local `slot_date`/`slot_start_time`, and Jalali helpers (`jalali_date`, `jalali_start_datetime`, `jalali_end_datetime`).
+    * Section 1 (`paid_online`): table reservation fee (`amount_online_toman`, 100% platform share) plus safe payment metadata (`provider_name`, `card_pan_masked`) only if a `SUCCESS` `PaymentTransaction` exists; never raw payloads, full PAN, or `provider_reference`.
+    * Section 2 (`payable_in_person`): itemised `BookingAddon` price snapshots (`addon_id`, `title`, `unit_fee_toman`, `line_total_toman`) and `total_in_person_toman`.
+    * Totals: `total_online_toman`, `total_in_person_toman`, `grand_total_toman = online + in_person`.
+    * Availability rule: `CONFIRMED` or `COMPLETED` only; all other statuses raise `ReceiptNotAvailableError` (`error_code="RECEIPT_NOT_AVAILABLE"`, HTTP 409).
+    * Consistency guard: sum of `BookingAddon.price_snapshot_toman` must equal `booking.amount_in_person_toman`, else raises `ReceiptDataInconsistencyError` (`error_code="RECEIPT_DATA_INCONSISTENCY"`, HTTP 500).
+    * Ownership: strictly the booking's own customer (403 for foreign customers, venue owners, or admins).
+  - Typed Pydantic schemas with `extra="forbid"` and `_toman` money suffixes in `apps/bookings/schemas.py` (`SplitReceiptOut`, `SplitReceiptOnlineSectionOut`, `SplitReceiptInPersonSectionOut`, `SplitReceiptAddonLineOut`).
+  - Endpoint `GET /api/v1/bookings/{booking_id}/receipt/` (and `/receipt` trailing-slash alias) in `apps/bookings/api.py` with `auth=auth`.
+  - Refreshed `api/openapi.snapshot.json`.
+  - Zero schema changes / zero migrations; zero money-moving code paths touched.
+  - Test suite in `apps/bookings/tests/test_split_receipt.py` (19 tests passed, including PostgreSQL bounded query-count assertion).

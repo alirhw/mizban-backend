@@ -1246,6 +1246,44 @@
         ]
       }
     },
+    "/api/v1/bookings/{booking_id}/receipt/": {
+      "get": {
+        "operationId": "apps_bookings_api_get_booking_receipt_endpoint",
+        "summary": "Get split receipt for a confirmed or completed booking (BR-003 / ARCH-005)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "booking_id",
+            "schema": {
+              "title": "Booking Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SplitReceiptOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve the read-only split receipt for one booking (Task T-024 / BR-003).\n\nViews stay thin (ARCH-001):\n- Authenticate via request.auth.\n- Delegate ownership, availability, consistency, and query-bounded read to services.py.\n- Return typed SplitReceiptOut schema.",
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "MinimalAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/billing/callback/": {
       "get": {
         "operationId": "apps_billing_api_payment_callback",
@@ -2605,6 +2643,219 @@
           "refunded_to_wallet_toman"
         ],
         "title": "BookingCancelOut",
+        "type": "object"
+      },
+      "SplitReceiptAddonLineOut": {
+        "additionalProperties": false,
+        "description": "Single itemised design add-on line payable in person at the venue (BR-003).",
+        "properties": {
+          "addon_id": {
+            "description": "ID of the DesignAddon",
+            "title": "Addon Id",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Add-on title",
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_fee_toman": {
+            "description": "Price snapshot taken at booking time (integer Toman)",
+            "title": "Unit Fee Toman",
+            "type": "integer"
+          },
+          "line_total_toman": {
+            "description": "Line total payable in person (integer Toman)",
+            "title": "Line Total Toman",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "addon_id",
+          "title",
+          "unit_fee_toman",
+          "line_total_toman"
+        ],
+        "title": "SplitReceiptAddonLineOut",
+        "type": "object"
+      },
+      "SplitReceiptInPersonSectionOut": {
+        "additionalProperties": false,
+        "description": "In-person payable section of a split receipt (BR-003: venue design add-ons).",
+        "properties": {
+          "label": {
+            "description": "Section label indicating payable in person at the venue",
+            "title": "Label",
+            "type": "string"
+          },
+          "items": {
+            "description": "Itemised design add-on snapshots",
+            "items": {
+              "$ref": "#/components/schemas/SplitReceiptAddonLineOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total_in_person_toman": {
+            "description": "Sum of all in-person add-on line totals (integer Toman)",
+            "title": "Total In Person Toman",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "label",
+          "total_in_person_toman"
+        ],
+        "title": "SplitReceiptInPersonSectionOut",
+        "type": "object"
+      },
+      "SplitReceiptOnlineSectionOut": {
+        "additionalProperties": false,
+        "description": "Online payment section of a split receipt (BR-003: 100% platform share).",
+        "properties": {
+          "label": {
+            "description": "Section label indicating paid online / platform share",
+            "title": "Label",
+            "type": "string"
+          },
+          "description": {
+            "description": "Line item description for the table reservation fee",
+            "title": "Description",
+            "type": "string"
+          },
+          "amount_online_toman": {
+            "description": "Table reservation fee paid online (integer Toman)",
+            "title": "Amount Online Toman",
+            "type": "integer"
+          },
+          "provider_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Gateway provider name from the successful PaymentTransaction, if present",
+            "title": "Provider Name"
+          },
+          "card_pan_masked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Masked card PAN (e.g. 603799******1234) if stored on the successful payment",
+            "title": "Card Pan Masked"
+          }
+        },
+        "required": [
+          "label",
+          "description",
+          "amount_online_toman"
+        ],
+        "title": "SplitReceiptOnlineSectionOut",
+        "type": "object"
+      },
+      "SplitReceiptOut": {
+        "additionalProperties": false,
+        "description": "Read-only split receipt for a confirmed or completed booking (Task T-024 / BR-003 / ARCH-005).",
+        "properties": {
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "venue_slug": {
+            "title": "Venue Slug",
+            "type": "string"
+          },
+          "table_number": {
+            "title": "Table Number",
+            "type": "string"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          },
+          "end_at": {
+            "format": "date-time",
+            "title": "End At",
+            "type": "string"
+          },
+          "slot_date": {
+            "format": "date",
+            "title": "Slot Date",
+            "type": "string"
+          },
+          "slot_start_time": {
+            "format": "time",
+            "title": "Slot Start Time",
+            "type": "string"
+          },
+          "jalali_date": {
+            "title": "Jalali Date",
+            "type": "string"
+          },
+          "jalali_start_datetime": {
+            "title": "Jalali Start Datetime",
+            "type": "string"
+          },
+          "jalali_end_datetime": {
+            "title": "Jalali End Datetime",
+            "type": "string"
+          },
+          "paid_online": {
+            "$ref": "#/components/schemas/SplitReceiptOnlineSectionOut"
+          },
+          "payable_in_person": {
+            "$ref": "#/components/schemas/SplitReceiptInPersonSectionOut"
+          },
+          "total_online_toman": {
+            "title": "Total Online Toman",
+            "type": "integer"
+          },
+          "total_in_person_toman": {
+            "title": "Total In Person Toman",
+            "type": "integer"
+          },
+          "grand_total_toman": {
+            "title": "Grand Total Toman",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "booking_id",
+          "status",
+          "venue_name",
+          "venue_slug",
+          "table_number",
+          "start_at",
+          "end_at",
+          "slot_date",
+          "slot_start_time",
+          "jalali_date",
+          "jalali_start_datetime",
+          "jalali_end_datetime",
+          "paid_online",
+          "payable_in_person",
+          "total_online_toman",
+          "total_in_person_toman",
+          "grand_total_toman"
+        ],
+        "title": "SplitReceiptOut",
         "type": "object"
       },
       "PaymentCallbackOut": {

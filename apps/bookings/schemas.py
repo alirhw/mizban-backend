@@ -115,3 +115,69 @@ class BookingCancelOut(Schema):
         default=None, description="Customer wallet balance after this operation if a refund occurred"
     )
 
+
+class SplitReceiptOnlineSectionOut(Schema):
+    """Online payment section of a split receipt (BR-003: 100% platform share)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(..., description="Section label indicating paid online / platform share")
+    description: str = Field(..., description="Line item description for the table reservation fee")
+    amount_online_toman: int = Field(..., description="Table reservation fee paid online (integer Toman)")
+    provider_name: Optional[str] = Field(
+        default=None, description="Gateway provider name from the successful PaymentTransaction, if present"
+    )
+    card_pan_masked: Optional[str] = Field(
+        default=None, description="Masked card PAN (e.g. 603799******1234) if stored on the successful payment"
+    )
+
+
+class SplitReceiptAddonLineOut(Schema):
+    """Single itemised design add-on line payable in person at the venue (BR-003)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    addon_id: int = Field(..., description="ID of the DesignAddon")
+    title: str = Field(..., description="Add-on title")
+    unit_fee_toman: int = Field(..., description="Price snapshot taken at booking time (integer Toman)")
+    line_total_toman: int = Field(..., description="Line total payable in person (integer Toman)")
+
+
+class SplitReceiptInPersonSectionOut(Schema):
+    """In-person payable section of a split receipt (BR-003: venue design add-ons)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(..., description="Section label indicating payable in person at the venue")
+    items: List[SplitReceiptAddonLineOut] = Field(
+        default_factory=list, description="Itemised design add-on snapshots"
+    )
+    total_in_person_toman: int = Field(
+        ..., description="Sum of all in-person add-on line totals (integer Toman)"
+    )
+
+
+class SplitReceiptOut(Schema):
+    """Read-only split receipt for a confirmed or completed booking (Task T-024 / BR-003 / ARCH-005)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    booking_id: int
+    status: str
+    venue_name: str
+    venue_slug: str
+    table_number: str
+    start_at: datetime
+    end_at: datetime
+    slot_date: date
+    slot_start_time: time
+    jalali_date: str
+    jalali_start_datetime: str
+    jalali_end_datetime: str
+    paid_online: SplitReceiptOnlineSectionOut
+    payable_in_person: SplitReceiptInPersonSectionOut
+    total_online_toman: int
+    total_in_person_toman: int
+    grand_total_toman: int
+
+

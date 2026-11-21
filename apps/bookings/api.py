@@ -15,7 +15,12 @@ from ninja.responses import Status
 
 from apps.accounts.auth import auth
 from apps.bookings import services
-from apps.bookings.schemas import BookingCancelOut, BookingInitiateIn, BookingInitiateOut
+from apps.bookings.schemas import (
+    BookingCancelOut,
+    BookingInitiateIn,
+    BookingInitiateOut,
+    SplitReceiptOut,
+)
 
 router = Router(tags=["bookings"])
 
@@ -66,4 +71,28 @@ def cancel_booking_endpoint(request, booking_id: int):
     - Return typed BookingCancelOut schema.
     """
     return services.cancel_booking(booking=booking_id, actor=request.auth)
+
+
+@router.get(
+    "/{booking_id}/receipt/",
+    response={200: SplitReceiptOut},
+    auth=auth,
+    summary="Get split receipt for a confirmed or completed booking (BR-003 / ARCH-005)",
+)
+@router.get(
+    "/{booking_id}/receipt",
+    response={200: SplitReceiptOut},
+    auth=auth,
+    summary="Get split receipt (trailing-slash alias)",
+    include_in_schema=False,
+)
+def get_booking_receipt_endpoint(request, booking_id: int):
+    """Retrieve the read-only split receipt for one booking (Task T-024 / BR-003).
+
+    Views stay thin (ARCH-001):
+    - Authenticate via request.auth.
+    - Delegate ownership, availability, consistency, and query-bounded read to services.py.
+    - Return typed SplitReceiptOut schema.
+    """
+    return services.get_split_receipt(booking=booking_id, actor=request.auth)
 

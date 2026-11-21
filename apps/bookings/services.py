@@ -24,6 +24,8 @@ from core.exceptions import (
     BookingNotCancellableError,
     CancellationWindowClosedError,
     LeadTimeViolationError,
+    ReceiptDataInconsistencyError,
+    ReceiptNotAvailableError,
     SlotAlreadyReservedError,
 )
 from core.jalali import TEHRAN
@@ -37,6 +39,7 @@ LOCK_TTL = timedelta(minutes=10)
 SLOT_DURATION = timedelta(minutes=90)
 LEAD_TIME_THRESHOLD = timedelta(hours=24)
 CANCELLATION_WINDOW_THRESHOLD = timedelta(hours=36)
+RECEIPT_AVAILABLE_STATUSES = {BookingStatus.CONFIRMED, BookingStatus.COMPLETED}
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,59 @@ class BookingCancelResult:
     status: str
     refunded_to_wallet_toman: int
     wallet_balance_toman: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class SplitReceiptOnlineSection:
+    """Paid-online section of a split receipt (BR-003: 100% platform share)."""
+
+    label: str
+    description: str
+    amount_online_toman: int
+    provider_name: Optional[str] = None
+    card_pan_masked: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class SplitReceiptAddonLine:
+    """One itemised design add-on line payable in person at the venue (BR-003)."""
+
+    addon_id: int
+    title: str
+    unit_fee_toman: int
+    line_total_toman: int
+
+
+@dataclass(frozen=True)
+class SplitReceiptInPersonSection:
+    """Payable-in-person section of a split receipt (BR-003)."""
+
+    label: str
+    items: list[SplitReceiptAddonLine]
+    total_in_person_toman: int
+
+
+@dataclass(frozen=True)
+class SplitReceiptResult:
+    """Read-only structured split receipt for one booking (Task T-024 / BR-003 / ARCH-005)."""
+
+    booking_id: int
+    status: str
+    venue_name: str
+    venue_slug: str
+    table_number: str
+    start_at: datetime
+    end_at: datetime
+    slot_date: date
+    slot_start_time: time
+    jalali_date: str
+    jalali_start_datetime: str
+    jalali_end_datetime: str
+    paid_online: SplitReceiptOnlineSection
+    payable_in_person: SplitReceiptInPersonSection
+    total_online_toman: int
+    total_in_person_toman: int
+    grand_total_toman: int
 
 
 
@@ -432,5 +488,132 @@ def cancel_booking(
             f"Booking in status '{locked_booking.status}' cannot be cancelled.",
             details={"booking_id": locked_booking.id, "current_status": locked_booking.status},
         )
+
+
+def get_split_receipt(
+    booking: int | Booking,
+    *,
+    actor: Any,
+) -> SplitReceiptResult:
+    """Build a read-only split receipt for one settled booking (Task T-024 / BR-003 / ARCH-005).
+
+    Guarantees:
+    - Pure read: creates no payment, no charge, no settlement, and no wallet mutation.
+    - Bounded queries (3 constant SQL queries regardless of add-on count):
+      1. Booking + Venue + TablePin (select_related)
+      2. BookingAddon + DesignAddon (prefetch_related)
+      3. Successful PaymentTransaction safe columns only (prefetch_related)
+    - Ownership: strictly the booking's own customer (403 otherwise).
+    - Availability: CONFIRMED or COMPLETED only (409 RECEIPT_NOT_AVAILABLE otherwise).
+    - Consistency: sum of BookingAddon.price_snapshot_toman must match
+      booking.amount_in_person_toman (otherwise raises ReceiptDataInconsistencyError).
+    - Safe payment exposure: provider_name and card_pan_masked only if a SUCCESS
+      PaymentTransaction exists and stores them; never raw payloads, full PAN,
+      or provider_reference.
+    """
+    from apps.billing.models import PaymentStatus, PaymentTransaction
+
+    booking_id = booking.pk if isinstance(booking, Booking) else booking
+
+    booking_obj = (
+        Booking.objects.select_related("venue", "table_pin")
+        .prefetch_related(
+            models.Prefetch(
+                "addons",
+                queryset=BookingAddon.objects.select_related("design_addon").order_by("id"),
+                to_attr="_receipt_addons",
+            ),
+            models.Prefetch(
+                "payment_transactions",
+                queryset=PaymentTransaction.objects.filter(status=PaymentStatus.SUCCESS)
+                .only("id", "booking_id", "provider_name", "card_pan_masked", "verified_at", "created_at")
+                .order_by("-verified_at", "-created_at"),
+                to_attr="_successful_payments",
+            ),
+        )
+        .filter(pk=booking_id)
+        .first()
+    )
+
+    if not booking_obj:
+        raise Http404("Booking not found.")
+
+    # Ownership check: strictly the booking's own customer (no venue-owner/admin access in T-024)
+    if not actor or booking_obj.customer_id != actor.id:
+        raise PermissionDenied("You do not have permission to view this receipt.")
+
+    # Availability rule: only bookings whose online fee was settled
+    if booking_obj.status not in RECEIPT_AVAILABLE_STATUSES:
+        raise ReceiptNotAvailableError(
+            f"Receipt is not available for booking in status '{booking_obj.status}'.",
+            details={"booking_id": booking_obj.id, "current_status": booking_obj.status},
+        )
+
+    # In-person section from BookingAddon price snapshots
+    addon_lines = [
+        SplitReceiptAddonLine(
+            addon_id=ba.design_addon_id,
+            title=ba.design_addon.title,
+            unit_fee_toman=ba.price_snapshot_toman,
+            line_total_toman=ba.price_snapshot_toman,
+        )
+        for ba in booking_obj._receipt_addons
+    ]
+    computed_in_person_toman = sum(line.line_total_toman for line in addon_lines)
+
+    # Consistency rule: computed line sum must match stored amount_in_person_toman
+    if computed_in_person_toman != booking_obj.amount_in_person_toman:
+        logger.error(
+            "Split receipt data inconsistency for booking id=%s: computed=%s stored=%s",
+            booking_obj.id,
+            computed_in_person_toman,
+            booking_obj.amount_in_person_toman,
+        )
+        raise ReceiptDataInconsistencyError(
+            "Booking in-person total does not match the sum of its add-on line snapshots.",
+            details={
+                "booking_id": booking_obj.id,
+                "computed_in_person_toman": computed_in_person_toman,
+                "stored_in_person_toman": booking_obj.amount_in_person_toman,
+            },
+        )
+
+    # Safe payment metadata from SUCCESS PaymentTransaction (if present)
+    successful_tx = booking_obj._successful_payments[0] if booking_obj._successful_payments else None
+    provider_name = (successful_tx.provider_name or None) if successful_tx else None
+    card_pan_masked = (successful_tx.card_pan_masked or None) if successful_tx else None
+
+    total_online_toman = booking_obj.amount_online_toman
+    grand_total_toman = total_online_toman + computed_in_person_toman
+
+    return SplitReceiptResult(
+        booking_id=booking_obj.id,
+        status=booking_obj.status,
+        venue_name=booking_obj.venue.name,
+        venue_slug=booking_obj.venue.slug,
+        table_number=booking_obj.table_pin.table_number,
+        start_at=booking_obj.start_at,
+        end_at=booking_obj.end_at,
+        slot_date=booking_obj.slot_date,
+        slot_start_time=booking_obj.slot_start_time,
+        jalali_date=booking_obj.jalali_date,
+        jalali_start_datetime=booking_obj.jalali_start_datetime,
+        jalali_end_datetime=booking_obj.jalali_end_datetime,
+        paid_online=SplitReceiptOnlineSection(
+            label="Paid online (100% platform share)",
+            description=f"Table reservation fee ({booking_obj.table_pin.table_number})",
+            amount_online_toman=total_online_toman,
+            provider_name=provider_name,
+            card_pan_masked=card_pan_masked,
+        ),
+        payable_in_person=SplitReceiptInPersonSection(
+            label="Payable in person at the venue",
+            items=addon_lines,
+            total_in_person_toman=computed_in_person_toman,
+        ),
+        total_online_toman=total_online_toman,
+        total_in_person_toman=computed_in_person_toman,
+        grand_total_toman=grand_total_toman,
+    )
 
 

@@ -70,6 +70,22 @@ class BookingNotCancellableError(DomainError):
     default_message = "The booking is not in a cancellable status."
 
 
+class ReceiptNotAvailableError(DomainError):
+    """Split receipt is only available for CONFIRMED or COMPLETED bookings (BR-003 / ARCH-005)."""
+
+    error_code = "RECEIPT_NOT_AVAILABLE"
+    status_code = 409
+    default_message = "A receipt is only available for confirmed or completed bookings."
+
+
+class ReceiptDataInconsistencyError(DomainError):
+    """Stored booking totals disagree with itemised BookingAddon snapshots (BR-003)."""
+
+    error_code = "RECEIPT_DATA_INCONSISTENCY"
+    status_code = 500
+    default_message = "Booking receipt totals are inconsistent with the recorded add-on items."
+
+
 
 class InsufficientWalletBalanceError(DomainError):
     """TD-005: the wallet may never go negative."""
