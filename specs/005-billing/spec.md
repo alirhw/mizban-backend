@@ -125,3 +125,46 @@ Configurable simulation modes:
 
 When `refund_required = True` (Cases C and D), the refund **must return to the customer's original bank card/account**, never to the in-app wallet. The in-app wallet under BR-004 and TD-005 is strictly reserved for voluntary customer cancellations initiated at least 36 hours before slot time. In this Sandbox phase, `refund_required = True` is recorded as an auditable flag on `PaymentTransaction`.
 
+---
+
+## 6. Internal Wallet Ledger (Task T-022)
+
+**Governing Rules:** TD-005 (Internal Wallet & Double-Entry Ledger), BR-004 (Wallet Refund Policy), ARCH-001 (Thin Views & Service Discipline)  
+**Status:** Implemented in `apps/wallets/` (Models + Services + Admin; no public API in this task).  
+**Migration:** `apps/wallets/migrations/0001_initial.py` (**FLAGGED PENDING HUMAN REVIEW** per AGENTS.md).
+
+### 6.1 Data Models & Constraints
+1. **`Wallet` (`apps/wallets/models.py`):**
+   - `user`: OneToOneField to `settings.AUTH_USER_MODEL` (`related_name="wallet"`).
+   - `balance_toman`: `BigIntegerField(default=0)`.
+   - `CheckConstraint(balance_toman >= 0)`: Database-level invariant that wallet balance can never go negative.
+   - Lazily created via service function (`get_or_create_wallet_for_user`).
+2. **`WalletTransaction` (`apps/wallets/models.py`):**
+   - One-sided append-only audited ledger entry.
+   - `type`: Choices `CREDIT` (deposit) or `DEBIT` (spending).
+   - `amount_toman`: `BigIntegerField` with `CheckConstraint(amount_toman > 0)`.
+   - `balance_after_toman`: `BigIntegerField` snapshot immediately after transaction, with `CheckConstraint(balance_after_toman >= 0)`.
+   - `idempotency_key`: `CharField(max_length=100, unique=True, db_index=True)` preventing duplicate mutations (UF-003).
+   - Traceability: Nullable FKs to `Booking` (`SET_NULL`) and `PaymentTransaction` (`SET_NULL`).
+   - Append-Only Immutability: Model overrides `save()` and `delete()` to raise `PermissionDenied` on any attempt to update or delete existing ledger rows.
+
+### 6.2 Service Layer Contract (`apps/wallets/services.py`)
+All mutations go exclusively through the service layer inside `transaction.atomic()` with exclusive row-level locking via `select_for_update()`:
+- `get_or_create_wallet_for_user(user) -> Wallet`: Idempotent lazy wallet creation.
+- `credit_wallet(wallet, amount_toman, *, reason, idempotency_key, booking=None, payment_transaction=None) -> WalletTransaction`:
+  * Validates `amount_toman > 0` (raises `InvalidWalletAmountError`).
+  * Idempotent replay: returns existing transaction on duplicate `idempotency_key`.
+  * Increments balance under `select_for_update()` and writes immutable ledger entry.
+- `debit_wallet(wallet, amount_toman, *, reason, idempotency_key, booking=None, payment_transaction=None) -> WalletTransaction`:
+  * Validates `amount_toman > 0` (raises `InvalidWalletAmountError`).
+  * Idempotent replay: returns existing transaction on duplicate `idempotency_key`.
+  * Insufficient balance guard: if debit > current balance, raises `InsufficientWalletBalanceError` with zero side effects (balance and ledger untouched).
+  * Decrements balance under `select_for_update()` and writes immutable ledger entry.
+- Read helpers: `get_wallet_balance` and `list_wallet_transactions` (bounded, paginated via `core.pagination`).
+
+### 6.3 Closed-Loop Invariant & Boundary Rules
+- **No Cash-Out / Withdrawal (BR-004 / TD-005):** Wallet funds are strictly closed-loop and can only be used for future platform reservations. Zero cash-out endpoints, functions, or admin actions exist.
+- **ADR-006 Late Callback Separation:** Involuntary late-payment conflicts (`refund_required = True`) are refunded strictly to the customer's bank card and are never credited to the wallet.
+- **Admin Audit View:** Registered in `apps/wallets/admin.py` with read-only permissions (`has_add_permission=False`, `has_delete_permission=False`, `has_change_permission=False`).
+
+

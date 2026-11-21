@@ -66,6 +66,15 @@ class InsufficientWalletBalanceError(DomainError):
     default_message = "The wallet balance is not enough for this operation."
 
 
+class InvalidWalletAmountError(DomainError):
+    """TD-005: wallet operations require a strictly positive integer amount."""
+
+    error_code = "INVALID_WALLET_AMOUNT"
+    status_code = 400
+    default_message = "Wallet amount must be a positive integer greater than zero."
+
+
+
 class InvalidStatusTransitionError(DomainError):
     """Booking state machine: illegal transition between states."""
 
