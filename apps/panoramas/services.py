@@ -329,6 +329,8 @@ def create_table_pin_for_space(user: Any, space_id: int, data: TablePinCreateIn)
             pitch=data.pitch,
             yaw=data.yaw,
             description=data.description,
+            reservation_fee_toman=data.reservation_fee_toman,
+            is_smoking=data.is_smoking,
             is_active=data.is_active,
         )
         pin.full_clean()
@@ -365,6 +367,12 @@ def update_table_pin(user: Any, pin_id: int, data: TablePinUpdateIn) -> TablePin
 
     if data.description is not None:
         pin.description = data.description
+
+    if data.reservation_fee_toman is not None:
+        pin.reservation_fee_toman = data.reservation_fee_toman
+
+    if data.is_smoking is not None:
+        pin.is_smoking = data.is_smoking
 
     if data.is_active is not None:
         pin.is_active = data.is_active
@@ -459,6 +467,8 @@ def get_public_panorama_for_space(space_id: int) -> dict:
             pitch=pin.pitch,
             yaw=pin.yaw,
             description=pin.description,
+            reservation_fee_toman=pin.reservation_fee_toman,
+            is_smoking=pin.is_smoking,
         )
         for pin in space.table_pins.all()
         if pin.panorama_image_id is None or pin.panorama_image_id == ready_panorama.id

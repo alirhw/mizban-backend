@@ -14,6 +14,7 @@ from datetime import timedelta
 import uuid
 
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -195,6 +196,14 @@ class TablePin(models.Model):
         help_text="Spherical yaw in degrees [-180.0, 180.0] (horizontal angle).",
     )
     description = models.CharField(max_length=200, blank=True, help_text="e.g. By the window")
+    reservation_fee_toman = models.BigIntegerField(
+        validators=[MinValueValidator(0)],
+        help_text="Reservation fee in integer Toman (>= 0). Platform share charged online.",
+    )
+    is_smoking = models.BooleanField(
+        default=False,
+        help_text="Whether smoking is allowed at this table (True = allowed, False = prohibited).",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -217,6 +226,10 @@ class TablePin(models.Model):
                 condition=models.Q(capacity__gt=0),
                 name="table_pin_capacity_positive",
             ),
+            models.CheckConstraint(
+                condition=models.Q(reservation_fee_toman__gte=0),
+                name="table_pin_reservation_fee_non_negative",
+            ),
         ]
         ordering = ["venue", "table_number"]
 
@@ -231,6 +244,8 @@ class TablePin(models.Model):
             raise ValidationError({"yaw": "Yaw must be between -180.0 and 180.0 degrees."})
         if self.capacity <= 0:
             raise ValidationError({"capacity": "Capacity must be greater than 0."})
+        if self.reservation_fee_toman is not None and self.reservation_fee_toman < 0:
+            raise ValidationError({"reservation_fee_toman": "Reservation fee must be non-negative (>= 0)."})
 
     def delete(self, using=None, keep_parents=False):
         """Prevent deletion if any bookings exist for this table pin (ADR-005)."""

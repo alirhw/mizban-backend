@@ -1856,6 +1856,14 @@
             "title": "Description",
             "type": "string"
           },
+          "reservation_fee_toman": {
+            "title": "Reservation Fee Toman",
+            "type": "integer"
+          },
+          "is_smoking": {
+            "title": "Is Smoking",
+            "type": "boolean"
+          },
           "is_active": {
             "title": "Is Active",
             "type": "boolean"
@@ -1881,6 +1889,8 @@
           "pitch",
           "yaw",
           "description",
+          "reservation_fee_toman",
+          "is_smoking",
           "is_active",
           "created_at",
           "updated_at"
@@ -1939,6 +1949,15 @@
             "title": "Description",
             "type": "string"
           },
+          "reservation_fee_toman": {
+            "title": "Reservation Fee Toman",
+            "type": "integer"
+          },
+          "is_smoking": {
+            "default": false,
+            "title": "Is Smoking",
+            "type": "boolean"
+          },
           "is_active": {
             "default": true,
             "title": "Is Active",
@@ -1946,7 +1965,8 @@
           }
         },
         "required": [
-          "table_number"
+          "table_number",
+          "reservation_fee_toman"
         ],
         "title": "TablePinCreateIn",
         "type": "object"
@@ -2020,6 +2040,28 @@
               }
             ],
             "title": "Description"
+          },
+          "reservation_fee_toman": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Fee Toman"
+          },
+          "is_smoking": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Smoking"
           },
           "is_active": {
             "anyOf": [
@@ -2157,6 +2199,14 @@
           "description": {
             "title": "Description",
             "type": "string"
+          },
+          "reservation_fee_toman": {
+            "title": "Reservation Fee Toman",
+            "type": "integer"
+          },
+          "is_smoking": {
+            "title": "Is Smoking",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2165,7 +2215,9 @@
           "capacity",
           "pitch",
           "yaw",
-          "description"
+          "description",
+          "reservation_fee_toman",
+          "is_smoking"
         ],
         "title": "PublicTablePinOut",
         "type": "object"

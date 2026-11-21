@@ -20,6 +20,16 @@ class PanoramaImageAdmin(admin.ModelAdmin):
 
 @admin.register(TablePin)
 class TablePinAdmin(admin.ModelAdmin):
-    list_display = ["table_number", "venue", "space", "capacity", "pitch", "yaw", "is_active"]
-    list_filter = ["is_active", "venue", "space"]
+    list_display = [
+        "table_number",
+        "venue",
+        "space",
+        "capacity",
+        "reservation_fee_toman",
+        "is_smoking",
+        "pitch",
+        "yaw",
+        "is_active",
+    ]
+    list_filter = ["is_active", "is_smoking", "venue", "space"]
     search_fields = ["table_number", "venue__name"]

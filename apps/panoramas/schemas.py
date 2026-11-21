@@ -34,6 +34,8 @@ class TablePinCreateIn(Schema):
     yaw: Optional[float] = None
     panorama_image_id: Optional[UUID] = None
     description: str = ""
+    reservation_fee_toman: int
+    is_smoking: bool = False
     is_active: bool = True
 
     @field_validator("pitch")
@@ -71,6 +73,13 @@ class TablePinCreateIn(Schema):
             raise ValueError("Table number cannot be empty or blank.")
         return s
 
+    @field_validator("reservation_fee_toman")
+    @classmethod
+    def validate_reservation_fee(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Reservation fee must be non-negative (>= 0).")
+        return v
+
 
 class TablePinUpdateIn(Schema):
     """Payload to update an existing table pin (Task T-018)."""
@@ -81,6 +90,8 @@ class TablePinUpdateIn(Schema):
     yaw: Optional[float] = None
     panorama_image_id: Optional[UUID] = None
     description: Optional[str] = None
+    reservation_fee_toman: Optional[int] = None
+    is_smoking: Optional[bool] = None
     is_active: Optional[bool] = None
 
     @field_validator("pitch")
@@ -120,6 +131,13 @@ class TablePinUpdateIn(Schema):
             return s
         return v
 
+    @field_validator("reservation_fee_toman")
+    @classmethod
+    def validate_reservation_fee(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 0:
+            raise ValueError("Reservation fee must be non-negative (>= 0).")
+        return v
+
 
 class TablePinOut(Schema):
     """Response returned when an owner creates, views, or updates a table pin."""
@@ -133,6 +151,8 @@ class TablePinOut(Schema):
     pitch: Optional[float]
     yaw: Optional[float]
     description: str
+    reservation_fee_toman: int
+    is_smoking: bool
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -147,6 +167,8 @@ class PublicTablePinOut(Schema):
     pitch: Optional[float]
     yaw: Optional[float]
     description: str
+    reservation_fee_toman: int
+    is_smoking: bool
 
 
 class PublicPanoramaOut(Schema):

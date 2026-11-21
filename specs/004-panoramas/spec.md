@@ -138,3 +138,14 @@ Provide the core visual reservation domain for Miz Ban:
 - **Task T-018:** TablePin owner APIs (create, update, delete, deactivate) and Public Panorama read endpoint (Done).
 - **Task T-018b:** Venue Owner Space CRUD API & Public Space Read Endpoint (Done).
 - **Task T-019:** Customer panorama viewer & WebGL/Pannellum performance spike (Done).
+- **TablePin Fields Task (FR-004 Gap Fix):** Added `reservation_fee_toman` (integer Toman $\ge 0$) and `is_smoking` (BooleanField, default False) to `TablePin` model, schemas, owner APIs, public read, and booking lock service; migration `0003_add_tablepin_fee_and_smoking.py` applied with 50,000 migration default for existing pins only.
+
+---
+
+## 5. TablePin Fields Specification (FR-004)
+
+- **REQ-PANO-010 (TablePin Fields: Reservation Fee & Smoking Status):**
+  - **`reservation_fee_toman`:** Integer Toman ($\ge 0$), set per table by venue owner. Enforced by model validator `MinValueValidator(0)` and database CheckConstraint `table_pin_reservation_fee_non_negative`. Required on creation (`TablePinCreateIn`), optional on update (`TablePinUpdateIn`).
+  - **`is_smoking`:** Boolean field (`default=False`), indicating whether smoking is permitted at this table (`True` = allowed, `False` = prohibited). Exposed on creation, partial update, owner reads, and public panorama reads (`TablePinOut`, `PublicTablePinOut`).
+  - **Migration Default for Existing Rows Only:** Forward migration `0003_add_tablepin_fee_and_smoking.py` sets existing rows to `reservation_fee_toman = 50_000` (preserving live behavior until owner updates) and `is_smoking = False`. This default exists strictly in the migration; application code contains zero hard-coded fee fallbacks.
+  - **Booking Lock Integration:** `create_booking_lock` reads `amount_online_toman = pin.reservation_fee_toman` directly; the prior `getattr(pin, "reservation_fee_toman", 50_000) or 50_000` fallback is removed entirely.

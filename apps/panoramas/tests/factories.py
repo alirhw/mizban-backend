@@ -39,6 +39,8 @@ class TablePinFactory(factory.django.DjangoModelFactory):
     pitch = 10.5
     yaw = -45.0
     description = "Near the window"
+    reservation_fee_toman = 50_000
+    is_smoking = False
     is_active = True
 
     @factory.post_generation

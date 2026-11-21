@@ -116,7 +116,7 @@ class TestTablePinValidation:
         # Boundary values: -90.0 and 90.0 are valid
         resp = client.post(
             url,
-            {"table_number": "T-MIN", "capacity": 2, "pitch": -90.0, "yaw": 0.0},
+            {"table_number": "T-MIN", "capacity": 2, "pitch": -90.0, "yaw": 0.0, "reservation_fee_toman": 50_000},
             content_type="application/json",
             **auth,
         )
@@ -124,7 +124,7 @@ class TestTablePinValidation:
 
         resp = client.post(
             url,
-            {"table_number": "T-MAX", "capacity": 2, "pitch": 90.0, "yaw": 0.0},
+            {"table_number": "T-MAX", "capacity": 2, "pitch": 90.0, "yaw": 0.0, "reservation_fee_toman": 50_000},
             content_type="application/json",
             **auth,
         )
@@ -156,7 +156,7 @@ class TestTablePinValidation:
         # Boundary values: -180.0 and 180.0 are valid
         resp = client.post(
             url,
-            {"table_number": "Y-MIN", "capacity": 2, "pitch": 0.0, "yaw": -180.0},
+            {"table_number": "Y-MIN", "capacity": 2, "pitch": 0.0, "yaw": -180.0, "reservation_fee_toman": 50_000},
             content_type="application/json",
             **auth,
         )
@@ -164,7 +164,7 @@ class TestTablePinValidation:
 
         resp = client.post(
             url,
-            {"table_number": "Y-MAX", "capacity": 2, "pitch": 0.0, "yaw": 180.0},
+            {"table_number": "Y-MAX", "capacity": 2, "pitch": 0.0, "yaw": 180.0, "reservation_fee_toman": 50_000},
             content_type="application/json",
             **auth,
         )
@@ -191,25 +191,25 @@ class TestTablePinValidation:
         from apps.panoramas.schemas import TablePinCreateIn, TablePinUpdateIn
 
         # Valid instances
-        c = TablePinCreateIn(table_number="T1", capacity=4, pitch=-90.0, yaw=180.0)
+        c = TablePinCreateIn(table_number="T1", capacity=4, pitch=-90.0, yaw=180.0, reservation_fee_toman=50_000)
         assert c.pitch == -90.0
         assert c.yaw == 180.0
 
         # NaN pitch rejected
         with pytest.raises(ValidationError):
-            TablePinCreateIn(table_number="T1", capacity=2, pitch=float("nan"))
+            TablePinCreateIn(table_number="T1", capacity=2, pitch=float("nan"), reservation_fee_toman=50_000)
 
         # Inf yaw rejected
         with pytest.raises(ValidationError):
-            TablePinCreateIn(table_number="T1", capacity=2, yaw=float("inf"))
+            TablePinCreateIn(table_number="T1", capacity=2, yaw=float("inf"), reservation_fee_toman=50_000)
 
         # Negative Inf yaw rejected
         with pytest.raises(ValidationError):
-            TablePinCreateIn(table_number="T1", capacity=2, yaw=float("-inf"))
+            TablePinCreateIn(table_number="T1", capacity=2, yaw=float("-inf"), reservation_fee_toman=50_000)
 
         # Capacity 0 rejected
         with pytest.raises(ValidationError):
-            TablePinCreateIn(table_number="T1", capacity=0)
+            TablePinCreateIn(table_number="T1", capacity=0, reservation_fee_toman=50_000)
 
         # Update schema NaN rejected
         with pytest.raises(ValidationError):
@@ -267,7 +267,7 @@ class TestTablePinPermissions:
         """Customer cannot create or manage pins -> HTTP 403."""
         resp = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/pins",
-            {"table_number": "T1", "capacity": 2},
+            {"table_number": "T1", "capacity": 2, "reservation_fee_toman": 50_000},
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {customer_user.phone}",
         )
@@ -278,7 +278,7 @@ class TestTablePinPermissions:
         """Owner B cannot create pins in Owner A's venue/space -> HTTP 403."""
         resp = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/pins",
-            {"table_number": "T1", "capacity": 2},
+            {"table_number": "T1", "capacity": 2, "reservation_fee_toman": 50_000},
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {other_owner.phone}",
         )
@@ -314,7 +314,7 @@ class TestTablePinPermissions:
 
         resp = client.post(
             "/api/v1/panoramas/spaces/999999/pins",
-            {"table_number": "T1", "capacity": 2},
+            {"table_number": "T1", "capacity": 2, "reservation_fee_toman": 50_000},
             content_type="application/json",
             **auth,
         )
@@ -342,6 +342,7 @@ class TestTablePinCRUD:
                 "yaw": -30.0,
                 "panorama_image_id": str(ready_panorama.id),
                 "description": "Cozy corner booth",
+                "reservation_fee_toman": 50_000,
                 "is_active": True,
             },
             content_type="application/json",
@@ -373,7 +374,7 @@ class TestTablePinCRUD:
 
         resp = client.post(
             url,
-            {"table_number": "Table 5", "capacity": 2},
+            {"table_number": "Table 5", "capacity": 2, "reservation_fee_toman": 50_000},
             content_type="application/json",
             **auth,
         )

@@ -6,8 +6,24 @@
 | **T-016** | 360 Panorama Upload Endpoint & Validation (Magic bytes, UUID, 202) | `backend-api-engineer` | Done (Gate G4 Approved) | T-015 |
 | **T-017** | Celery Asynchronous Image Conversion Pipeline (WebP, thumb, cleanup) | `media-engineer` | Done (Gate G4 Approved) | T-016 |
 | **T-018** | Venue Owner Panorama & Table Pin Editor API (Space CRUD excluded, Pin CRUD, Public Read) | `backend-api-engineer` | Done (Gate G4 Approved) | T-017 |
-| **T-018b** | Venue Owner Space CRUD API & Public Space Read Endpoint | `backend-api-engineer` | Done (Pending Gate Approval) | T-018 |
+| **T-018b** | Venue Owner Space CRUD API & Public Space Read Endpoint | `backend-api-engineer` | Done (Gate G4 Approved) | T-018 |
 | **T-019** | Customer Panorama Viewer & WebGL/Pannellum Performance Spike | `media-engineer` / `frontend-engineer` | Done (Gate G4 Approved) | T-018 |
+| **FR-004** | TablePin Fields: reservation_fee_toman & is_smoking | `backend-api-engineer` / `database-engineer` | Done (Pending Gate Approval) | T-018 |
+
+---
+
+### FR-004 TablePin Fields Implementation Notes:
+1. **Model & Schema Changes:**
+   - Added `reservation_fee_toman` (`BigIntegerField`, `>= 0`, model validator `MinValueValidator(0)`, CheckConstraint `table_pin_reservation_fee_non_negative`).
+   - Added `is_smoking` (`BooleanField`, `default=False`).
+   - Forward migration `0003_add_tablepin_fee_and_smoking.py` applied with migration-only default of 50,000 for existing rows. No silent defaults in application code.
+   - Schemas `TablePinCreateIn`, `TablePinUpdateIn`, `TablePinOut`, and `PublicTablePinOut` updated.
+2. **Booking Lock Integration:**
+   - Replaced `getattr(pin, "reservation_fee_toman", 50_000) or 50_000` with direct read `amount_online_toman = pin.reservation_fee_toman`.
+   - Verified zero hard-coded fee defaults remain across production code.
+3. **OpenAPI & Admin:**
+   - Updated `TablePinAdmin` list_display and list_filter.
+   - Refreshed `api/openapi.snapshot.json` to match live schema contract.
 
 ---
 

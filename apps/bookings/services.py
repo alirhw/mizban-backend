@@ -139,8 +139,8 @@ def create_booking_lock(
                 "This table is currently reserved or locked by another customer for this slot."
             )
 
-        # Determine table reservation fee (default 50,000 Toman platform share)
-        table_fee = getattr(pin, "reservation_fee_toman", 50_000) or 50_000
+        # Determine table reservation fee (read directly from pin, FR-004 / BR-003)
+        amount_online_toman = pin.reservation_fee_toman
 
         # Create Booking row in PENDING_PAYMENT with 10-minute TTL
         booking = Booking.objects.create(
@@ -154,7 +154,7 @@ def create_booking_lock(
             slot_start_time=slot_start_time,
             locked_at=now,
             lock_expires_at=now + LOCK_TTL,
-            amount_online_toman=table_fee,
+            amount_online_toman=amount_online_toman,
             amount_in_person_toman=0,
         )
 
