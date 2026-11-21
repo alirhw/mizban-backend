@@ -17,12 +17,14 @@ Task T-020 (PH-05 / WS-BILLING-WALLET / ARCH-005):
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 from typing import Any
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.db import models, transaction
+from django.http import Http404
 from django.utils import timezone
 
 from apps.billing.models import PaymentStatus, PaymentTransaction
@@ -42,6 +44,19 @@ from core.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PaymentCallbackResult:
+    """Outcome of processing a payment gateway callback (Task T-021 / ADR-006)."""
+
+    booking_id: int | None
+    booking_status: str
+    payment_status: str
+    refund_required: bool
+    tracking_code: str = ""
+    message: str = ""
+
 
 
 def initiate_payment_for_booking(
@@ -232,3 +247,230 @@ def verify_payment_transaction(
         verified_at=timezone.now(),
     )
     return tx
+
+
+def handle_payment_callback(
+    *,
+    callback_params: dict[str, Any],
+    gateway_name: str | None = None,
+) -> PaymentCallbackResult:
+    """Process incoming payment gateway callback and confirm booking (Task T-021 / ADR-006).
+
+    Guarantees:
+    - Step 1: Outside any atomic block, verifies payment transaction server-to-server.
+    - Step 2: Inside transaction.atomic(), row-locks TablePin and Booking under select_for_update.
+    - Re-checks occupancy excluding this booking:
+        (a) On-time success -> CONFIRMED, refund_required=False.
+        (b) Late callback with slot free -> CONFIRMED, refund_required=False (ADR-006).
+        (c) Late callback with slot taken -> EXPIRED, refund_required=True to bank card (ADR-006).
+        (d) Cancelled booking -> CANCELLED, refund_required=True (never resurrect).
+    - Idempotent replay: already confirmed/processed transaction returns stored outcome without duplicate side effects.
+    - Zero network calls inside transaction.atomic().
+    - Never logs callback payloads, card numbers, or secrets (AGENTS.md).
+    """
+    provider = (gateway_name or getattr(settings, "PAYMENT_GATEWAY_PROVIDER", "sandbox")).lower()
+    gateway = get_gateway(provider)
+
+    reference = gateway.extract_reference(callback_params)
+    if not reference:
+        logger.warning("Payment callback received without provider reference.")
+        raise Http404("Missing or invalid payment reference.")
+
+    tx = (
+        PaymentTransaction.objects.select_related("booking", "customer")
+        .filter(provider_reference=reference)
+        .first()
+    )
+    if not tx:
+        logger.warning("Payment callback for unknown reference (no transaction found).")
+        raise Http404("Payment transaction not found.")
+
+    # Idempotency fast-path: if already terminal and confirmed or flagged
+    if tx.status == PaymentStatus.SUCCESS:
+        if tx.booking.status == BookingStatus.CONFIRMED:
+            return PaymentCallbackResult(
+                booking_id=tx.booking.id,
+                booking_status=BookingStatus.CONFIRMED,
+                payment_status=PaymentStatus.SUCCESS,
+                refund_required=False,
+                tracking_code=tx.tracking_code,
+                message="Payment already verified and booking confirmed.",
+            )
+        if tx.refund_required:
+            return PaymentCallbackResult(
+                booking_id=tx.booking.id,
+                booking_status=tx.booking.status,
+                payment_status=PaymentStatus.SUCCESS,
+                refund_required=True,
+                tracking_code=tx.tracking_code,
+                message="Payment verified but slot was occupied; refund required to bank card.",
+            )
+
+    if tx.status in (PaymentStatus.FAILED, PaymentStatus.TIMEOUT):
+        return PaymentCallbackResult(
+            booking_id=tx.booking.id,
+            booking_status=tx.booking.status,
+            payment_status=tx.status,
+            refund_required=False,
+            tracking_code="",
+            message=tx.error_message or "Payment was not successful.",
+        )
+
+    # Step 1: OUTSIDE any transaction, call verify_payment_transaction if not already SUCCESS
+    if tx.status != PaymentStatus.SUCCESS:
+        try:
+            tx = verify_payment_transaction(
+                provider_reference=reference,
+                callback_params=callback_params,
+                gateway_name=tx.provider_name,
+            )
+        except PaymentGatewayTimeoutError as exc:
+            logger.warning("Gateway verify timeout during callback for tx %s: %s", tx.id, exc)
+            return PaymentCallbackResult(
+                booking_id=tx.booking.id,
+                booking_status=tx.booking.status,
+                payment_status=PaymentStatus.TIMEOUT,
+                refund_required=False,
+                tracking_code="",
+                message="Payment gateway verification timed out.",
+            )
+        except PaymentAlreadyProcessedError:
+            tx.refresh_from_db()
+            return PaymentCallbackResult(
+                booking_id=tx.booking.id,
+                booking_status=tx.booking.status,
+                payment_status=tx.status,
+                refund_required=tx.refund_required,
+                tracking_code=tx.tracking_code,
+                message=tx.error_message or "Payment transaction already processed.",
+            )
+        except (PaymentVerificationFailedError, PaymentAmountMismatchError, PaymentGatewayError) as exc:
+            logger.warning("Gateway verify failed during callback for tx %s: %s", tx.id, exc)
+            tx.refresh_from_db()
+            return PaymentCallbackResult(
+                booking_id=tx.booking.id,
+                booking_status=tx.booking.status,
+                payment_status=PaymentStatus.FAILED,
+                refund_required=False,
+                tracking_code="",
+                message=str(exc) or "Payment verification failed.",
+            )
+
+    # If verification did not produce SUCCESS, do not proceed to confirmation
+    if tx.status != PaymentStatus.SUCCESS:
+        return PaymentCallbackResult(
+            booking_id=tx.booking.id,
+            booking_status=tx.booking.status,
+            payment_status=tx.status,
+            refund_required=False,
+            tracking_code="",
+            message=tx.error_message or "Payment verification was not successful.",
+        )
+
+    # Step 2: Atomic confirmation under TablePin and Booking row locks (ADR-006)
+    from apps.panoramas.models import TablePin
+
+    with transaction.atomic():
+        # Lock TablePin row first (matching create_booking_lock lock ordering discipline)
+        pin = TablePin.objects.select_for_update().get(pk=tx.booking.table_pin_id)
+        booking = (
+            Booking.objects.select_for_update()
+            .select_related("table_pin")
+            .get(pk=tx.booking_id)
+        )
+        tx_locked = PaymentTransaction.objects.select_for_update().get(pk=tx.pk)
+
+        # Concurrency safety: check if another thread confirmed or updated while we waited for lock
+        if booking.status == BookingStatus.CONFIRMED:
+            return PaymentCallbackResult(
+                booking_id=booking.id,
+                booking_status=BookingStatus.CONFIRMED,
+                payment_status=PaymentStatus.SUCCESS,
+                refund_required=False,
+                tracking_code=tx_locked.tracking_code,
+                message="Payment verified and booking confirmed successfully.",
+            )
+        if tx_locked.refund_required:
+            return PaymentCallbackResult(
+                booking_id=booking.id,
+                booking_status=booking.status,
+                payment_status=PaymentStatus.SUCCESS,
+                refund_required=True,
+                tracking_code=tx_locked.tracking_code,
+                message="Slot is no longer available; refund required to bank card.",
+            )
+
+        # Case (d): Cancelled booking is NEVER resurrected (ADR-006)
+        if booking.status == BookingStatus.CANCELLED:
+            if not tx_locked.refund_required:
+                tx_locked.refund_required = True
+                tx_locked.save(update_fields=["refund_required", "updated_at"])
+            return PaymentCallbackResult(
+                booking_id=booking.id,
+                booking_status=BookingStatus.CANCELLED,
+                payment_status=PaymentStatus.SUCCESS,
+                refund_required=True,
+                tracking_code=tx_locked.tracking_code,
+                message="Booking was cancelled by customer; refund required to bank card.",
+            )
+
+        now = timezone.now()
+
+        # Check occupancy for table_pin and slot, excluding this booking
+        is_slot_taken = Booking.objects.filter(
+            table_pin_id=pin.id,
+            slot_date=booking.slot_date,
+            slot_start_time=booking.slot_start_time,
+        ).exclude(pk=booking.pk).filter(
+            models.Q(status=BookingStatus.CONFIRMED)
+            | models.Q(status=BookingStatus.PENDING_PAYMENT, lock_expires_at__gt=now)
+        ).exists()
+
+        if is_slot_taken:
+            # Case (c): Slot taken by another booking -> mark EXPIRED, refund_required = True
+            if booking.status != BookingStatus.EXPIRED:
+                if booking.status == BookingStatus.PENDING_PAYMENT:
+                    booking.transition_to(BookingStatus.EXPIRED)
+                else:
+                    booking.status = BookingStatus.EXPIRED
+                    booking.save(update_fields=["status", "updated_at"])
+            tx_locked.refund_required = True
+            tx_locked.save(update_fields=["refund_required", "updated_at"])
+            logger.warning(
+                "Late payment conflict: slot occupied for pin=%s slot=%s %s; tx=%s marked refund_required.",
+                pin.id,
+                booking.slot_date,
+                booking.slot_start_time,
+                tx_locked.id,
+            )
+            return PaymentCallbackResult(
+                booking_id=booking.id,
+                booking_status=BookingStatus.EXPIRED,
+                payment_status=PaymentStatus.SUCCESS,
+                refund_required=True,
+                tracking_code=tx_locked.tracking_code,
+                message="Slot is no longer available; refund required to bank card.",
+            )
+
+        # Slot is free! Lazily expire any other stale pending holds on this slot (REQ-LOCK-005)
+        Booking.objects.filter(
+            table_pin_id=pin.id,
+            slot_date=booking.slot_date,
+            slot_start_time=booking.slot_start_time,
+            status=BookingStatus.PENDING_PAYMENT,
+            lock_expires_at__lte=now,
+        ).exclude(pk=booking.pk).update(status=BookingStatus.EXPIRED, updated_at=now)
+
+        # Confirm booking (Case a: on-time; Case b: late callback with free slot)
+        if booking.status == BookingStatus.INITIATED:
+            booking.transition_to(BookingStatus.PENDING_PAYMENT)
+        booking.transition_to(BookingStatus.CONFIRMED)
+        return PaymentCallbackResult(
+            booking_id=booking.id,
+            booking_status=BookingStatus.CONFIRMED,
+            payment_status=PaymentStatus.SUCCESS,
+            refund_required=False,
+            tracking_code=tx_locked.tracking_code,
+            message="Payment verified and booking confirmed successfully.",
+        )
+

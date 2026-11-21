@@ -93,6 +93,11 @@ class PaymentGatewayAdapter(ABC):
         """Query transaction status by gateway authority."""
         ...
 
+    @abstractmethod
+    def extract_reference(self, callback_params: dict[str, Any]) -> str:
+        """Extract unguessable provider reference from incoming callback parameters."""
+        ...
+
 
 class SandboxGatewayAdapter(PaymentGatewayAdapter):
     """Zero-network deterministic sandbox mock IPG adapter for development and testing.
@@ -219,6 +224,17 @@ class SandboxGatewayAdapter(PaymentGatewayAdapter):
             card_pan_masked=record["card_pan_masked"],
             raw_data=record,
         )
+
+    def extract_reference(self, callback_params: dict[str, Any]) -> str:
+        """Extract provider reference from sandbox callback parameters.
+
+        Accepts standard provider-agnostic keys: 'provider_reference', 'reference', 'authority'.
+        """
+        for key in ("provider_reference", "reference", "authority"):
+            val = callback_params.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()
+        return ""
 
 
 _GATEWAY_REGISTRY: dict[str, type[PaymentGatewayAdapter]] = {

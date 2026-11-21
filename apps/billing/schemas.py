@@ -62,3 +62,17 @@ class PaymentTransactionOut(Schema):
     card_pan_masked: str
     created_at: datetime
     verified_at: datetime | None
+
+
+class PaymentCallbackOut(Schema):
+    """Standardized response schema for payment gateway callback outcome (Task T-021 / ADR-006)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    booking_id: int | None = Field(default=None, description="Booking ID associated with transaction.")
+    booking_status: str = Field(..., description="Resulting booking status (CONFIRMED, EXPIRED, CANCELLED).")
+    payment_status: str = Field(..., description="Terminal payment transaction status (SUCCESS, FAILED, TIMEOUT).")
+    refund_required: bool = Field(..., description="Whether payment must be refunded to customer bank card.")
+    tracking_code: str = Field(default="", description="Gateway tracking/reference code if settled.")
+    message: str = Field(default="", description="Descriptive status message.")
+

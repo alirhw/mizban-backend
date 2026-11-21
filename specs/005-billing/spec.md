@@ -91,3 +91,37 @@ Configurable simulation modes:
 - `adapter.set_mode("failure")`: Simulates gateway decline / rejection.
 - `adapter.set_mode("timeout")`: Raises `PaymentGatewayTimeoutError` simulating an 8.0s gateway timeout.
 - `adapter.reset()`: Resets mode to `"success"` and clears in-memory transactions.
+
+---
+
+## 5. Payment Callback and Confirmation (Task T-021)
+
+**Governing Decision:** ADR-006 (`docs/adr/0006-late-payment-callback-policy.md`)  
+**Endpoint:** `/api/v1/billing/callback/` (and `/api/v1/billing/callback`, trailing-slash tolerant per Architecture Spec section 14).  
+**Methods:** `GET` and `POST`.  
+**Authentication:** `auth=None` (Public: requests originate from client browsers returning from the IPG or direct server-to-server IPG webhooks).
+
+### 5.1 Callback Decision Tree (ADR-006 / ARCH-ISSUE-02)
+
+1. **Step 1 — Server-to-Server Verification (Outside `transaction.atomic()`):**
+   - Extract `provider_reference` via gateway adapter (`extract_reference`).
+   - If reference is missing or not found in database: return HTTP 404 (`NOT_FOUND` envelope).
+   - If payload is malformed or invalid JSON: return HTTP 422 (`VALIDATION_ERROR` envelope).
+   - Execute `verify_payment_transaction(provider_reference=ref, callback_params=params)`.
+   - Never trust client parameters for status or amount; verify exact amount against stored `amount_toman`.
+   - If verification returns `FAILED` or `TIMEOUT`: transaction is updated accordingly; booking remains unconfirmed; returns HTTP 200 with `refund_required=False`.
+
+2. **Step 2 — Atomic Slot Re-Check & Row Locking (Inside `transaction.atomic()`):**
+   - Acquire exclusive row lock on `TablePin` via `TablePin.objects.select_for_update().get(...)`.
+   - Acquire exclusive row lock on `Booking` via `Booking.objects.select_for_update().get(...)`.
+   - Check slot occupancy on that table pin and slot, **excluding this booking itself**.
+   - **Outcomes:**
+     * **Case A (On-Time Success):** Lock unexpired (`lock_expires_at > now`) and slot free $\to$ transition booking to `CONFIRMED`. `refund_required = False`.
+     * **Case B (Late Callback — Slot Still Free):** Lock expired or booking lazily marked `EXPIRED`, but slot is free $\to$ transition booking to `CONFIRMED` via the ADR-006 guarded transition. `refund_required = False`.
+     * **Case C (Late Callback — Slot Occupied):** Slot held by another `CONFIRMED` booking or active `PENDING_PAYMENT` hold $\to$ booking marked `EXPIRED`. Transaction remains `SUCCESS` with `refund_required = True`.
+     * **Case D (Customer Cancelled):** Booking was `CANCELLED` $\to$ never resurrected. Booking remains `CANCELLED`, transaction has `refund_required = True`.
+
+### 5.2 Mandatory Bank Card Refund Policy
+
+When `refund_required = True` (Cases C and D), the refund **must return to the customer's original bank card/account**, never to the in-app wallet. The in-app wallet under BR-004 and TD-005 is strictly reserved for voluntary customer cancellations initiated at least 36 hours before slot time. In this Sandbox phase, `refund_required = True` is recorded as an auditable flag on `PaymentTransaction`.
+

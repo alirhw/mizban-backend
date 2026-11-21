@@ -123,6 +123,10 @@ class PaymentTransaction(models.Model):
         default="",
         help_text="Error message or failure reason if transaction failed.",
     )
+    refund_required = models.BooleanField(
+        default=False,
+        help_text="Whether this transaction requires a refund to customer bank card (e.g. late payment when slot occupied).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     verified_at = models.DateTimeField(

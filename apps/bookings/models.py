@@ -48,7 +48,9 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
         BookingStatus.CANCELLED,
         BookingStatus.COMPLETED,
     },
-    BookingStatus.EXPIRED: set(),
+    BookingStatus.EXPIRED: {
+        BookingStatus.CONFIRMED,  # Guarded transition for late payment confirmation when slot is free (ADR-006)
+    },
     BookingStatus.CANCELLED: set(),
     BookingStatus.COMPLETED: set(),
 }

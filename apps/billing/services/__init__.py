@@ -15,6 +15,8 @@ from apps.billing.services.gateway import (
     reset_sandbox_gateway,
 )
 from apps.billing.services.payment import (
+    PaymentCallbackResult,
+    handle_payment_callback,
     initiate_payment_for_booking,
     verify_payment_transaction,
 )
@@ -32,4 +34,6 @@ __all__ = [
     "reset_sandbox_gateway",
     "initiate_payment_for_booking",
     "verify_payment_transaction",
+    "handle_payment_callback",
+    "PaymentCallbackResult",
 ]

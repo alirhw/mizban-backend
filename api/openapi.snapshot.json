@@ -1207,6 +1207,50 @@
           }
         ]
       }
+    },
+    "/api/v1/billing/callback/": {
+      "get": {
+        "operationId": "apps_billing_api_payment_callback",
+        "summary": "Process payment gateway callback",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentCallbackOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Process incoming payment gateway callback (Task T-021 / ADR-006).\n\nPublic endpoint (auth=None): Gateway callbacks originate from customer browsers\nor gateway servers without an authorization header.\nExtracts reference via adapter, verifies server-to-server, and atomically confirms\nor flags for refund.",
+        "tags": [
+          "billing"
+        ]
+      },
+      "post": {
+        "operationId": "apps_billing_api_payment_callback",
+        "summary": "Process payment gateway callback",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentCallbackOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Process incoming payment gateway callback (Task T-021 / ADR-006).\n\nPublic endpoint (auth=None): Gateway callbacks originate from customer browsers\nor gateway servers without an authorization header.\nExtracts reference via adapter, verifies server-to-server, and atomically confirms\nor flags for refund.",
+        "tags": [
+          "billing"
+        ]
+      }
     }
   },
   "components": {
@@ -2483,6 +2527,58 @@
           "slot_start_time"
         ],
         "title": "BookingInitiateIn",
+        "type": "object"
+      },
+      "PaymentCallbackOut": {
+        "additionalProperties": false,
+        "description": "Standardized response schema for payment gateway callback outcome (Task T-021 / ADR-006).",
+        "properties": {
+          "booking_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Booking ID associated with transaction.",
+            "title": "Booking Id"
+          },
+          "booking_status": {
+            "description": "Resulting booking status (CONFIRMED, EXPIRED, CANCELLED).",
+            "title": "Booking Status",
+            "type": "string"
+          },
+          "payment_status": {
+            "description": "Terminal payment transaction status (SUCCESS, FAILED, TIMEOUT).",
+            "title": "Payment Status",
+            "type": "string"
+          },
+          "refund_required": {
+            "description": "Whether payment must be refunded to customer bank card.",
+            "title": "Refund Required",
+            "type": "boolean"
+          },
+          "tracking_code": {
+            "default": "",
+            "description": "Gateway tracking/reference code if settled.",
+            "title": "Tracking Code",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "description": "Descriptive status message.",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "booking_status",
+          "payment_status",
+          "refund_required"
+        ],
+        "title": "PaymentCallbackOut",
         "type": "object"
       }
     },
