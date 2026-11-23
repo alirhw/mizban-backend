@@ -9,17 +9,22 @@ Architecture rules:
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 import logging
+import math
 from typing import Any, List, Optional
 
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.http import Http404
+from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.accounts.models import UserRole
-from apps.venues.models import SubscriptionStatus, Venue
+from apps.venues.models import SubscriptionPlan, SubscriptionStatus, Venue, VenueSubscription
+from core.exceptions import InactiveSubscriptionPlanError
+from core.jalali import format_jalali
 
 logger = logging.getLogger(__name__)
 
@@ -289,3 +294,122 @@ def reject_venue(admin_user: Any, venue_id: int) -> Venue:
 
     logger.info("Admin %s rejected venue id=%s slug=%s", admin_user, vid, vslug)
     return venue
+
+
+def activate_subscription(
+    venue: Venue | int,
+    *,
+    plan: SubscriptionPlan | int,
+    activated_by: Any,
+    note: str = "",
+    now: Optional[datetime] = None,
+) -> VenueSubscription:
+    """Manually activate or stack a subscription window for a venue (Decision 5 / Task T-025).
+
+    Stacking rule:
+    - If the venue currently has an active subscription (expires_at > now),
+      starts_at = current expires_at, expires_at = starts_at + plan.duration_days.
+    - Otherwise, starts_at = now, expires_at = now + plan.duration_days.
+    """
+    current_time = now or timezone.now()
+    venue_id = venue.pk if isinstance(venue, Venue) else venue
+    plan_id = plan.pk if isinstance(plan, SubscriptionPlan) else plan
+
+    with transaction.atomic():
+        locked_venue = Venue.objects.select_for_update().filter(pk=venue_id).first()
+        if not locked_venue:
+            raise Http404("Venue not found.")
+
+        plan_obj = SubscriptionPlan.objects.filter(pk=plan_id).first()
+        if not plan_obj:
+            raise Http404("Subscription plan not found.")
+
+        if not plan_obj.is_active:
+            raise InactiveSubscriptionPlanError(
+                "Cannot activate an inactive subscription plan.",
+                details={"plan_id": plan_obj.id, "plan_name": plan_obj.name},
+            )
+
+        latest = (
+            VenueSubscription.objects.filter(venue=locked_venue)
+            .order_by("-expires_at", "-id")
+            .first()
+        )
+        if latest is not None and latest.expires_at > current_time:
+            starts_at = latest.expires_at
+        else:
+            starts_at = current_time
+
+        expires_at = starts_at + timedelta(days=plan_obj.duration_days)
+
+        sub = VenueSubscription.objects.create(
+            venue=locked_venue,
+            plan=plan_obj,
+            starts_at=starts_at,
+            expires_at=expires_at,
+            created_by=activated_by,
+            note=note or "",
+        )
+
+        # Keep legacy display status aligned; BR-005 reads VenueSubscription.expires_at > now.
+        if locked_venue.subscription_status != SubscriptionStatus.ACTIVE:
+            locked_venue.subscription_status = SubscriptionStatus.ACTIVE
+            locked_venue.save(update_fields=["subscription_status", "updated_at"])
+
+        vid, vslug = locked_venue.id, locked_venue.slug
+        transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))
+
+    logger.info(
+        "Subscription activated for venue id=%s plan_id=%s expires_at=%s",
+        vid,
+        plan_obj.id,
+        expires_at.isoformat(),
+    )
+    return sub
+
+
+def get_owner_venue_subscription(
+    user: Any,
+    venue_id: int,
+    *,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """Return current subscription status for an owner's venue (Task T-025).
+
+    Uses get_owner_venue for identical role/IDOR (403/404) enforcement.
+    """
+    venue = get_owner_venue(user, venue_id)
+    current_time = now or timezone.now()
+
+    latest = (
+        VenueSubscription.objects.select_related("plan")
+        .filter(venue=venue)
+        .order_by("-expires_at", "-id")
+        .first()
+    )
+    if latest is None:
+        return {
+            "is_active": False,
+            "plan_name": None,
+            "starts_at": None,
+            "expires_at": None,
+            "jalali_expires_at": None,
+            "days_remaining": 0,
+            "has_ever_subscribed": False,
+        }
+
+    is_active = latest.expires_at > current_time
+    days_remaining = (
+        max(0, math.ceil((latest.expires_at - current_time).total_seconds() / 86400))
+        if is_active
+        else 0
+    )
+    return {
+        "is_active": is_active,
+        "plan_name": latest.plan.name,
+        "starts_at": latest.starts_at,
+        "expires_at": latest.expires_at,
+        "jalali_expires_at": format_jalali(latest.expires_at),
+        "days_remaining": days_remaining,
+        "has_ever_subscribed": True,
+    }

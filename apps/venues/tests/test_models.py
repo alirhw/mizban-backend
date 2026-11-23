@@ -16,6 +16,7 @@ from .factories import (
     OperatingHoursFactory,
     SubscriptionFactory,
     VenueFactory,
+    activate_test_subscription,
 )
 
 pytestmark = pytest.mark.django_db
@@ -78,6 +79,8 @@ def test_public_visibility_rule_br005(is_approved, subscription_status, expected
         is_approved=is_approved,
         subscription_status=subscription_status,
     )
+    if subscription_status == SubscriptionStatus.ACTIVE:
+        activate_test_subscription(venue)
     assert venue.is_publicly_visible is expected_public
     assert Venue.objects.public().filter(pk=venue.pk).exists() is expected_public
 

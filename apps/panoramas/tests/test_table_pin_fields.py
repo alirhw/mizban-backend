@@ -36,6 +36,7 @@ from apps.panoramas.tests.factories import PanoramaImageFactory, SpaceFactory, T
 from apps.venues.models import SubscriptionStatus
 from apps.venues.tests.factories import UserFactory, VenueFactory
 from core.testing import authenticate_client
+from apps.venues.tests.factories import activate_test_subscription
 
 
 @pytest.fixture(autouse=True)
@@ -64,11 +65,13 @@ def customer_user():
 
 @pytest.fixture
 def venue(venue_owner):
-    return VenueFactory(
+    venue = VenueFactory(
         owner=venue_owner,
         is_approved=True,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(venue)
+    return venue
 
 
 @pytest.fixture

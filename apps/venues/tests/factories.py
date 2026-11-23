@@ -8,7 +8,13 @@ later, this should be replaced by an import from it.
 import factory
 from django.contrib.auth import get_user_model
 
-from apps.venues.models import DesignAddon, OperatingHours, Subscription, Venue
+from apps.venues.models import (
+    DesignAddon,
+    OperatingHours,
+    Subscription,
+    SubscriptionPlan,
+    Venue,
+)
 
 User = get_user_model()
 
@@ -58,3 +64,28 @@ class SubscriptionFactory(factory.django.DjangoModelFactory):
 
     venue = factory.SubFactory(VenueFactory)
     plan_name = "Monthly"
+
+
+class SubscriptionPlanFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = SubscriptionPlan
+
+    name = factory.Sequence(lambda n: f"Plan {n}")
+    duration_days = 30
+    price_toman = 500_000
+    is_active = True
+
+
+def activate_test_subscription(venue, *, duration_days=30, activated_by=None, note="", now=None):
+    """Helper to activate a VenueSubscription via the real activation service in tests."""
+    from apps.venues.services import activate_subscription
+
+    admin_user = activated_by or UserFactory(role="ADMIN", is_staff=True)
+    plan = SubscriptionPlanFactory(duration_days=duration_days)
+    return activate_subscription(
+        venue=venue,
+        plan=plan,
+        activated_by=admin_user,
+        note=note,
+        now=now,
+    )

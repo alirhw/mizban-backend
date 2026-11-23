@@ -288,7 +288,6 @@ def initiate_booking(
     from apps.bookings.schemas import resolve_time
     from apps.panoramas.models import TablePin
     from apps.scheduling.services import get_venue_slots_for_date
-    from apps.venues.models import SubscriptionStatus
     from core.exceptions import (
         InvalidSlotError,
         TableNotBookableError,
@@ -324,8 +323,8 @@ def initiate_booking(
         raise VenueMismatchError("The specified table does not belong to this venue.")
 
     venue = pin.venue
-    # BR-005: Admin-approved and active subscription
-    if not venue.is_approved or venue.subscription_status != SubscriptionStatus.ACTIVE:
+    # BR-005: Admin-approved and active subscription (single read path)
+    if not venue.is_approved or not venue.has_active_subscription(now=now):
         raise VenueNotBookableError("This venue is not currently accepting reservations.")
 
     # 4. Validate that requested slot is in operating hours

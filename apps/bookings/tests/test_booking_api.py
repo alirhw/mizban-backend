@@ -33,6 +33,7 @@ from apps.panoramas.tests.factories import TablePinFactory
 from apps.venues.models import SubscriptionStatus
 from apps.venues.tests.factories import DesignAddonFactory, UserFactory, VenueFactory
 from core.jalali import format_jalali, to_jalali
+from apps.venues.tests.factories import activate_test_subscription
 
 
 @pytest.fixture(autouse=True)
@@ -93,11 +94,13 @@ def admin_user():
 
 @pytest.fixture
 def active_venue(owner_user):
-    return VenueFactory(
+    venue = VenueFactory(
         owner=owner_user,
         is_approved=True,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(venue)
+    return venue
 
 
 @pytest.fixture
@@ -355,6 +358,7 @@ def test_unapproved_or_inactive_venue_returns_400(api, customer_user, owner_user
         is_approved=False,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(unapproved_venue)
     pin_unapproved = TablePinFactory(venue=unapproved_venue)
 
     resp_unapp = api.post_json(
@@ -390,6 +394,7 @@ def test_venue_mismatch_returns_400(api, customer_user, active_venue, table_pin,
         is_approved=True,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(other_venue)
     target_date = (dj_timezone.now() + timedelta(days=2)).date()
 
     payload = {

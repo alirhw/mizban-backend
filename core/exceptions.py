@@ -120,6 +120,14 @@ class VenueNotBookableError(DomainError):
     default_message = "This venue is not currently available for reservations."
 
 
+class InactiveSubscriptionPlanError(DomainError):
+    """Decision 5: an inactive subscription plan cannot be used for new activations."""
+
+    error_code = "INACTIVE_SUBSCRIPTION_PLAN"
+    status_code = 400
+    default_message = "Cannot activate an inactive subscription plan."
+
+
 class TableNotBookableError(DomainError):
     """Table is inactive or not available."""
 

@@ -29,6 +29,7 @@ from apps.panoramas.tests.factories import PanoramaImageFactory, SpaceFactory, T
 from apps.venues.models import SubscriptionStatus
 from apps.venues.tests.factories import UserFactory, VenueFactory
 from core.testing import authenticate_client
+from apps.venues.tests.factories import activate_test_subscription
 
 
 @pytest.fixture(autouse=True)
@@ -58,11 +59,13 @@ def customer_user():
 
 @pytest.fixture
 def venue(venue_owner):
-    return VenueFactory(
+    venue = VenueFactory(
         owner=venue_owner,
         is_approved=True,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(venue)
+    return venue
 
 
 @pytest.fixture
@@ -532,9 +535,8 @@ class TestPublicPanoramaReadEndpoint:
         assert resp.json()["error_code"] == "NOT_FOUND"
 
     def test_inactive_subscription_returns_404(self, client: Client, space, ready_panorama):
-        """BR-005: Inactive subscription returns 404."""
-        space.venue.subscription_status = SubscriptionStatus.INACTIVE
-        space.venue.save(update_fields=["subscription_status"])
+        """BR-005: Inactive/expired subscription returns 404."""
+        space.venue.venue_subscriptions.all().delete()
 
         resp = client.get(f"/api/v1/spaces/{space.id}/panorama")
         assert resp.status_code == 404
@@ -561,8 +563,8 @@ class TestPublicPanoramaReadEndpoint:
         for i in range(10):
             TablePinFactory(venue=space.venue, space=space, table_number=f"T-P{i}", is_active=True)
 
-        # The query count must remain small and bounded (<= 4 queries total: space/venue/active_pano + pins + pano fallback + savepoints/auth if any)
-        with django_assert_num_queries(3):
+        # The query count must remain small and bounded (space/venue + has_active_subscription EXISTS + active_pano + pins)
+        with django_assert_num_queries(4):
             resp = client.get(f"/api/v1/spaces/{space.id}/panorama")
             assert resp.status_code == 200
             assert len(resp.json()["pins"]) == 10

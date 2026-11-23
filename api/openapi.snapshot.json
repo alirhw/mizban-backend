@@ -326,6 +326,44 @@
         ]
       }
     },
+    "/api/v1/venues/owner/venues/{venue_id}/subscription/": {
+      "get": {
+        "operationId": "apps_venues_api_get_my_venue_subscription",
+        "summary": "Get owner venue subscription status (Decision 5)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueSubscriptionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read-only subscription status for the authenticated owner's venue.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/venues/admin/venues/{venue_id}/approve": {
       "post": {
         "operationId": "apps_venues_api_approve_venue_endpoint",
@@ -1868,6 +1906,77 @@
           }
         },
         "title": "VenueUpdateIn",
+        "type": "object"
+      },
+      "VenueSubscriptionOut": {
+        "additionalProperties": false,
+        "description": "Owner read-only subscription status payload (Decision 5 / Task T-025).",
+        "properties": {
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "plan_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Name"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "jalali_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jalali Expires At"
+          },
+          "days_remaining": {
+            "title": "Days Remaining",
+            "type": "integer"
+          },
+          "has_ever_subscribed": {
+            "title": "Has Ever Subscribed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_active",
+          "days_remaining",
+          "has_ever_subscribed"
+        ],
+        "title": "VenueSubscriptionOut",
         "type": "object"
       },
       "VenueApprovalOut": {

@@ -31,6 +31,7 @@ from apps.venues.tests.factories import (
     OperatingHoursFactory,
     UserFactory,
     VenueFactory,
+    activate_test_subscription,
 )
 
 
@@ -111,12 +112,14 @@ def test_public_venues_list_excludes_unapproved_and_inactive(api):
         is_approved=True,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(approved_active)
     unapproved = VenueFactory(
         name="Hidden Cafe Unapproved",
         slug="hidden-cafe",
         is_approved=False,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(unapproved)
     inactive_sub = VenueFactory(
         name="Hidden Cafe Inactive",
         slug="inactive-cafe",
@@ -143,6 +146,7 @@ def test_public_venues_response_never_exposes_owner_phone(api):
         is_approved=True,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(venue)
     OperatingHoursFactory(venue=venue)
     DesignAddonFactory(venue=venue)
 
@@ -167,6 +171,7 @@ def test_public_venue_detail_unapproved_returns_404(api):
         is_approved=False,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(venue)
     response = api.get(f"/api/v1/venues/{venue.slug}")
     assert response.status_code == 404
 
@@ -338,6 +343,7 @@ def test_public_venue_detail_caching_and_invalidation_on_update(api, owner_user)
         is_approved=True,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(venue)
     cache_key = get_venue_slug_cache_key(venue.slug)
 
     # 1. Initial request populates cache
@@ -372,6 +378,7 @@ def test_cache_invalidation_on_admin_approval(api, admin_user, owner_user):
         is_approved=False,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(venue)
     cache_key = get_venue_slug_cache_key(venue.slug)
 
     # Prime cache manually to simulate any state

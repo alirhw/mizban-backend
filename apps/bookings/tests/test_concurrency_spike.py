@@ -35,6 +35,7 @@ from apps.panoramas.tests.factories import TablePinFactory
 from apps.venues.models import SubscriptionStatus
 from apps.venues.tests.factories import UserFactory, VenueFactory
 from core.exceptions import SlotAlreadyReservedError
+from apps.venues.tests.factories import activate_test_subscription
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -153,6 +154,7 @@ def test_spike_service_multiway_contention_20_rounds():
 
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    activate_test_subscription(venue)
     pin = TablePinFactory(venue=venue)
 
     base_date = (dj_timezone.now() + timedelta(days=2)).date()
@@ -261,6 +263,7 @@ def test_spike_high_contention_10_way_10_rounds():
 
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    activate_test_subscription(venue)
     pin = TablePinFactory(venue=venue)
     base_date = (dj_timezone.now() + timedelta(days=3)).date()
 
@@ -387,6 +390,7 @@ def test_spike_api_multiway_contention_10_rounds(settings):
 
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    activate_test_subscription(venue)
     pin = TablePinFactory(venue=venue)
     base_date = (dj_timezone.now() + timedelta(days=4)).date()
 
@@ -448,6 +452,7 @@ def test_spike_independent_slots_concurrency_no_cross_blocking():
     CONCURRENCY = 5
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    activate_test_subscription(venue)
     pins = [TablePinFactory(venue=venue) for _ in range(CONCURRENCY)]
     users = [UserFactory(role=UserRole.CUSTOMER) for _ in range(CONCURRENCY)]
     target_date = (dj_timezone.now() + timedelta(days=5)).date()

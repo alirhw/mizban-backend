@@ -41,6 +41,7 @@ from apps.panoramas.tests.factories import PanoramaImageFactory, SpaceFactory, T
 from apps.venues.models import SubscriptionStatus
 from apps.venues.tests.factories import UserFactory, VenueFactory
 from core.testing import authenticate_client
+from apps.venues.tests.factories import activate_test_subscription
 
 
 @pytest.fixture(autouse=True)
@@ -75,20 +76,24 @@ def customer_user():
 
 @pytest.fixture
 def venue(venue_owner):
-    return VenueFactory(
+    venue = VenueFactory(
         owner=venue_owner,
         is_approved=True,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(venue)
+    return venue
 
 
 @pytest.fixture
 def unapproved_venue(venue_owner):
-    return VenueFactory(
+    venue = VenueFactory(
         owner=venue_owner,
         is_approved=False,
         subscription_status=SubscriptionStatus.ACTIVE,
     )
+    activate_test_subscription(venue)
+    return venue
 
 
 @pytest.fixture
@@ -345,9 +350,9 @@ class TestSpaceDetailDualPurpose:
         assert resp.status_code == 404
 
     def test_get_space_detail_bounded_queries(self, client: Client, space, django_assert_num_queries):
-        """Single space detail executes a single query with select_related (zero N+1)."""
+        """Single space detail executes bounded queries with select_related (space+venue + subscription EXISTS, zero N+1)."""
         url = f"/api/v1/spaces/{space.id}/"
-        with django_assert_num_queries(1):
+        with django_assert_num_queries(2):
             resp = client.get(url)
             assert resp.status_code == 200
 
@@ -569,7 +574,7 @@ class TestPublicSpaceListing:
             SpaceFactory(venue=venue, name=f"Bulk Space {i}", display_order=i, is_active=True)
 
         url = f"/api/v1/venues/{venue.slug}/spaces/"
-        with django_assert_num_queries(2):
+        with django_assert_num_queries(3):
             resp = client.get(url)
             assert resp.status_code == 200
             assert len(resp.json()) >= 5

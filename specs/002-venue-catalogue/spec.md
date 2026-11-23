@@ -75,3 +75,26 @@ Scenario: overnight hours
 ## 8. Open questions (each gets a business answer, or "not in v1")
 - Weekday convention: resolved - Python 0=Monday..6=Sunday stored; the
   Jalali-to-weekday mapping is implemented in T-010, not in the schema.
+
+---
+
+## 9. Subscription Plans & Manual Admin Activation (Task T-025 / Decision 5)
+
+**Governing Rules:** BR-005 (Public visibility & bookability require `is_approved=True` AND active subscription), Decision 5 (2026-11-20), FR-008/FR-012, ARCH-006 (UTC storage, Jalali presentation only).
+
+### 9.1 Design Forced by Repository (One Write Path, One Read Path)
+Preconditions confirmed `Venue` had only a static enum `subscription_status` (`INACTIVE | ACTIVE | EXPIRED`) and no expiry timestamp field. Therefore:
+- **One Read Path:** Subscription activity is derived from `VenueSubscription` records (`expires_at > now`) through `Venue.has_active_subscription(now=None)` and `VenueQuerySet.public(now=None)`. Every BR-005 check (`Venue.is_publicly_visible`, `list_public_venues`, `get_public_venue_by_slug`, `apps/panoramas/services.py`, `apps/bookings/services.py:initiate_booking`) routes through this single read path.
+- **One Write Path:** `activate_subscription(venue, *, plan, activated_by, note="", now=None)` inside `transaction.atomic()` with `Venue.objects.select_for_update()` is the sole write path creating `VenueSubscription` records and invalidating venue metadata cache on commit.
+
+### 9.2 Data Models (`apps/venues/models.py`, Migration `0002_subscriptionplan_venuesubscription.py`)
+- **`SubscriptionPlan`:** `name` (unique), `duration_days` (`> 0` CheckConstraint), `price_toman` (`BigIntegerField >= 0` CheckConstraint), `is_active` (default `True`), `created_at`, `updated_at`. No seed plans or hard-coded prices. Inactive plans cannot be used for new activations (`InactiveSubscriptionPlanError`, 400 `INACTIVE_SUBSCRIPTION_PLAN`), while existing subscriptions survive until expiry.
+- **`VenueSubscription`:** `venue` (`CASCADE`, `related_name="venue_subscriptions"`), `plan` (`PROTECT`), `starts_at` (UTC), `expires_at` (UTC, indexed), `created_by` (`PROTECT`), `created_at`, `note` (optional offline-coordination reference). CheckConstraint `expires_at > starts_at`.
+
+### 9.3 Stacking Activation Rule
+- If the venue currently has an active subscription (`latest.expires_at > now`): `starts_at = latest.expires_at`, `expires_at = starts_at + timedelta(days=plan.duration_days)`.
+- Otherwise (never subscribed or expired): `starts_at = now`, `expires_at = now + timedelta(days=plan.duration_days)`.
+
+### 9.4 Django Admin & Owner Read Endpoint
+- **Django Admin (`apps/venues/admin.py`):** `SubscriptionPlanAdmin` supports full CRUD. `VenueSubscriptionAdmin` is **add-only** (`has_change_permission=False`, `has_delete_permission=False`); its add form accepts only `venue`, `plan`, `note` (`starts_at`/`expires_at` uneditable) and delegates all date computation to `activate_subscription`.
+- **Owner Read Endpoint (`apps/venues/api.py`):** `GET /api/v1/venues/owner/venues/{venue_id}/subscription/` (and `/subscription`), `ActiveSessionAuth`, owner-only (401/403/404 via `get_owner_venue`), returning `VenueSubscriptionOut(is_active, plan_name, starts_at, expires_at, jalali_expires_at, days_remaining, has_ever_subscribed)`. No purchase, renewal, or public plan-catalogue endpoint exists in this task (post-MVP per Decision 1).

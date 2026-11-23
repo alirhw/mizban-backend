@@ -23,6 +23,7 @@ from apps.venues.schemas import (
     VenueOwnerOut,
     VenuePublicDetailOut,
     VenuePublicItemOut,
+    VenueSubscriptionOut,
     VenueUpdateIn,
 )
 
@@ -74,6 +75,24 @@ def update_my_venue(request, venue_id: int, payload: VenueUpdateIn):
         description=payload.description,
     )
     return venue
+
+
+@router.get(
+    "/owner/venues/{venue_id}/subscription/",
+    response=VenueSubscriptionOut,
+    auth=auth,
+    summary="Get owner venue subscription status (Decision 5)",
+)
+@router.get(
+    "/owner/venues/{venue_id}/subscription",
+    response=VenueSubscriptionOut,
+    auth=auth,
+    summary="Get owner venue subscription status (trailing-slash alias)",
+    include_in_schema=False,
+)
+def get_my_venue_subscription(request, venue_id: int):
+    """Read-only subscription status for the authenticated owner's venue."""
+    return services.get_owner_venue_subscription(request.auth, venue_id)
 
 
 # ---------------------------------------------------------------------------

@@ -1,9 +1,17 @@
 """Venue catalogue admin (Task T-009 enhanced with approval actions & cache invalidation)."""
+from django import forms
 from django.contrib import admin
 from django.db import transaction
 
-from .models import DesignAddon, OperatingHours, Subscription, Venue
-from .services import invalidate_venue_cache
+from .models import (
+    DesignAddon,
+    OperatingHours,
+    Subscription,
+    SubscriptionPlan,
+    Venue,
+    VenueSubscription,
+)
+from .services import activate_subscription, invalidate_venue_cache
 
 
 @admin.register(Venue)
@@ -68,3 +76,45 @@ class DesignAddonAdmin(admin.ModelAdmin):
 class SubscriptionAdmin(admin.ModelAdmin):
     list_display = ("venue", "plan_name", "status", "started_at", "expires_at")
     list_filter = ("status",)
+
+
+@admin.register(SubscriptionPlan)
+class SubscriptionPlanAdmin(admin.ModelAdmin):
+    list_display = ("name", "duration_days", "price_toman", "is_active", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("name",)
+
+
+class VenueSubscriptionAddForm(forms.ModelForm):
+    class Meta:
+        model = VenueSubscription
+        fields = ("venue", "plan", "note")
+
+
+@admin.register(VenueSubscription)
+class VenueSubscriptionAdmin(admin.ModelAdmin):
+    """Add-only admin delegating all window computation to activate_subscription."""
+
+    form = VenueSubscriptionAddForm
+    list_display = ("venue", "plan", "starts_at", "expires_at", "created_by", "created_at")
+    list_filter = ("venue", "plan")
+    readonly_fields = ("starts_at", "expires_at", "created_by", "created_at")
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    def save_model(self, request, obj, form, change):
+        created = activate_subscription(
+            venue=form.cleaned_data["venue"],
+            plan=form.cleaned_data["plan"],
+            activated_by=request.user,
+            note=form.cleaned_data.get("note", ""),
+        )
+        obj.pk = created.pk
+        obj.starts_at = created.starts_at
+        obj.expires_at = created.expires_at
+        obj.created_by = created.created_by
+        obj.created_at = created.created_at

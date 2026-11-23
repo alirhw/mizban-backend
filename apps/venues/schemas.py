@@ -10,6 +10,7 @@ from datetime import datetime, time
 from typing import List, Optional
 
 from ninja import Schema
+from pydantic import ConfigDict
 
 
 class OperatingHoursOut(Schema):
@@ -92,3 +93,17 @@ class VenueApprovalOut(Schema):
     slug: str
     is_approved: bool
     message: str
+
+
+class VenueSubscriptionOut(Schema):
+    """Owner read-only subscription status payload (Decision 5 / Task T-025)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: bool
+    plan_name: Optional[str] = None
+    starts_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    jalali_expires_at: Optional[str] = None
+    days_remaining: int
+    has_ever_subscribed: bool
