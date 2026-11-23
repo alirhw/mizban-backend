@@ -7,6 +7,7 @@
 | **T-010.3** | Implement Pydantic schema `SlotOut` and Ninja API router in `apps/scheduling/` | `backend-api-engineer` | Done | T-010.2 |
 | **T-010.4** | Unskip and pass fail-first tests in `test_slot_rules.py` + add edge case tests | `test-engineer` | Done | T-010.1, T-010.2 |
 | **T-010.5** | Review & Gate Packet compilation (Accepted by Human Gate) | `orchestrator` | Done | All |
+| **T-026** | `BlockedSlot` model, service, owner endpoints, availability/booking lock integration, and concurrency tests (FR-011) | `booking-lock-engineer` | Done | T-010.5, T-012, T-007 |
 
 ### Boundary Notes Recorded:
 1. `GET /api/v1/scheduling/venues/{venue_id}/slots` was built and verified in T-010; Task T-013 now covers only initiate-booking (plus lock integration).

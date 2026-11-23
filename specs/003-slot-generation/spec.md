@@ -39,3 +39,28 @@ Customers need to book visual table reservations during venue operating hours. S
 ## 7. Out of Scope & Task Boundaries
 * **Task T-012 (Atomic Booking Lock):** Concurrency lock and race handling. The remaining skipped test `apps/bookings/tests/test_booking_race.py::test_two_simultaneous_initiates_exactly_one_wins` is the fail-first spec for **Task T-012**, not T-011.
 * **Task T-013 (Initiate-Booking & Lock Integration):** The public `GET /api/v1/scheduling/venues/{venue_id}/slots` endpoint is implemented and delivered in T-010. Task T-013 scope is accordingly adjusted to cover only initiate-booking and lock integration.
+
+---
+
+## 8. Manual Slot Blocking by Venue Owners (Task T-026 / FR-011)
+
+**Owning App:** `apps/scheduling` (`booking-lock-engineer` per `ownership.yaml`).  
+**Migration:** `apps/scheduling/migrations/0001_initial.py` (no `apps/bookings` or `apps/wallets` migration).
+
+### 8.1 Governing Policies
+1. **Single Pin + Single Generated Slot:** A `BlockedSlot` covers ONE `TablePin` and ONE concrete generated slot `[start_at, end_at)` derived server-side from `get_venue_slots_for_date` (no whole-day, venue/space-wide, or arbitrary ranges).
+2. **Never Overrides Existing Bookings:** Creating a block over a slot with an occupying booking (`CONFIRMED` or `PENDING_PAYMENT` with `lock_expires_at > now`) is rejected with HTTP 409 `SLOT_ALREADY_RESERVED`.
+3. **Shared `TablePin` Row Lock:** `create_blocked_slot` acquires `TablePin.objects.select_for_update()` inside `transaction.atomic()` — the exact same lock as `create_booking_lock` — guaranteeing serialisation under concurrent block vs book attempts.
+4. **Hard-Delete Unblocking:** Deleting a `BlockedSlot` hard-deletes the row and immediately restores slot availability; past blocks may also be deleted for cleanup.
+
+### 8.2 Availability & Booking Indistinguishability
+- Public availability (`filter_available_slots_for_table` / `is_table_slot_occupied`) **omits** blocked slots identically to occupied slots.
+- Booking initiation (`create_booking_lock`) raises the exact same `SlotAlreadyReservedError` (`SLOT_ALREADY_RESERVED`, HTTP 409) so customers cannot distinguish owner blocks from bookings.
+- `BlockedSlot.reason` is owner-private and never exposed in any public response.
+- Owners may block any future slot (`start_at > now`), including slots $< 24\text{h}$ away (BR-002 lead time binds customers only). Past slots (`start_at <= now`) raise `InvalidSlotError` (`INVALID_SLOT`, HTTP 400); misaligned `start_at` raises `ValidationError` (`VALIDATION_ERROR`, HTTP 422).
+
+### 8.3 Endpoints (`apps/scheduling/api.py`, `ActiveSessionAuth`, owner-only)
+- `POST /api/v1/scheduling/pins/{pin_id}/blocked-slots/` (`BlockedSlotCreateIn(start_at, reason)`) $\to$ `201 BlockedSlotOut(id, pin_id, start_at, end_at, jalali_start_at, reason)`
+- `GET /api/v1/scheduling/pins/{pin_id}/blocked-slots/` $\to$ `200 List[BlockedSlotOut]` (upcoming `start_at >= now`, ordered by `start_at`, capped at 100)
+- `DELETE /api/v1/scheduling/blocked-slots/{block_id}/` $\to$ `204`
+- Registered read-only in Django Admin (`apps/scheduling/admin.py`).

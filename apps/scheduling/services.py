@@ -17,11 +17,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 from zoneinfo import ZoneInfo
 
+from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+from django.db import models, transaction
+from django.http import Http404
 from django.utils import timezone as dj_timezone
 
+from core.exceptions import InvalidSlotError, SlotAlreadyReservedError
 from core.jalali import TEHRAN, parse_jalali_date
 
 if TYPE_CHECKING:
@@ -172,3 +176,149 @@ def get_venue_slots_for_date(
         slots = filter_available_slots_for_table(table_pin=table_pin, slots=slots, now=now)
 
     return slots
+
+
+BLOCKED_SLOT_LIST_LIMIT = 100
+
+
+def _find_matching_generated_slot(venue: Any, start_at_utc: datetime, now: datetime) -> Optional[Slot]:
+    """Verify start_at_utc matches an exact slot generated for the venue's operating hours."""
+    local_date = start_at_utc.astimezone(TEHRAN).date()
+    for candidate_date in (local_date, local_date - timedelta(days=1)):
+        for slot in get_venue_slots_for_date(venue, on_date=candidate_date, now=now):
+            if slot.start == start_at_utc:
+                return slot
+    return None
+
+
+def create_blocked_slot(
+    *,
+    user: Any,
+    pin_id: int,
+    start_at: datetime,
+    reason: str = "",
+    now: Optional[datetime] = None,
+) -> Any:
+    """Create a manual BlockedSlot for one TablePin and one generated slot window (FR-011 / T-026).
+
+    Policies:
+    - Owner/admin authorization via authorize_pin_owner (403/404).
+    - Past slot (start_at <= now) rejected with InvalidSlotError (400 INVALID_SLOT).
+    - start_at must align with an exact generated slot for the pin's venue (422 VALIDATION_ERROR).
+    - Acquires TablePin row lock (select_for_update) inside transaction.atomic().
+    - Rejects if any CONFIRMED or active PENDING_PAYMENT booking overlaps (409 SLOT_ALREADY_RESERVED).
+    - Rejects if any existing BlockedSlot overlaps (409 SLOT_ALREADY_RESERVED).
+    """
+    from apps.bookings.models import Booking, BookingStatus
+    from apps.panoramas.models import TablePin
+    from apps.panoramas.services import authorize_pin_owner
+    from apps.scheduling.models import BlockedSlot
+
+    current_time = now or dj_timezone.now()
+    if dj_timezone.is_naive(current_time):
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    else:
+        current_time = current_time.astimezone(timezone.utc)
+
+    if dj_timezone.is_naive(start_at):
+        start_at_utc = start_at.replace(tzinfo=timezone.utc)
+    else:
+        start_at_utc = start_at.astimezone(timezone.utc)
+
+    pin = authorize_pin_owner(user, pin_id)
+
+    if start_at_utc <= current_time:
+        raise InvalidSlotError("Cannot block a slot that has already started or is in the past.")
+
+    matched_slot = _find_matching_generated_slot(pin.venue, start_at_utc, current_time)
+    if matched_slot is None:
+        raise DjangoValidationError(
+            {"start_at": ["start_at must align exactly with a generated slot for this venue."]}
+        )
+
+    end_at_utc = matched_slot.end
+
+    with transaction.atomic():
+        locked_pin = TablePin.objects.select_for_update().get(pk=pin.pk)
+
+        # Expire stale unpaid holds before checking occupying bookings
+        Booking.objects.filter(
+            table_pin_id=locked_pin.pk,
+            status=BookingStatus.PENDING_PAYMENT,
+            lock_expires_at__lte=current_time,
+        ).update(status=BookingStatus.EXPIRED, updated_at=current_time)
+
+        has_booking_conflict = (
+            Booking.objects.filter(
+                table_pin_id=locked_pin.pk,
+                start_at__lt=end_at_utc,
+                end_at__gt=start_at_utc,
+            )
+            .filter(
+                models.Q(status=BookingStatus.CONFIRMED)
+                | models.Q(status=BookingStatus.PENDING_PAYMENT, lock_expires_at__gt=current_time)
+            )
+            .exists()
+        )
+        if has_booking_conflict:
+            raise SlotAlreadyReservedError(
+                "Cannot block a slot that already has a confirmed or pending booking."
+            )
+
+        has_block_conflict = BlockedSlot.objects.filter(
+            table_pin_id=locked_pin.pk,
+            start_at__lt=end_at_utc,
+            end_at__gt=start_at_utc,
+        ).exists()
+        if has_block_conflict:
+            raise SlotAlreadyReservedError("This slot is already blocked.")
+
+        return BlockedSlot.objects.create(
+            table_pin=locked_pin,
+            start_at=start_at_utc,
+            end_at=end_at_utc,
+            reason=(reason or "").strip(),
+            created_by=user,
+        )
+
+
+def list_blocked_slots(
+    *,
+    user: Any,
+    pin_id: int,
+    now: Optional[datetime] = None,
+    limit: int = BLOCKED_SLOT_LIST_LIMIT,
+) -> list:
+    """List upcoming blocked slots for an owner's TablePin ordered by start_at."""
+    from apps.panoramas.services import authorize_pin_owner
+    from apps.scheduling.models import BlockedSlot
+
+    pin = authorize_pin_owner(user, pin_id)
+    current_time = now or dj_timezone.now()
+    return list(
+        BlockedSlot.objects.filter(table_pin=pin, start_at__gte=current_time)
+        .order_by("start_at")[:limit]
+    )
+
+
+def delete_blocked_slot(*, user: Any, block_id: int) -> None:
+    """Hard-delete a BlockedSlot owned by the caller (Task T-026 / FR-011)."""
+    from apps.accounts.models import UserRole
+    from apps.scheduling.models import BlockedSlot
+
+    if not (
+        getattr(user, "is_staff", False)
+        or getattr(user, "role", None) in (UserRole.VENUE_OWNER, UserRole.ADMIN)
+    ):
+        raise PermissionDenied("Only venue owners or admins can manage blocked slots.")
+
+    block = BlockedSlot.objects.select_related("table_pin__venue").filter(pk=block_id).first()
+    if not block:
+        raise Http404("Blocked slot not found.")
+
+    if block.table_pin.venue.owner_id != user.id and not (
+        user.is_staff or user.role == UserRole.ADMIN
+    ):
+        raise PermissionDenied("You do not own the venue for this blocked slot.")
+
+    block.delete()

@@ -129,14 +129,26 @@ def is_table_slot_occupied(
     qs = Booking.objects.filter(table_pin_id=pin_id)
     if start_at is not None:
         qs = qs.filter(start_at=start_at)
+        slot_start = start_at
     elif slot_date is not None and slot_start_time is not None:
         qs = qs.filter(slot_date=slot_date, slot_start_time=slot_start_time)
+        slot_start = datetime.combine(slot_date, slot_start_time, tzinfo=TEHRAN).astimezone(timezone.utc)
     else:
         raise ValueError("Must provide either start_at or both slot_date and slot_start_time.")
 
-    return qs.filter(
+    if qs.filter(
         models.Q(status=BookingStatus.CONFIRMED)
         | models.Q(status=BookingStatus.PENDING_PAYMENT, lock_expires_at__gt=now)
+    ).exists():
+        return True
+
+    from apps.scheduling.models import BlockedSlot
+
+    slot_end = slot_start + SLOT_DURATION
+    return BlockedSlot.objects.filter(
+        table_pin_id=pin_id,
+        start_at__lt=slot_end,
+        end_at__gt=slot_start,
     ).exists()
 
 
@@ -214,6 +226,18 @@ def create_booking_lock(
 
         # REQ-LOCK-003: Check if an active confirmed booking or active lock exists
         if Booking.objects.active_locks_for_slot(pin.pk, slot_date, slot_start_time, now=now).exists():
+            raise SlotAlreadyReservedError(
+                "This table is currently reserved or locked by another customer for this slot."
+            )
+
+        # FR-011: Treat owner-blocked slots identically to occupied slots (no info leakage)
+        from apps.scheduling.models import BlockedSlot
+
+        if BlockedSlot.objects.filter(
+            table_pin_id=pin.pk,
+            start_at__lt=end_at_utc,
+            end_at__gt=start_at_utc,
+        ).exists():
             raise SlotAlreadyReservedError(
                 "This table is currently reserved or locked by another customer for this slot."
             )

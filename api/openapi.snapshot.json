@@ -1353,6 +1353,125 @@
         ]
       }
     },
+    "/api/v1/scheduling/pins/{pin_id}/blocked-slots/": {
+      "post": {
+        "operationId": "apps_scheduling_api_create_blocked_slot_endpoint",
+        "summary": "Block a single slot on a table pin (FR-011)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pin_id",
+            "schema": {
+              "title": "Pin Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockedSlotOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create an owner-manual slot block (returns 201 BlockedSlotOut).",
+        "tags": [
+          "scheduling"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockedSlotCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "apps_scheduling_api_list_blocked_slots_endpoint",
+        "summary": "List upcoming blocked slots for a table pin (FR-011)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pin_id",
+            "schema": {
+              "title": "Pin Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BlockedSlotOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "List upcoming blocked slots for an owner's table pin ordered by start_at.",
+        "tags": [
+          "scheduling"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scheduling/blocked-slots/{block_id}/": {
+      "delete": {
+        "operationId": "apps_scheduling_api_delete_blocked_slot_endpoint",
+        "summary": "Unblock (hard-delete) a blocked slot (FR-011)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "block_id",
+            "schema": {
+              "title": "Block Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "Hard-delete a BlockedSlot owned by the caller.",
+        "tags": [
+          "scheduling"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/bookings/initiate/": {
       "post": {
         "operationId": "apps_bookings_api_initiate_booking_endpoint",
@@ -2808,6 +2927,72 @@
           "is_bookable"
         ],
         "title": "SlotOut",
+        "type": "object"
+      },
+      "BlockedSlotOut": {
+        "additionalProperties": false,
+        "description": "Owner response payload for a BlockedSlot (FR-011).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "pin_id": {
+            "title": "Pin Id",
+            "type": "integer"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          },
+          "end_at": {
+            "format": "date-time",
+            "title": "End At",
+            "type": "string"
+          },
+          "jalali_start_at": {
+            "title": "Jalali Start At",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "pin_id",
+          "start_at",
+          "end_at",
+          "jalali_start_at",
+          "reason"
+        ],
+        "title": "BlockedSlotOut",
+        "type": "object"
+      },
+      "BlockedSlotCreateIn": {
+        "additionalProperties": false,
+        "description": "Owner request payload for blocking one generated slot on a TablePin (FR-011).",
+        "properties": {
+          "start_at": {
+            "description": "Exact slot start instant (UTC) from availability API",
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "description": "Optional owner-private reason",
+            "maxLength": 255,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_at"
+        ],
+        "title": "BlockedSlotCreateIn",
         "type": "object"
       },
       "BookingInitiateOut": {
