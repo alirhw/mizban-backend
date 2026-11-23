@@ -6,6 +6,7 @@ test suite run with no services up. SQLite is NEVER proof of booking
 concurrency behaviour - the race tests require PostgreSQL (TD-004).
 """
 import os
+import sys
 
 from .base import *  # noqa: F401,F403
 from .base import BASE_DIR
@@ -13,6 +14,9 @@ from .base import BASE_DIR
 DEBUG = True
 SECRET_KEY = SECRET_KEY or "dev-only-insecure-key-do-not-use-in-production"  # noqa: F405
 ALLOWED_HOSTS = ["*"]
+
+if not os.environ.get("SMS_SENDER") and "pytest" in sys.modules:
+    SMS_SENDER = "fake"
 
 if not os.environ.get("DATABASE_URL"):
     DATABASES = {

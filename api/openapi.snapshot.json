@@ -29,6 +29,72 @@
         ]
       }
     },
+    "/api/v1/auth/otp/request/": {
+      "post": {
+        "operationId": "apps_accounts_api_request_otp_endpoint",
+        "summary": "Request a 5-digit OTP code via SMS (TD-006)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OtpRequestOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Issue a 5-digit OTP code with Redis rate limiting (3/10m per phone and per IP).",
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OtpRequestIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/auth/otp/verify/": {
+      "post": {
+        "operationId": "apps_accounts_api_verify_otp_endpoint",
+        "summary": "Verify an OTP code and resolve user identity (TD-006)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OtpVerifyOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Verify the OTP code and resolve (get_or_create) the User.\n\nSession cookie issuance is deferred to Task T-007.",
+        "tags": [
+          "accounts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OtpVerifyIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/api/v1/venues/owner/venues": {
       "get": {
         "operationId": "apps_venues_api_list_my_venues",
@@ -1352,6 +1418,91 @@
           "redis"
         ],
         "title": "HealthOut",
+        "type": "object"
+      },
+      "OtpRequestOut": {
+        "additionalProperties": false,
+        "description": "Generic response payload for OTP request (no account enumeration).",
+        "properties": {
+          "sent": {
+            "title": "Sent",
+            "type": "boolean"
+          },
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sent",
+          "expires_in_seconds"
+        ],
+        "title": "OtpRequestOut",
+        "type": "object"
+      },
+      "OtpRequestIn": {
+        "additionalProperties": false,
+        "description": "Request payload for requesting an OTP verification code.",
+        "properties": {
+          "phone": {
+            "description": "Iranian mobile number (09xxxxxxxxx, +98..., 0098...)",
+            "title": "Phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phone"
+        ],
+        "title": "OtpRequestIn",
+        "type": "object"
+      },
+      "OtpVerifyOut": {
+        "additionalProperties": false,
+        "description": "Verified user identity returned on OTP verification (session cookie deferred to T-007).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "phone",
+          "role"
+        ],
+        "title": "OtpVerifyOut",
+        "type": "object"
+      },
+      "OtpVerifyIn": {
+        "additionalProperties": false,
+        "description": "Request payload for verifying an OTP code.",
+        "properties": {
+          "phone": {
+            "description": "Iranian mobile number",
+            "title": "Phone",
+            "type": "string"
+          },
+          "code": {
+            "description": "5-digit OTP code",
+            "maxLength": 10,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phone",
+          "code"
+        ],
+        "title": "OtpVerifyIn",
         "type": "object"
       },
       "DesignAddonOut": {

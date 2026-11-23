@@ -145,6 +145,10 @@ PAYMENT_GATEWAY_PROVIDER = env("PAYMENT_GATEWAY_PROVIDER", default="sandbox")
 PAYMENT_GATEWAY_TIMEOUT_SECONDS = env.float("PAYMENT_GATEWAY_TIMEOUT_SECONDS", default=8.0)
 PAYMENT_GATEWAY_CALLBACK_BASE_URL = env("PAYMENT_GATEWAY_CALLBACK_BASE_URL", default="http://127.0.0.1:8000")
 
+# --- OTP & SMS Adapter Configuration (Task T-006 / TD-006) ---
+SMS_SENDER = env("SMS_SENDER", default="console")
+OTP_TTL_SECONDS = env.int("OTP_TTL_SECONDS", default=120)
+
 # --- Observability (Architecture Spec section 25) ---
 SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:

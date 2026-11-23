@@ -224,6 +224,30 @@ class PaymentAlreadyProcessedError(DomainError):
     default_message = "Payment transaction has already been processed."
 
 
+class OtpRateLimitedError(DomainError):
+    """TD-006: too many OTP requests for this phone number or IP address."""
+
+    error_code = "OTP_RATE_LIMITED"
+    status_code = 429
+    default_message = "Too many OTP requests. Please try again later."
+
+
+class OtpInvalidError(DomainError):
+    """TD-006: submitted OTP code does not match."""
+
+    error_code = "OTP_INVALID"
+    status_code = 400
+    default_message = "The OTP code is invalid or expired."
+
+
+class OtpExpiredError(DomainError):
+    """TD-006: OTP code is missing or has expired."""
+
+    error_code = "OTP_EXPIRED"
+    status_code = 400
+    default_message = "The OTP code is invalid or expired."
+
+
 
 def error_body(error_code: str, message: str, details: dict | None = None) -> dict:
     return {"error_code": error_code, "message": message, "details": details or {}}
