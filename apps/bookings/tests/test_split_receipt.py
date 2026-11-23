@@ -39,6 +39,7 @@ from apps.panoramas.tests.factories import TablePinFactory
 from apps.venues.models import DesignAddon
 from apps.venues.tests.factories import DesignAddonFactory, UserFactory
 from core.exceptions import ReceiptDataInconsistencyError, ReceiptNotAvailableError
+from core.testing import authenticate_client
 
 
 @pytest.fixture(autouse=True)
@@ -129,9 +130,9 @@ def test_split_receipt_happy_path_with_addons(client, customer, pin):
         ],
     )
 
+    authenticate_client(client, customer)
     resp = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -185,9 +186,9 @@ def test_split_receipt_without_addons(client, customer, pin):
         addon_specs=[],
     )
 
+    authenticate_client(client, customer)
     resp = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -216,9 +217,9 @@ def test_split_receipt_snapshot_integrity_after_addon_price_change(client, custo
     # Venue raises the DesignAddon fee after booking was confirmed
     DesignAddon.objects.filter(pk=addons[0].pk).update(fee=400_000)
 
+    authenticate_client(client, customer)
     resp = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -255,9 +256,9 @@ def test_split_receipt_consistency_guard_raises_domain_error_on_mismatch(client,
     assert exc_info.value.details["stored_in_person_toman"] == 999_000
 
     # API-level check
+    authenticate_client(client, customer)
     resp = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp.status_code == 500
     body = resp.json()
@@ -292,9 +293,9 @@ def test_split_receipt_unavailable_for_non_settled_statuses(client, customer, pi
     assert exc_info.value.error_code == "RECEIPT_NOT_AVAILABLE"
     assert exc_info.value.status_code == 409
 
+    authenticate_client(client, customer)
     resp = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp.status_code == 409
     assert resp.json()["error_code"] == "RECEIPT_NOT_AVAILABLE"
@@ -309,9 +310,9 @@ def test_split_receipt_available_for_confirmed_and_completed(client, customer, p
         status=status,
     )
 
+    authenticate_client(client, customer)
     resp = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == status
@@ -343,9 +344,9 @@ def test_split_receipt_payment_display_exposes_only_safe_fields(client, customer
         error_message="RAW_GATEWAY_DECLINE_PAYLOAD_SECRET",
     )
 
+    authenticate_client(client, customer)
     resp = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp.status_code == 200
     raw_text = resp.content.decode("utf-8")
@@ -380,9 +381,9 @@ def test_split_receipt_without_success_payment_returns_null_payment_fields(clien
         with_success_payment=False,
     )
 
+    authenticate_client(client, customer)
     resp = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp.status_code == 200
     paid_online = resp.json()["paid_online"]
@@ -412,9 +413,9 @@ def test_split_receipt_foreign_customer_returns_403(client, customer, other_cust
         customer=customer,
         pin=pin,
     )
+    authenticate_client(client, other_customer)
     resp = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {other_customer.phone}",
     )
     assert resp.status_code == 403
 
@@ -426,26 +427,26 @@ def test_split_receipt_venue_owner_and_staff_cannot_access_customer_receipt_403(
         pin=pin,
     )
     # Venue owner
+    authenticate_client(client, pin.venue.owner)
     resp_owner = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {pin.venue.owner.phone}",
     )
     assert resp_owner.status_code == 403
 
     # Platform staff / admin
     staff_user = UserFactory(role="ADMIN", is_staff=True)
+    authenticate_client(client, staff_user)
     resp_staff = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {staff_user.phone}",
     )
     assert resp_staff.status_code == 403
 
 
 @pytest.mark.django_db
 def test_split_receipt_unknown_booking_returns_404(client, customer):
+    authenticate_client(client, customer)
     resp = client.get(
         "/api/v1/bookings/999999/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp.status_code == 404
 
@@ -461,13 +462,13 @@ def test_split_receipt_trailing_slash_tolerance(client, customer, pin):
         customer=customer,
         pin=pin,
     )
+    authenticate_client(client, customer)
     resp_with_slash = client.get(
         f"/api/v1/bookings/{booking.id}/receipt/",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
+    authenticate_client(client, customer)
     resp_without_slash = client.get(
         f"/api/v1/bookings/{booking.id}/receipt",
-        HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
     )
     assert resp_with_slash.status_code == 200
     assert resp_without_slash.status_code == 200
@@ -501,12 +502,10 @@ def test_split_receipt_bounded_query_count_no_n_plus_one(
     assert len(result.payable_in_person.items) == 5
     assert result.total_in_person_toman == 150_000
 
-    # HTTP endpoint: 4 constant queries (1 MinimalAuth user lookup + 3 bounded receipt queries)
-    with django_assert_num_queries(4):
-        resp = client.get(
-            f"/api/v1/bookings/{booking.id}/receipt/",
-            HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
-        )
+    # HTTP endpoint: 5 constant queries (2 Django session/user auth queries + 3 bounded receipt queries)
+    authenticate_client(client, customer)
+    with django_assert_num_queries(5):
+        resp = client.get(f"/api/v1/bookings/{booking.id}/receipt/")
     assert resp.status_code == 200
     assert len(resp.json()["payable_in_person"]["items"]) == 5
 

@@ -14,6 +14,7 @@ from .base import BASE_DIR
 DEBUG = True
 SECRET_KEY = SECRET_KEY or "dev-only-insecure-key-do-not-use-in-production"  # noqa: F405
 ALLOWED_HOSTS = ["*"]
+SESSION_COOKIE_SECURE = False
 
 if not os.environ.get("SMS_SENDER") and "pytest" in sys.modules:
     SMS_SENDER = "fake"

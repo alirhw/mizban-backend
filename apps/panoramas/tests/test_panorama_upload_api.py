@@ -44,6 +44,8 @@ import io
 from unittest.mock import MagicMock, patch
 import uuid
 
+from core.testing import authenticate_client
+
 from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -124,10 +126,10 @@ class TestPanoramaUploadAPI:
         jpeg_bytes = make_jpeg_bytes(width=200, height=100)
         upload_file = SimpleUploadedFile("my_panorama.jpg", jpeg_bytes, content_type="image/jpeg")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 202
@@ -156,10 +158,10 @@ class TestPanoramaUploadAPI:
         png_bytes = make_png_bytes(width=160, height=80)
         upload_file = SimpleUploadedFile("photo.png", png_bytes, content_type="image/png")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 202
@@ -177,10 +179,10 @@ class TestPanoramaUploadAPI:
         webp_bytes = make_webp_bytes(width=300, height=150)
         upload_file = SimpleUploadedFile("photo.webp", webp_bytes, content_type="image/webp")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 202
@@ -198,10 +200,10 @@ class TestPanoramaUploadAPI:
         jpeg_bytes = make_jpeg_bytes()
         upload_file = SimpleUploadedFile("alias.jpg", jpeg_bytes, content_type="image/jpeg")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/images",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 202
@@ -227,10 +229,10 @@ class TestPanoramaUploadAPI:
         jpeg_bytes = make_jpeg_bytes()
         upload_file = SimpleUploadedFile("test.jpg", jpeg_bytes, content_type="image/jpeg")
 
+        authenticate_client(client, customer)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {customer.phone}",
         )
 
         assert response.status_code == 403
@@ -244,10 +246,10 @@ class TestPanoramaUploadAPI:
         jpeg_bytes = make_jpeg_bytes()
         upload_file = SimpleUploadedFile("test.jpg", jpeg_bytes, content_type="image/jpeg")
 
+        authenticate_client(client, other_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {other_owner.phone}",
         )
 
         assert response.status_code == 403
@@ -261,10 +263,10 @@ class TestPanoramaUploadAPI:
         jpeg_bytes = make_jpeg_bytes()
         upload_file = SimpleUploadedFile("admin.jpg", jpeg_bytes, content_type="image/jpeg")
 
+        authenticate_client(client, admin)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {admin.phone}",
         )
 
         assert response.status_code == 202
@@ -275,10 +277,10 @@ class TestPanoramaUploadAPI:
         jpeg_bytes = make_jpeg_bytes()
         upload_file = SimpleUploadedFile("test.jpg", jpeg_bytes, content_type="image/jpeg")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             "/api/v1/panoramas/spaces/999999/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 404
@@ -291,10 +293,10 @@ class TestPanoramaUploadAPI:
         fake_content = b"x" * oversized_len
         upload_file = SimpleUploadedFile("huge.jpg", fake_content, content_type="image/jpeg")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 400
@@ -307,10 +309,10 @@ class TestPanoramaUploadAPI:
         fake_payload = b"<html><head><title>Phishing</title></head><body>Fake image</body></html>"
         upload_file = SimpleUploadedFile("fake.jpg", fake_payload, content_type="image/jpeg")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 400
@@ -324,10 +326,10 @@ class TestPanoramaUploadAPI:
         corrupt_payload = b"\xff\xd8\xff\xe0" + b"\x00\x10JFIF\x00\x01\x01" + b"\xff" * 64
         upload_file = SimpleUploadedFile("corrupt.jpg", corrupt_payload, content_type="image/jpeg")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 400
@@ -340,10 +342,10 @@ class TestPanoramaUploadAPI:
         gif_bytes = make_gif_bytes()
         upload_file = SimpleUploadedFile("sample.gif", gif_bytes, content_type="image/gif")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 400
@@ -355,10 +357,10 @@ class TestPanoramaUploadAPI:
         """Empty 0-byte file is rejected with HTTP 400 INVALID_IMAGE."""
         upload_file = SimpleUploadedFile("empty.jpg", b"", content_type="image/jpeg")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 400
@@ -374,10 +376,10 @@ class TestPanoramaUploadAPI:
         png_bytes = make_png_bytes(width=100, height=100)
         upload_file = SimpleUploadedFile("bomb.png", png_bytes, content_type="image/png")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 400
@@ -391,10 +393,10 @@ class TestPanoramaUploadAPI:
         jpeg_bytes = make_jpeg_bytes()
         upload_file = SimpleUploadedFile(malicious_filename, jpeg_bytes, content_type="image/jpeg")
 
+        authenticate_client(client, venue_owner)
         response = client.post(
             f"/api/v1/panoramas/spaces/{space.id}/upload",
             {"file": upload_file},
-            HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
         )
 
         assert response.status_code == 202
@@ -415,10 +417,10 @@ class TestPanoramaUploadAPI:
             upload_file = SimpleUploadedFile("test.jpg", jpeg_bytes, content_type="image/jpeg")
 
             with django_capture_on_commit_callbacks(execute=True):
+                authenticate_client(client, venue_owner)
                 response = client.post(
                     f"/api/v1/panoramas/spaces/{space.id}/upload",
                     {"file": upload_file},
-                    HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
                 )
 
             assert response.status_code == 202
@@ -435,10 +437,10 @@ class TestPanoramaUploadAPI:
             # We want to test that dispatch_panorama_processing handles exceptions internally,
             # or if the hook raises, the seam returns False.
             # Let's test the real dispatch_panorama_processing with a failing task import/delay:
+            authenticate_client(client, venue_owner)
             response = client.post(
                 f"/api/v1/panoramas/spaces/{space.id}/upload",
                 {"file": upload_file},
-                HTTP_AUTHORIZATION=f"Bearer {venue_owner.phone}",
             )
 
             assert response.status_code == 202

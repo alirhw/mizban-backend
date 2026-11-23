@@ -21,7 +21,7 @@ import secrets
 from typing import Any
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login as django_login, logout as django_logout
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 import redis as redis_lib
@@ -170,3 +170,13 @@ def verify_otp(phone: str, code: str) -> Any:
 
     logger.info("OTP verification succeeded.")
     return user
+
+
+def login_session(request: Any, user: Any) -> None:
+    """Establish a Django session for a verified user (Task T-007 / TD-006)."""
+    django_login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+
+
+def logout_session(request: Any) -> None:
+    """Flush the active Django session and expire the session cookie (Task T-007)."""
+    django_logout(request)

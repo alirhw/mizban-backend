@@ -1,7 +1,7 @@
 # Spec 006 — Accounts, OTP Authentication & Session Staging
 
 **Feature:** 006 — Identity & Authentication (WS-IDENTITY)  
-**Status:** In Progress (T-006 Implemented; T-007 Session Auth Pending)  
+**Status:** Complete (T-005, T-006, T-007 Completed)  
 **Governing Rules:** TD-006 (OTP: custom user, 5-digit codes in Redis, 120s expiry, rate limit 3/10m per IP and per phone, HttpOnly session cookies), ARCH-001 (Thin Views)  
 **Provider Decision (2026-11-20, Decision 4):** OTP SMS provider is **SMS.ir**; integration is deferred post-MVP (pending domain registration). Domain logic talks strictly to `SmsSender` behind `get_sms_sender()`.
 
@@ -63,7 +63,28 @@ Provide passwordless mobile OTP authentication for Miz Ban:
 
 ---
 
-## 4. T-007 Staging (Deferred)
-- Issue Django `HttpOnly` / `SameSite=Lax` (`Secure` in prod) session cookie on `/api/v1/auth/otp/verify/`.
-- Add `POST /api/v1/auth/logout/` and `GET /api/v1/auth/me/`.
-- Replace `MinimalAuth` in `apps/accounts/auth.py` (removing `X-User-Phone` and `Bearer <phone>` DEBUG backdoors) and wire real session auth across all apps.
+## 4. Session Authentication & CSRF Contract (Task T-007)
+
+### 4.1 Session Issuance & Cookie Attributes (TD-006)
+- `POST /api/v1/auth/otp/verify/` calls `django.contrib.auth.login(request, user, backend="django.contrib.auth.backends.ModelBackend")` after OTP verification and returns `OtpVerifyOut(id, phone, role)`.
+- Cookie settings (`config/settings/base.py`, `development.py`, `production.py`):
+  - `SESSION_COOKIE_HTTPONLY = True`
+  - `SESSION_COOKIE_SAMESITE = "Lax"`
+  - `SESSION_COOKIE_SECURE = True` in `base.py` and `production.py`; `False` in `development.py` only.
+  - Session duration defaults to Django's `SESSION_COOKIE_AGE = 1209600` (14 days, `SESSION_EXPIRE_AT_BROWSER_CLOSE = False`, `SESSION_ENGINE = django.contrib.sessions.backends.db`).
+- `ActiveSessionAuth(SessionAuth)` (`apps/accounts/auth.py`) authenticates solely from `request.user` (`is_authenticated and is_active`) with Ninja CSRF enforcement (`csrf=True`). The legacy `MinimalAuth` phone-header (`X-User-Phone`) and `Bearer <phone>` paths are completely deleted.
+
+### 4.2 CSRF Protection & Bootstrap
+- All unsafe HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) on session-authenticated endpoints enforce CSRF via Ninja `SessionAuth` (`check_csrf`, HTTP 403 on missing/invalid token).
+- `GET /api/v1/auth/csrf/` (and `/csrf`) calls `django.middleware.csrf.get_token(request)` so `CsrfViewMiddleware` sets the `csrftoken` cookie and returns `CsrfOut(csrf_token)`.
+
+### 4.3 Session Endpoints (`apps/accounts/api.py`)
+- `POST /api/v1/auth/logout/` (and `/logout`, `auth=auth`): flushes the Django session (`django.contrib.auth.logout`) and expires the cookie, returning `200 {"logged_out": true}` (or `401` if unauthenticated).
+- `GET /api/v1/auth/me/` (and `/me`, `auth=auth`): returns `200 OtpVerifyOut(id, phone, role)` (or `401` if unauthenticated).
+
+### 4.4 Protected Endpoint Inventory (Migrated to `ActiveSessionAuth`)
+- `apps/accounts/api.py`: `POST /api/v1/auth/logout/`, `GET /api/v1/auth/me/`
+- `apps/venues/api.py`: `GET/POST /api/v1/venues/owner/venues`, `GET/PUT /api/v1/venues/owner/venues/{venue_id}`, `POST /api/v1/venues/owner/venues/{venue_id}/addons`, `POST /api/v1/venues/admin/venues/{venue_id}/approve`
+- `apps/panoramas/api.py`: `POST /api/v1/panoramas/spaces/{space_id}/panoramas`, `GET /api/v1/panoramas/panoramas/{panorama_id}/status`, `GET/POST /api/v1/panoramas/spaces/{space_id}/pins`, `PATCH/DELETE /api/v1/panoramas/pins/{pin_id}`, `GET/POST /api/v1/panoramas/venues/{venue_id}/spaces`, `PATCH/DELETE /api/v1/panoramas/spaces/{space_id}` (and trailing-slash aliases)
+- `apps/bookings/api.py`: `POST /api/v1/bookings/initiate/`, `POST /api/v1/bookings/{booking_id}/cancel/`, `GET /api/v1/bookings/{booking_id}/receipt/` (and trailing-slash aliases)
+- Public endpoints (`auth=None`) remain unchanged: `/auth/csrf/`, `/auth/otp/request/`, `/auth/otp/verify/`, `/venues/` public catalogue, `/panoramas/` public reads, `/scheduling/`, `/billing/callback/`, `/healthz`.

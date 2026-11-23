@@ -149,6 +149,11 @@ PAYMENT_GATEWAY_CALLBACK_BASE_URL = env("PAYMENT_GATEWAY_CALLBACK_BASE_URL", def
 SMS_SENDER = env("SMS_SENDER", default="console")
 OTP_TTL_SECONDS = env.int("OTP_TTL_SECONDS", default=120)
 
+# --- Session Cookie Configuration (Task T-007 / TD-006) ---
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = True
+
 # --- Observability (Architecture Spec section 25) ---
 SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:

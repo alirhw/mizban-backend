@@ -128,12 +128,12 @@ def test_otp_request_replaces_previous_code_immediately(client):
 
 
 # ==============================================================================
-# 2. Verify Success, Single-Use, Role Preservation, No Session Cookie (T-007 Boundary)
+# 2. Verify Success, Single-Use, Role Preservation, Session Cookie (T-007)
 # ==============================================================================
 
 
 @pytest.mark.django_db
-def test_otp_verify_creates_customer_deletes_code_and_sets_no_session_cookie(client):
+def test_otp_verify_creates_customer_deletes_code_and_issues_session_cookie(client):
     phone = "+98 912 345 6700"
     canonical = "09123456700"
     req = client.post(
@@ -143,6 +143,7 @@ def test_otp_verify_creates_customer_deletes_code_and_sets_no_session_cookie(cli
         REMOTE_ADDR="10.0.0.3",
     )
     assert req.status_code == 200
+    assert "sessionid" not in req.cookies
     code = get_sms_sender().last_code_for(canonical)
     assert code is not None
 
@@ -157,8 +158,11 @@ def test_otp_verify_creates_customer_deletes_code_and_sets_no_session_cookie(cli
     assert body["role"] == UserRole.CUSTOMER
     assert isinstance(body["id"], int)
 
-    # T-007 boundary: verify does NOT issue a session cookie yet
-    assert "sessionid" not in verify.cookies
+    # T-007: verify establishes the Django session cookie
+    assert "sessionid" in verify.cookies
+    cookie = verify.cookies["sessionid"]
+    assert cookie["httponly"] is True
+    assert cookie["samesite"] == "Lax"
 
     user = User.objects.get(pk=body["id"])
     assert not user.has_usable_password()

@@ -35,6 +35,7 @@ from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
 from apps.panoramas.tests.factories import PanoramaImageFactory, SpaceFactory, TablePinFactory
 from apps.venues.models import SubscriptionStatus
 from apps.venues.tests.factories import UserFactory, VenueFactory
+from core.testing import authenticate_client
 
 
 @pytest.fixture(autouse=True)
@@ -175,7 +176,7 @@ class TestTablePinOwnerAPI:
     def test_create_pin_with_fee_and_smoking(self, client: Client, venue_owner, space, ready_panorama):
         """Creating a pin with fee 120_000 and is_smoking True returns 201 with both fields."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         payload = {
             "table_number": "VIP-1",
             "capacity": 4,
@@ -201,7 +202,7 @@ class TestTablePinOwnerAPI:
     def test_create_pin_without_fee_returns_422(self, client: Client, venue_owner, space):
         """POST without reservation_fee_toman returns 422 VALIDATION_ERROR."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         payload = {
             "table_number": "T-NOFEE",
             "capacity": 2,
@@ -215,7 +216,7 @@ class TestTablePinOwnerAPI:
     def test_create_pin_with_negative_fee_returns_422(self, client: Client, venue_owner, space):
         """POST with negative reservation_fee_toman returns 422 VALIDATION_ERROR."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         payload = {
             "table_number": "T-NEGFEE",
             "capacity": 2,
@@ -241,7 +242,7 @@ class TestTablePinOwnerAPI:
             is_smoking=False,
         )
         url = f"/api/v1/panoramas/pins/{pin.id}"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp = client.patch(
             url,
@@ -272,7 +273,7 @@ class TestTablePinOwnerAPI:
             is_smoking=True,
         )
         url = f"/api/v1/panoramas/pins/{pin.id}"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp = client.patch(url, {"reservation_fee_toman": 95_000}, content_type="application/json", **auth)
         assert resp.status_code == 200
@@ -284,7 +285,7 @@ class TestTablePinOwnerAPI:
         """PATCH with negative reservation_fee_toman returns 422."""
         pin = TablePinFactory(venue=space.venue, space=space, reservation_fee_toman=50_000)
         url = f"/api/v1/panoramas/pins/{pin.id}"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp = client.patch(url, {"reservation_fee_toman": -1}, content_type="application/json", **auth)
         assert resp.status_code == 422
@@ -293,7 +294,7 @@ class TestTablePinOwnerAPI:
         """Owner B cannot PATCH Owner A's pin -> HTTP 403."""
         pin = TablePinFactory(venue=space.venue, space=space, reservation_fee_toman=50_000)
         url = f"/api/v1/panoramas/pins/{pin.id}"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {other_owner.phone}"}
+        authenticate_client(client, other_owner); auth = {}
 
         resp = client.patch(url, {"reservation_fee_toman": 200_000}, content_type="application/json", **auth)
         assert resp.status_code == 403

@@ -28,6 +28,7 @@ import pytest
 
 from apps.accounts.models import UserRole
 from apps.bookings.models import Booking, BookingAddon, BookingStatus
+from core.testing import authenticate_client
 from apps.panoramas.tests.factories import TablePinFactory
 from apps.venues.models import SubscriptionStatus
 from apps.venues.tests.factories import DesignAddonFactory, UserFactory, VenueFactory
@@ -47,21 +48,22 @@ class ApiClientHelper:
         self.client = client
 
     def post_json(self, path: str, data: dict, user=None):
-        headers = {}
         if user:
-            headers["HTTP_AUTHORIZATION"] = f"Bearer {user.phone}"
+            authenticate_client(self.client, user)
+        else:
+            self.client.logout()
         return self.client.post(
             path,
             data=json.dumps(data),
             content_type="application/json",
-            **headers,
         )
 
     def get(self, path: str, user=None):
-        headers = {}
         if user:
-            headers["HTTP_AUTHORIZATION"] = f"Bearer {user.phone}"
-        return self.client.get(path, **headers)
+            authenticate_client(self.client, user)
+        else:
+            self.client.logout()
+        return self.client.get(path)
 
 
 @pytest.fixture

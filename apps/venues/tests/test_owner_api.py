@@ -20,6 +20,7 @@ import pytest
 
 from apps.accounts.models import UserRole
 from apps.venues.models import SubscriptionStatus, Venue
+from core.testing import authenticate_client
 from apps.venues.services import (
     VENUE_CACHE_TTL,
     get_venue_cache_key,
@@ -38,26 +39,29 @@ class ApiHelper:
         self.client = client
 
     def get(self, path: str, user=None):
-        kwargs = {}
         if user:
-            kwargs["HTTP_AUTHORIZATION"] = f"Bearer {user.phone}"
-        return self.client.get(path, **kwargs)
+            authenticate_client(self.client, user)
+        else:
+            self.client.logout()
+        return self.client.get(path)
 
     def post(self, path: str, data=None, user=None):
-        kwargs = {}
         if user:
-            kwargs["HTTP_AUTHORIZATION"] = f"Bearer {user.phone}"
+            authenticate_client(self.client, user)
+        else:
+            self.client.logout()
         if data is not None:
-            return self.client.post(path, data=json.dumps(data), content_type="application/json", **kwargs)
-        return self.client.post(path, **kwargs)
+            return self.client.post(path, data=json.dumps(data), content_type="application/json")
+        return self.client.post(path)
 
     def put(self, path: str, data=None, user=None):
-        kwargs = {}
         if user:
-            kwargs["HTTP_AUTHORIZATION"] = f"Bearer {user.phone}"
+            authenticate_client(self.client, user)
+        else:
+            self.client.logout()
         if data is not None:
-            return self.client.put(path, data=json.dumps(data), content_type="application/json", **kwargs)
-        return self.client.put(path, **kwargs)
+            return self.client.put(path, data=json.dumps(data), content_type="application/json")
+        return self.client.put(path)
 
 
 @pytest.fixture(autouse=True)
@@ -391,9 +395,12 @@ def test_cache_invalidation_on_admin_approval(api, admin_user, owner_user):
 
 
 @pytest.mark.django_db
-def test_owner_api_rejects_debug_auth_bridge_when_debug_false(api, owner_user):
-    """When DEBUG=False, the development auth bridge is disabled and returns 401 Unauthorized."""
+def test_owner_api_rejects_debug_auth_bridge_when_debug_false(client, owner_user):
+    """Bearer-phone lookup is completely removed and returns 401 Unauthorized."""
     with override_settings(DEBUG=False):
-        resp = api.get("/api/v1/venues/owner/venues", user=owner_user)
+        resp = client.get(
+            "/api/v1/venues/owner/venues",
+            HTTP_AUTHORIZATION=f"Bearer {owner_user.phone}",
+        )
         assert resp.status_code == 401
 

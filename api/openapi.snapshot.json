@@ -29,6 +29,29 @@
         ]
       }
     },
+    "/api/v1/auth/csrf/": {
+      "get": {
+        "operationId": "apps_accounts_api_get_csrf_endpoint",
+        "summary": "Issue CSRF cookie and token for session clients (TD-006)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Ensure the csrftoken cookie is set via CsrfViewMiddleware and return the token.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/api/v1/auth/otp/request/": {
       "post": {
         "operationId": "apps_accounts_api_request_otp_endpoint",
@@ -65,7 +88,7 @@
     "/api/v1/auth/otp/verify/": {
       "post": {
         "operationId": "apps_accounts_api_verify_otp_endpoint",
-        "summary": "Verify an OTP code and resolve user identity (TD-006)",
+        "summary": "Verify an OTP code and establish a Django session (TD-006)",
         "parameters": [],
         "responses": {
           "200": {
@@ -79,7 +102,7 @@
             }
           }
         },
-        "description": "Verify the OTP code and resolve (get_or_create) the User.\n\nSession cookie issuance is deferred to Task T-007.",
+        "description": "Verify the OTP code, resolve the User, and issue an HttpOnly session cookie.",
         "tags": [
           "accounts"
         ],
@@ -93,6 +116,62 @@
           },
           "required": true
         }
+      }
+    },
+    "/api/v1/auth/logout/": {
+      "post": {
+        "operationId": "apps_accounts_api_logout_endpoint",
+        "summary": "Flush the active session and log out (TD-006)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Flush the authenticated user's Django session and expire the cookie.",
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/me/": {
+      "get": {
+        "operationId": "apps_accounts_api_me_endpoint",
+        "summary": "Return the currently authenticated user's profile (TD-006)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OtpVerifyOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Return {id, phone, role} for the currently authenticated session user.",
+        "tags": [
+          "accounts"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
       }
     },
     "/api/v1/venues/owner/venues": {
@@ -122,7 +201,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       },
@@ -158,7 +237,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -196,7 +275,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       },
@@ -242,7 +321,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -280,7 +359,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -318,7 +397,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -459,7 +538,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       },
@@ -553,7 +632,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -612,7 +691,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -660,7 +739,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       },
@@ -700,7 +779,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -738,7 +817,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       },
@@ -784,7 +863,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       },
@@ -830,7 +909,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       },
@@ -859,7 +938,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -897,7 +976,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -1042,7 +1121,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       },
@@ -1088,7 +1167,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       },
@@ -1127,7 +1206,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -1165,7 +1244,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -1269,7 +1348,7 @@
         },
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -1307,7 +1386,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -1345,7 +1424,7 @@
         ],
         "security": [
           {
-            "MinimalAuth": []
+            "ActiveSessionAuth": []
           }
         ]
       }
@@ -1420,6 +1499,21 @@
         "title": "HealthOut",
         "type": "object"
       },
+      "CsrfOut": {
+        "additionalProperties": false,
+        "description": "Response payload for CSRF token bootstrap endpoint (Task T-007).",
+        "properties": {
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf_token"
+        ],
+        "title": "CsrfOut",
+        "type": "object"
+      },
       "OtpRequestOut": {
         "additionalProperties": false,
         "description": "Generic response payload for OTP request (no account enumeration).",
@@ -1458,7 +1552,7 @@
       },
       "OtpVerifyOut": {
         "additionalProperties": false,
-        "description": "Verified user identity returned on OTP verification (session cookie deferred to T-007).",
+        "description": "Verified user identity returned on OTP verification (Task T-006 / T-007).",
         "properties": {
           "id": {
             "title": "Id",
@@ -1503,6 +1597,21 @@
           "code"
         ],
         "title": "OtpVerifyIn",
+        "type": "object"
+      },
+      "LogoutOut": {
+        "additionalProperties": false,
+        "description": "Response payload returned on session logout (Task T-007).",
+        "properties": {
+          "logged_out": {
+            "title": "Logged Out",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "logged_out"
+        ],
+        "title": "LogoutOut",
         "type": "object"
       },
       "DesignAddonOut": {
@@ -3063,9 +3172,10 @@
       }
     },
     "securitySchemes": {
-      "MinimalAuth": {
-        "type": "http",
-        "scheme": "bearer"
+      "ActiveSessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "sessionid"
       }
     }
   },

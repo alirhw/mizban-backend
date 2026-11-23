@@ -40,6 +40,7 @@ from apps.panoramas.models import PanoramaStatus, Space, TablePin
 from apps.panoramas.tests.factories import PanoramaImageFactory, SpaceFactory, TablePinFactory
 from apps.venues.models import SubscriptionStatus
 from apps.venues.tests.factories import UserFactory, VenueFactory
+from core.testing import authenticate_client
 
 
 @pytest.fixture(autouse=True)
@@ -121,7 +122,7 @@ class TestSpaceCreation:
     def test_owner_can_create_space(self, client: Client, venue_owner, venue):
         """Owner can create a space under their venue."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         payload = {
             "name": "Garden Terrace",
             "description": "Outdoor open-air seating area",
@@ -150,7 +151,7 @@ class TestSpaceCreation:
     def test_admin_can_create_space(self, client: Client, admin_user, venue):
         """Platform admin can create a space under any venue."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {admin_user.phone}"}
+        authenticate_client(client, admin_user); auth = {}
         payload = {"name": "Admin Created Hall"}
 
         resp = client.post(url, payload, content_type="application/json", **auth)
@@ -166,28 +167,28 @@ class TestSpaceCreation:
     def test_create_space_customer_returns_403(self, client: Client, customer_user, venue):
         """Customer cannot create spaces (403 Forbidden)."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {customer_user.phone}"}
+        authenticate_client(client, customer_user); auth = {}
         resp = client.post(url, {"name": "Terrace"}, content_type="application/json", **auth)
         assert resp.status_code == 403
 
     def test_create_space_foreign_owner_returns_403(self, client: Client, other_owner, venue):
         """Owner B cannot create a space in Owner A's venue (IDOR protection)."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {other_owner.phone}"}
+        authenticate_client(client, other_owner); auth = {}
         resp = client.post(url, {"name": "Stolen Space"}, content_type="application/json", **auth)
         assert resp.status_code == 403
 
     def test_create_space_nonexistent_venue_returns_404(self, client: Client, venue_owner):
         """Non-existent venue id returns 404."""
         url = "/api/v1/venues/999999/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         resp = client.post(url, {"name": "Space"}, content_type="application/json", **auth)
         assert resp.status_code == 404
 
     def test_create_space_empty_or_whitespace_name_returns_422(self, client: Client, venue_owner, venue):
         """Empty or blank space name returns 422 VALIDATION_ERROR."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp1 = client.post(url, {"name": ""}, content_type="application/json", **auth)
         assert resp1.status_code == 422
@@ -198,28 +199,28 @@ class TestSpaceCreation:
     def test_create_space_oversized_name_returns_422(self, client: Client, venue_owner, venue):
         """Name exceeding 100 characters returns 422."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         resp = client.post(url, {"name": "A" * 101}, content_type="application/json", **auth)
         assert resp.status_code == 422
 
     def test_create_space_negative_display_order_returns_422(self, client: Client, venue_owner, venue):
         """Negative display order returns 422."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         resp = client.post(url, {"name": "Terrace", "display_order": -5}, content_type="application/json", **auth)
         assert resp.status_code == 422
 
     def test_create_space_forbids_extra_fields(self, client: Client, venue_owner, venue):
         """Unknown extra fields in payload return 422."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         resp = client.post(url, {"name": "Terrace", "unknown_field": "injected"}, content_type="application/json", **auth)
         assert resp.status_code == 422
 
     def test_create_space_strips_name(self, client: Client, venue_owner, venue):
         """Leading and trailing whitespace in name is stripped."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         resp = client.post(url, {"name": "  Cozy Lounge  "}, content_type="application/json", **auth)
         assert resp.status_code == 201
         assert resp.json()["name"] == "Cozy Lounge"
@@ -239,7 +240,7 @@ class TestOwnerSpaceListing:
         s2 = SpaceFactory(venue=venue, name="A Hall", display_order=1, is_active=False)
 
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         resp = client.get(url, **auth)
 
         assert resp.status_code == 200
@@ -260,7 +261,7 @@ class TestOwnerSpaceListing:
     def test_list_spaces_foreign_owner_returns_403(self, client: Client, other_owner, venue):
         """Foreign owner cannot list another owner's spaces via venue_id."""
         url = f"/api/v1/venues/{venue.id}/spaces/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {other_owner.phone}"}
+        authenticate_client(client, other_owner); auth = {}
         resp = client.get(url, **auth)
         assert resp.status_code == 403
 
@@ -277,7 +278,7 @@ class TestSpaceDetailDualPurpose:
         """Owner can view their own space even when is_active=False."""
         inactive_space = SpaceFactory(venue=venue, is_active=False, name="Hidden Space")
         url = f"/api/v1/spaces/{inactive_space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp = client.get(url, **auth)
         assert resp.status_code == 200
@@ -288,7 +289,7 @@ class TestSpaceDetailDualPurpose:
         """Platform admin can view any space."""
         s = SpaceFactory(venue=venue, is_active=False)
         url = f"/api/v1/spaces/{s.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {admin_user.phone}"}
+        authenticate_client(client, admin_user); auth = {}
 
         resp = client.get(url, **auth)
         assert resp.status_code == 200
@@ -329,7 +330,7 @@ class TestSpaceDetailDualPurpose:
         """Authenticated customer gets 404 when space is inactive."""
         inactive_space = SpaceFactory(venue=venue, is_active=False)
         url = f"/api/v1/spaces/{inactive_space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {customer_user.phone}"}
+        authenticate_client(client, customer_user); auth = {}
 
         resp = client.get(url, **auth)
         assert resp.status_code == 404
@@ -338,7 +339,7 @@ class TestSpaceDetailDualPurpose:
         """Foreign owner gets 404 when target space is inactive (treated as public)."""
         inactive_space = SpaceFactory(venue=venue, is_active=False)
         url = f"/api/v1/spaces/{inactive_space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {other_owner.phone}"}
+        authenticate_client(client, other_owner); auth = {}
 
         resp = client.get(url, **auth)
         assert resp.status_code == 404
@@ -362,7 +363,7 @@ class TestSpaceUpdate:
     def test_owner_can_patch_space(self, client: Client, venue_owner, space):
         """Owner can partially update space fields."""
         url = f"/api/v1/spaces/{space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         payload = {"name": "Renovated Hall", "display_order": 10}
 
         resp = client.patch(url, payload, content_type="application/json", **auth)
@@ -379,7 +380,7 @@ class TestSpaceUpdate:
     def test_owner_can_put_space(self, client: Client, venue_owner, space):
         """Owner can update space fields via PUT."""
         url = f"/api/v1/spaces/{space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
         payload = {"name": "Full Put Space", "description": "Updated via PUT", "display_order": 5}
 
         resp = client.put(url, payload, content_type="application/json", **auth)
@@ -389,14 +390,14 @@ class TestSpaceUpdate:
     def test_patch_space_foreign_owner_returns_403(self, client: Client, other_owner, space):
         """Foreign owner cannot update another owner's space (403 Forbidden)."""
         url = f"/api/v1/spaces/{space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {other_owner.phone}"}
+        authenticate_client(client, other_owner); auth = {}
         resp = client.patch(url, {"name": "Hacked"}, content_type="application/json", **auth)
         assert resp.status_code == 403
 
     def test_patch_space_validation_errors(self, client: Client, venue_owner, space):
         """Invalid fields in PATCH are rejected."""
         url = f"/api/v1/spaces/{space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         # Blank name
         resp = client.patch(url, {"name": "   "}, content_type="application/json", **auth)
@@ -423,7 +424,7 @@ class TestSpaceDeactivation:
         """Explicit deactivate endpoint marks is_active=False."""
         assert space.is_active is True
         url = f"/api/v1/spaces/{space.id}/deactivate/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp = client.post(url, **auth)
         assert resp.status_code == 200
@@ -435,7 +436,7 @@ class TestSpaceDeactivation:
     def test_deactivate_foreign_owner_returns_403(self, client: Client, other_owner, space):
         """Foreign owner cannot deactivate space."""
         url = f"/api/v1/spaces/{space.id}/deactivate/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {other_owner.phone}"}
+        authenticate_client(client, other_owner); auth = {}
         resp = client.post(url, **auth)
         assert resp.status_code == 403
 
@@ -458,7 +459,7 @@ class TestSpaceDeletionPolicy:
         """Space with no pins and no panoramas is hard deleted from DB (204 No Content)."""
         space_id = space.id
         url = f"/api/v1/spaces/{space_id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp = client.delete(url, **auth)
         assert resp.status_code == 204
@@ -468,7 +469,7 @@ class TestSpaceDeletionPolicy:
         """Space with table pins (no bookings) is soft-deactivated instead of deleted (200 OK)."""
         TablePinFactory(venue=space.venue, space=space, table_number="T1")
         url = f"/api/v1/spaces/{space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp = client.delete(url, **auth)
         assert resp.status_code == 200
@@ -484,7 +485,7 @@ class TestSpaceDeletionPolicy:
         """Space with panorama images (no bookings) is soft-deactivated (200 OK)."""
         PanoramaImageFactory(space=space, status=PanoramaStatus.UPLOADED)
         url = f"/api/v1/spaces/{space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp = client.delete(url, **auth)
         assert resp.status_code == 200
@@ -499,7 +500,7 @@ class TestSpaceDeletionPolicy:
         BookingFactory(venue=space.venue, table_pin=pin, customer=customer_user)
 
         url = f"/api/v1/spaces/{space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {venue_owner.phone}"}
+        authenticate_client(client, venue_owner); auth = {}
 
         resp = client.delete(url, **auth)
         assert resp.status_code == 409
@@ -512,7 +513,7 @@ class TestSpaceDeletionPolicy:
     def test_delete_space_foreign_owner_returns_403(self, client: Client, other_owner, space):
         """Foreign owner cannot delete another owner's space (403 Forbidden)."""
         url = f"/api/v1/spaces/{space.id}/"
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {other_owner.phone}"}
+        authenticate_client(client, other_owner); auth = {}
         resp = client.delete(url, **auth)
         assert resp.status_code == 403
 

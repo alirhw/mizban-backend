@@ -328,14 +328,17 @@ def test_spike_high_contention_10_way_10_rounds():
 def _run_api_contention_attempt(
     worker_id: int,
     barrier: threading.Barrier,
-    phone: str,
+    user,
     pin_id: int,
     slot_date: str,
     slot_time: str,
 ) -> dict:
     """Worker task executing POST /api/v1/bookings/initiate/ through Django test Client."""
-    barrier.wait()
+    from core.testing import authenticate_client
+
     client = Client()
+    authenticate_client(client, user)
+    barrier.wait()
     t_start = pytime.perf_counter()
     status_code = 500
     resp_body = {}
@@ -349,7 +352,6 @@ def _run_api_contention_attempt(
                 "slot_start_time": slot_time,
             }),
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {phone}",
         )
         status_code = response.status_code
         try:
@@ -401,7 +403,7 @@ def test_spike_api_multiway_contention_10_rounds(settings):
                     _run_api_contention_attempt,
                     worker_id=i,
                     barrier=barrier,
-                    phone=users[i].phone,
+                    user=users[i],
                     pin_id=pin.pk,
                     slot_date=slot_date_str,
                     slot_time=slot_time_str,

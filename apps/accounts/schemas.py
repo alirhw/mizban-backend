@@ -54,10 +54,26 @@ class OtpVerifyIn(Schema):
 
 
 class OtpVerifyOut(Schema):
-    """Verified user identity returned on OTP verification (session cookie deferred to T-007)."""
+    """Verified user identity returned on OTP verification (Task T-006 / T-007)."""
 
     model_config = ConfigDict(extra="forbid")
 
     id: int
     phone: str
     role: str
+
+
+class LogoutOut(Schema):
+    """Response payload returned on session logout (Task T-007)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    logged_out: bool
+
+
+class CsrfOut(Schema):
+    """Response payload for CSRF token bootstrap endpoint (Task T-007)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    csrf_token: str
