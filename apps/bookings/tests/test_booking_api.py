@@ -97,7 +97,6 @@ def active_venue(owner_user):
     venue = VenueFactory(
         owner=owner_user,
         is_approved=True,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(venue)
     return venue
@@ -356,7 +355,6 @@ def test_unapproved_or_inactive_venue_returns_400(api, customer_user, owner_user
     unapproved_venue = VenueFactory(
         owner=owner_user,
         is_approved=False,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(unapproved_venue)
     pin_unapproved = TablePinFactory(venue=unapproved_venue)
@@ -373,7 +371,6 @@ def test_unapproved_or_inactive_venue_returns_400(api, customer_user, owner_user
     inactive_venue = VenueFactory(
         owner=owner_user,
         is_approved=True,
-        subscription_status=SubscriptionStatus.INACTIVE,
     )
     pin_inactive_sub = TablePinFactory(venue=inactive_venue)
 
@@ -392,7 +389,6 @@ def test_venue_mismatch_returns_400(api, customer_user, active_venue, table_pin,
     other_venue = VenueFactory(
         owner=owner_user,
         is_approved=True,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(other_venue)
     target_date = (dj_timezone.now() + timedelta(days=2)).date()

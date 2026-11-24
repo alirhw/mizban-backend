@@ -79,7 +79,6 @@ def venue(venue_owner):
     venue = VenueFactory(
         owner=venue_owner,
         is_approved=True,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(venue)
     return venue
@@ -90,7 +89,6 @@ def unapproved_venue(venue_owner):
     venue = VenueFactory(
         owner=venue_owner,
         is_approved=False,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(venue)
     return venue
@@ -101,7 +99,6 @@ def inactive_sub_venue(venue_owner):
     return VenueFactory(
         owner=venue_owner,
         is_approved=True,
-        subscription_status=SubscriptionStatus.INACTIVE,
     )
 
 

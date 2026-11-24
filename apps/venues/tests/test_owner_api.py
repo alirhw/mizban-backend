@@ -110,21 +110,18 @@ def test_public_venues_list_excludes_unapproved_and_inactive(api):
         name="Visible Cafe",
         slug="visible-cafe",
         is_approved=True,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(approved_active)
     unapproved = VenueFactory(
         name="Hidden Cafe Unapproved",
         slug="hidden-cafe",
         is_approved=False,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(unapproved)
     inactive_sub = VenueFactory(
         name="Hidden Cafe Inactive",
         slug="inactive-cafe",
         is_approved=True,
-        subscription_status=SubscriptionStatus.INACTIVE,
     )
 
     response = api.get("/api/v1/venues/")
@@ -144,7 +141,6 @@ def test_public_venues_response_never_exposes_owner_phone(api):
     venue = VenueFactory(
         owner=owner,
         is_approved=True,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(venue)
     OperatingHoursFactory(venue=venue)
@@ -169,7 +165,6 @@ def test_public_venue_detail_unapproved_returns_404(api):
     """Unapproved venue must not be viewable on public detail endpoint."""
     venue = VenueFactory(
         is_approved=False,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(venue)
     response = api.get(f"/api/v1/venues/{venue.slug}")
@@ -341,7 +336,6 @@ def test_public_venue_detail_caching_and_invalidation_on_update(api, owner_user)
         name="Cached Cafe",
         slug="cached-cafe",
         is_approved=True,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(venue)
     cache_key = get_venue_slug_cache_key(venue.slug)
@@ -376,7 +370,6 @@ def test_cache_invalidation_on_admin_approval(api, admin_user, owner_user):
         owner=owner_user,
         slug="approval-cafe",
         is_approved=False,
-        subscription_status=SubscriptionStatus.ACTIVE,
     )
     activate_test_subscription(venue)
     cache_key = get_venue_slug_cache_key(venue.slug)

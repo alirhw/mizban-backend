@@ -11,7 +11,6 @@ from django.contrib.auth import get_user_model
 from apps.venues.models import (
     DesignAddon,
     OperatingHours,
-    Subscription,
     SubscriptionPlan,
     Venue,
 )
@@ -56,14 +55,6 @@ class DesignAddonFactory(factory.django.DjangoModelFactory):
     venue = factory.SubFactory(VenueFactory)
     title = factory.Sequence(lambda n: f"Addon {n}")
     fee = 150_000
-
-
-class SubscriptionFactory(factory.django.DjangoModelFactory):
-    class Meta:
-        model = Subscription
-
-    venue = factory.SubFactory(VenueFactory)
-    plan_name = "Monthly"
 
 
 class SubscriptionPlanFactory(factory.django.DjangoModelFactory):

@@ -6,7 +6,6 @@ from django.db import transaction
 from .models import (
     DesignAddon,
     OperatingHours,
-    Subscription,
     SubscriptionPlan,
     Venue,
     VenueSubscription,
@@ -22,10 +21,14 @@ class VenueAdmin(admin.ModelAdmin):
         "venue_type",
         "owner",
         "is_approved",
-        "subscription_status",
+        "has_active_subscription_display",
         "created_at",
     )
-    list_filter = ("city", "venue_type", "is_approved", "subscription_status")
+    list_filter = ("city", "venue_type", "is_approved")
+
+    @admin.display(boolean=True, description="Subscription active")
+    def has_active_subscription_display(self, obj: Venue) -> bool:
+        return obj.has_active_subscription()
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
     actions = ["approve_selected_venues", "reject_selected_venues"]
@@ -70,12 +73,6 @@ class DesignAddonAdmin(admin.ModelAdmin):
     list_display = ("title", "venue", "fee", "is_active")
     list_filter = ("is_active",)
     search_fields = ("title",)
-
-
-@admin.register(Subscription)
-class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ("venue", "plan_name", "status", "started_at", "expires_at")
-    list_filter = ("status",)
 
 
 @admin.register(SubscriptionPlan)

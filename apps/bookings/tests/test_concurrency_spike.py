@@ -153,7 +153,7 @@ def test_spike_service_multiway_contention_20_rounds():
     all_conflict_durations: List[float] = []
 
     owner = UserFactory(role=UserRole.VENUE_OWNER)
-    venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    venue = VenueFactory(owner=owner, is_approved=True)
     activate_test_subscription(venue)
     pin = TablePinFactory(venue=venue)
 
@@ -262,7 +262,7 @@ def test_spike_high_contention_10_way_10_rounds():
     all_durations: List[float] = []
 
     owner = UserFactory(role=UserRole.VENUE_OWNER)
-    venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    venue = VenueFactory(owner=owner, is_approved=True)
     activate_test_subscription(venue)
     pin = TablePinFactory(venue=venue)
     base_date = (dj_timezone.now() + timedelta(days=3)).date()
@@ -389,7 +389,7 @@ def test_spike_api_multiway_contention_10_rounds(settings):
     all_api_durations: List[float] = []
 
     owner = UserFactory(role=UserRole.VENUE_OWNER)
-    venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    venue = VenueFactory(owner=owner, is_approved=True)
     activate_test_subscription(venue)
     pin = TablePinFactory(venue=venue)
     base_date = (dj_timezone.now() + timedelta(days=4)).date()
@@ -451,7 +451,7 @@ def test_spike_independent_slots_concurrency_no_cross_blocking():
     """
     CONCURRENCY = 5
     owner = UserFactory(role=UserRole.VENUE_OWNER)
-    venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    venue = VenueFactory(owner=owner, is_approved=True)
     activate_test_subscription(venue)
     pins = [TablePinFactory(venue=venue) for _ in range(CONCURRENCY)]
     users = [UserFactory(role=UserRole.CUSTOMER) for _ in range(CONCURRENCY)]

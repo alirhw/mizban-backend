@@ -17,12 +17,13 @@ from typing import Any, List, Optional
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.db.models import Exists, OuterRef
 from django.http import Http404
 from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.accounts.models import UserRole
-from apps.venues.models import SubscriptionPlan, SubscriptionStatus, Venue, VenueSubscription
+from apps.venues.models import SubscriptionPlan, Venue, VenueSubscription
 from core.exceptions import InactiveSubscriptionPlanError
 from core.jalali import format_jalali
 
@@ -127,7 +128,16 @@ def list_owner_venues(user: Any) -> List[Venue]:
     if not (user.is_staff or user.role in (UserRole.VENUE_OWNER, UserRole.ADMIN)):
         raise PermissionDenied("Only venue owners or admins can access owner venues.")
 
-    qs = Venue.objects.filter(owner=user).prefetch_related("operating_hours", "design_addons")
+    now = timezone.now()
+    active_sub_exists = VenueSubscription.objects.filter(
+        venue_id=OuterRef("pk"),
+        expires_at__gt=now,
+    )
+    qs = (
+        Venue.objects.filter(owner=user)
+        .annotate(_has_active_subscription=Exists(active_sub_exists))
+        .prefetch_related("operating_hours", "design_addons")
+    )
     return list(qs)
 
 
@@ -167,7 +177,6 @@ def create_venue_for_owner(
     Invariants:
     - User must have VENUE_OWNER or ADMIN role.
     - is_approved is always False on creation.
-    - subscription_status defaults to INACTIVE.
     - Runs inside transaction.atomic().
     """
     if not (user.is_staff or user.role in (UserRole.VENUE_OWNER, UserRole.ADMIN)):
@@ -193,7 +202,6 @@ def create_venue_for_owner(
             address=address.strip(),
             description=description.strip() if description else "",
             is_approved=False,
-            subscription_status=SubscriptionStatus.INACTIVE,
         )
 
     return venue
@@ -350,11 +358,6 @@ def activate_subscription(
             created_by=activated_by,
             note=note or "",
         )
-
-        # Keep legacy display status aligned; BR-005 reads VenueSubscription.expires_at > now.
-        if locked_venue.subscription_status != SubscriptionStatus.ACTIVE:
-            locked_venue.subscription_status = SubscriptionStatus.ACTIVE
-            locked_venue.save(update_fields=["subscription_status", "updated_at"])
 
         vid, vslug = locked_venue.id, locked_venue.slug
         transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))

@@ -328,3 +328,85 @@ def test_venue_subscription_admin_is_add_only_and_delegates_to_service(owner_use
     assert saved.created_by_id == admin_user.id
     assert saved.note == "Bank slip #44"
     assert saved.expires_at == saved.starts_at + timedelta(days=15)
+
+
+# ==============================================================================
+# 6. Truthful Derived VenueOwnerOut.subscription_status & Constant Query Count (T-025-FIX)
+# ==============================================================================
+
+
+def test_owner_venue_detail_derives_subscription_status_truthfully(client, owner_user, admin_user):
+    venue = VenueFactory(owner=owner_user, is_approved=True)
+    authenticate_client(client, owner_user)
+
+    # 1. Never subscribed -> INACTIVE
+    r0 = client.get(f"/api/v1/venues/owner/venues/{venue.id}")
+    assert r0.status_code == 200
+    assert r0.json()["subscription_status"] == "INACTIVE"
+    assert r0.json()["is_publicly_visible"] is False
+
+    # 2. Live derived subscription -> ACTIVE (previously stale-lied INACTIVE)
+    plan = SubscriptionPlanFactory(duration_days=30)
+    activate_subscription(venue, plan=plan, activated_by=admin_user)
+    r1 = client.get(f"/api/v1/venues/owner/venues/{venue.id}")
+    assert r1.status_code == 200
+    assert r1.json()["subscription_status"] == "ACTIVE"
+    assert r1.json()["is_publicly_visible"] is True
+
+    # 3. Expired subscription -> INACTIVE
+    VenueSubscription.objects.filter(venue=venue).update(
+        starts_at=datetime(2020, 1, 1, tzinfo=dt_timezone.utc),
+        expires_at=datetime(2020, 2, 1, tzinfo=dt_timezone.utc),
+    )
+    r2 = client.get(f"/api/v1/venues/owner/venues/{venue.id}")
+    assert r2.status_code == 200
+    assert r2.json()["subscription_status"] == "INACTIVE"
+    assert r2.json()["is_publicly_visible"] is False
+
+
+def test_owner_venue_list_derives_mixed_statuses_with_constant_queries(
+    client, owner_user, admin_user, django_assert_num_queries
+):
+    plan = SubscriptionPlanFactory(duration_days=30)
+    v_active_1 = VenueFactory(owner=owner_user, is_approved=True, name="Active One")
+    activate_subscription(v_active_1, plan=plan, activated_by=admin_user)
+
+    authenticate_client(client, owner_user)
+
+    # 1 venue: 2 session/user queries + 3 owner list queries (venues+Exists, operating_hours, design_addons) = 5
+    with django_assert_num_queries(5):
+        r_one = client.get("/api/v1/venues/owner/venues")
+    assert r_one.status_code == 200
+    assert len(r_one.json()) == 1
+    assert r_one.json()[0]["subscription_status"] == "ACTIVE"
+
+    # Add 4 more venues (mix of active, never subscribed, and expired)
+    v_never = VenueFactory(owner=owner_user, is_approved=True, name="Never Subscribed")
+    v_expired = VenueFactory(owner=owner_user, is_approved=True, name="Expired One")
+    activate_subscription(
+        v_expired,
+        plan=plan,
+        activated_by=admin_user,
+        now=datetime(2020, 1, 1, tzinfo=dt_timezone.utc),
+    )
+    v_active_2 = VenueFactory(owner=owner_user, is_approved=False, name="Active Unapproved")
+    activate_subscription(v_active_2, plan=plan, activated_by=admin_user)
+    v_active_3 = VenueFactory(owner=owner_user, is_approved=True, name="Active Three")
+    activate_subscription(v_active_3, plan=plan, activated_by=admin_user)
+
+    # 5 venues: query count MUST remain exactly 5 (zero N+1)
+    with django_assert_num_queries(5):
+        r_many = client.get("/api/v1/venues/owner/venues")
+    assert r_many.status_code == 200
+    by_id = {item["id"]: item for item in r_many.json()}
+    assert len(by_id) == 5
+    assert by_id[v_active_1.id]["subscription_status"] == "ACTIVE"
+    assert by_id[v_active_1.id]["is_publicly_visible"] is True
+    assert by_id[v_never.id]["subscription_status"] == "INACTIVE"
+    assert by_id[v_never.id]["is_publicly_visible"] is False
+    assert by_id[v_expired.id]["subscription_status"] == "INACTIVE"
+    assert by_id[v_expired.id]["is_publicly_visible"] is False
+    assert by_id[v_active_2.id]["subscription_status"] == "ACTIVE"
+    assert by_id[v_active_2.id]["is_publicly_visible"] is False
+    assert by_id[v_active_3.id]["subscription_status"] == "ACTIVE"
+    assert by_id[v_active_3.id]["is_publicly_visible"] is True

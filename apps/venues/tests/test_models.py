@@ -14,7 +14,6 @@ from apps.venues.models import OperatingHours, SubscriptionStatus, Venue
 from .factories import (
     DesignAddonFactory,
     OperatingHoursFactory,
-    SubscriptionFactory,
     VenueFactory,
     activate_test_subscription,
 )
@@ -64,29 +63,30 @@ def test_operating_hours_may_cross_midnight():
 
 
 @pytest.mark.parametrize(
-    ("is_approved", "subscription_status", "expected_public"),
+    ("is_approved", "sub_state", "expected_public"),
     [
-        (True, SubscriptionStatus.ACTIVE, True),
-        (True, SubscriptionStatus.INACTIVE, False),
-        (True, SubscriptionStatus.EXPIRED, False),
-        (False, SubscriptionStatus.ACTIVE, False),
-        (False, SubscriptionStatus.INACTIVE, False),
-        (False, SubscriptionStatus.EXPIRED, False),
+        (True, "ACTIVE", True),
+        (True, "NONE", False),
+        (True, "EXPIRED", False),
+        (False, "ACTIVE", False),
+        (False, "NONE", False),
+        (False, "EXPIRED", False),
     ],
 )
-def test_public_visibility_rule_br005(is_approved, subscription_status, expected_public):
-    venue = VenueFactory(
-        is_approved=is_approved,
-        subscription_status=subscription_status,
-    )
-    if subscription_status == SubscriptionStatus.ACTIVE:
+def test_public_visibility_rule_br005(is_approved, sub_state, expected_public):
+    venue = VenueFactory(is_approved=is_approved)
+    if sub_state == "ACTIVE":
         activate_test_subscription(venue)
+    elif sub_state == "EXPIRED":
+        activate_test_subscription(
+            venue,
+            now=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
+        )
     assert venue.is_publicly_visible is expected_public
     assert Venue.objects.public().filter(pk=venue.pk).exists() is expected_public
 
 
-def test_subscription_defaults_to_inactive():
-    subscription = SubscriptionFactory()
-    assert subscription.status == SubscriptionStatus.INACTIVE
-    assert subscription.started_at is None
-    assert subscription.expires_at is None
+def test_venue_without_subscription_derives_inactive_status():
+    venue = VenueFactory()
+    assert venue.subscription_status == SubscriptionStatus.INACTIVE
+    assert not venue.has_active_subscription()

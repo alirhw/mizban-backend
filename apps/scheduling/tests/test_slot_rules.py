@@ -156,7 +156,7 @@ def test_scheduling_api_endpoint():
     """API endpoint GET /api/v1/scheduling/venues/{venue_id}/slots returns typed SlotOut schemas."""
     client = Client()
     owner = UserFactory(role=UserRole.VENUE_OWNER)
-    venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    venue = VenueFactory(owner=owner, is_approved=True)
 
     # Weekday 0 (Monday)
     OperatingHoursFactory(
@@ -188,7 +188,7 @@ def test_scheduling_api_endpoint_with_t011_availability_filter():
     client = Client()
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     customer = UserFactory(role=UserRole.CUSTOMER)
-    venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    venue = VenueFactory(owner=owner, is_approved=True)
     pin = TablePinFactory(venue=venue)
 
     # TablePinFactory auto-generates 7-day operating hours (08:00-23:00).
@@ -224,7 +224,7 @@ def test_scheduling_api_endpoint_with_t011_availability_filter():
     assert len(resp_venue.json()) == 2
 
     # 4. Request with table_pin_id of another venue -> 404
-    other_venue = VenueFactory(owner=owner, is_approved=True, subscription_status=SubscriptionStatus.ACTIVE)
+    other_venue = VenueFactory(owner=owner, is_approved=True)
     other_pin = TablePinFactory(venue=other_venue)
     resp_404 = client.get(f"/api/v1/scheduling/venues/{venue.id}/slots?date=2026-01-05&table_pin_id={other_pin.id}")
     assert resp_404.status_code == 404

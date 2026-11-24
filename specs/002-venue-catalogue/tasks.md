@@ -8,6 +8,7 @@
 | T-009-04 | Ninja router endpoints (public, owner, admin) | platform-engineer | T-009-03 | `apps/venues/api.py`, `apps/venues/admin.py` | API tests | IDOR prevention, role checks |
 | T-009-05 | Acceptance & Security test suite | test-engineer | T-009-04 | `apps/venues/tests/test_owner_api.py` | Integration tests | All tests pass |
 | T-025 | Venue Subscription Plans & Manual Admin Activation (Decision 5 / BR-005) | platform-engineer | T-009-04, T-007 | `apps/venues/models.py`, `managers.py`, `services.py`, `schemas.py`, `api.py`, `admin.py`, `migrations/0002_subscriptionplan_venuesubscription.py`, `apps/bookings/services.py`, `core/exceptions.py` | `apps/venues/tests/test_subscriptions.py` | Plans CRUD + add-only admin, stacking activation, single read path for BR-005, owner read endpoint |
+| T-025-FIX | Derive `VenueOwnerOut.subscription_status` & remove legacy `Venue.subscription_status` column and `Subscription` stub model | platform-engineer | T-025 | `apps/venues/models.py`, `services.py`, `admin.py`, `migrations/0003_remove_venue_subscription_status_delete_subscription.py` | `apps/venues/tests/test_subscriptions.py`, `test_models.py` | Legacy column/stub removed, owner list annotated with `Exists()` (constant query count), zero OpenAPI drift |
 
 ## Parallel Groups
 - Phase 1: Auth bridge + Schemas + Services + Endpoints (T-009-01 .. 04)

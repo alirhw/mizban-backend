@@ -40,14 +40,11 @@ class Venue(models.Model):
     venue_type = models.CharField(max_length=16, choices=VenueType.choices)
     address = models.TextField()
     description = models.TextField(blank=True)
+    # Approval is controlled by platform admins; subscription activity is derived
+    # from VenueSubscription records (Task T-025 / T-025-FIX).
     is_approved = models.BooleanField(
         default=False,
         help_text="Set by a platform admin only (workflow lands in T-009).",
-    )
-    subscription_status = models.CharField(
-        max_length=16,
-        choices=SubscriptionStatus.choices,
-        default=SubscriptionStatus.INACTIVE,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -66,10 +63,19 @@ class Venue(models.Model):
         return self.venue_subscriptions.filter(expires_at__gt=current_time).exists()
 
     @property
+    def subscription_status(self) -> str:
+        """Derived subscription status ('ACTIVE' or 'INACTIVE') from VenueSubscription records."""
+        annotated = getattr(self, "_has_active_subscription", None)
+        is_active = annotated if annotated is not None else self.has_active_subscription()
+        return SubscriptionStatus.ACTIVE if is_active else SubscriptionStatus.INACTIVE
+
+    @property
     def is_publicly_visible(self) -> bool:
         """BR-005: publicly listed/bookable only when admin-approved
         AND has an active VenueSubscription. Mirrors ``VenueQuerySet.public()``."""
-        return self.is_approved and self.has_active_subscription()
+        annotated = getattr(self, "_has_active_subscription", None)
+        is_active = annotated if annotated is not None else self.has_active_subscription()
+        return self.is_approved and is_active
 
 
 class OperatingHours(models.Model):
@@ -155,36 +161,6 @@ class DesignAddon(models.Model):
 
     def __str__(self) -> str:
         return self.title
-
-
-class Subscription(models.Model):
-    """A venue's platform subscription record (model only in T-008).
-
-    Purchase/payment flow and the ACTIVE/EXPIRED lifecycle transitions
-    land in later billing tasks (PH-05); this model only persists the
-    state those flows will drive.
-    """
-
-    venue = models.ForeignKey(
-        Venue,
-        on_delete=models.CASCADE,
-        related_name="subscriptions",
-    )
-    plan_name = models.CharField(max_length=100)
-    status = models.CharField(
-        max_length=16,
-        choices=SubscriptionStatus.choices,
-        default=SubscriptionStatus.INACTIVE,
-    )
-    started_at = models.DateTimeField(null=True, blank=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-
-    def __str__(self) -> str:
-        return f"{self.venue} - {self.plan_name} ({self.status})"
 
 
 class SubscriptionPlan(models.Model):
