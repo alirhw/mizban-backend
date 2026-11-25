@@ -79,6 +79,10 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
       </div>
 
       <VenuePanoramaExplorer
+        venueId={venue.id}
+        venueName={venue.name}
+        venueSlug={venue.slug}
+        designAddons={venue.design_addons}
         spaces={spaces}
         initialSpaceId={firstSpaceId}
         initialPanorama={initialPanorama}

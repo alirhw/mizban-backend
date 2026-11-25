@@ -1,16 +1,28 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { ApiError, otpRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 const IRANIAN_MOBILE_REGEX = /^09\d{9}$/;
 
-export default function LoginPage() {
+function getSafeNextPath(rawNext: string | null): string {
+  if (!rawNext) return "/";
+  const trimmed = rawNext.trim();
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+    return trimmed;
+  }
+  return "/";
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login } = useAuth();
+
+  const nextPath = getSafeNextPath(searchParams.get("next"));
 
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [phone, setPhone] = useState("");
@@ -68,7 +80,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(phone.trim(), trimmedCode);
-      router.push("/");
+      router.push(nextPath);
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorMessage("کد وارد شده نامعتبر یا منقضی شده است.");
@@ -171,5 +183,19 @@ export default function LoginPage() {
         </form>
       )}
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-md rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-600">
+          در حال بارگذاری...
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

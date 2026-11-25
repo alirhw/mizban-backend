@@ -47,3 +47,10 @@ npm test
   ```bash
   npm run dev -- -H 0.0.0.0 -p 3000
   ```
+
+## Customer Booking & Split-Payment Flow (`T-028`)
+- Clicking **انتخاب این میز** on a 360° table pin in `VenuePanoramaExplorer` opens `BookingFlow` (`src/components/BookingFlow.tsx`) at the slot-selection step:
+  1. **Slot Selection:** Displays 7 Jalali-labelled dates starting `+1` day from Tehran today (`getTehranDateIso` / `formatJalaliFromIsoDate`), fetches `GET /api/v1/scheduling/venues/{venue_id}/slots`, and disables `<24h` (`isSlotAtLeast24HoursAhead`) or non-bookable slots without inventing `blocked` labels.
+  2. **Design Add-ons:** Multi-selects `design_addons` with Toman fees clearly labelled **پرداخت حضوری در کافه**.
+  3. **Review & Lock:** Displays split totals (online table fee vs. in-person add-ons or `بدون افزودنی`), redirects unauthenticated users to `/login?next=/venues/<slug>`, and calls `POST /api/v1/bookings/initiate/` to acquire a 10-minute lock with a live `mm:ss` countdown.
+  4. **Payment & Callback (`/bookings/callback`):** Calls `POST /api/v1/billing/initiate/` with an `idempotency_key` and performs a top-level `window.location.assign(redirect_url)` (no iframe). On `CONFIRMED`, fetches `GET /api/v1/bookings/{booking_id}/receipt/` and renders the split receipt; on `FAILED`/`TIMEOUT`, offers retry while the lock is active or restart back to `/venues/<venue>`.

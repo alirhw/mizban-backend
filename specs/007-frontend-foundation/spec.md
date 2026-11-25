@@ -18,4 +18,12 @@
 ## 3. 360° Panorama Viewer (T-027 — Done)
 - **Viewer:** `pannellum@2.5.7` dynamically loaded client-only (`ssr: false`) via `VenuePanoramaExplorer` and `PanoramaViewer` on `/venues/[slug]`.
 - **Media Proxy:** `next.config.ts` rewrites `/media/:path*` $\to$ `BACKEND_INTERNAL_URL/media/:path*`; `config/urls.py` serves `MEDIA_URL` in `DEBUG=True` only.
-- **Interaction:** Space switcher tabs (`listPublicVenueSpaces`), single-WebP panorama loading (`getPublicSpacePanorama`), >=44px tappable table hotspots (`mapPinsToHotspots`), and Persian selected-table card (`انتخاب این میز` local state only).
+- **Interaction:** Space switcher tabs (`listPublicVenueSpaces`), single-WebP panorama loading (`getPublicSpacePanorama`), >=44px tappable table hotspots (`mapPinsToHotspots`), and Persian selected-table card (`انتخاب این میز` opens `BookingFlow` at step `slot`).
+
+## 4. Customer Booking & Split-Payment Flow (T-028 — Done)
+- **State Machine & Helpers (`src/lib/booking.ts`, `src/lib/jalali.ts`):** Pure reducer (`bookingReducer`), split-payment summary (`computeBookingSummary`), 24h lead-time check (`isSlotAtLeast24HoursAhead`), Tehran Jalali date helpers (`getTehranDateIso`, `formatJalaliFromIsoDate`), `mm:ss` lock countdown (`computeLockRemainingSeconds`, `formatCountdownMmSs`), and safe Persian error mapping (`mapBookingErrorToPersian` — never exposes raw `error_code` or stack traces).
+- **Booking UI (`src/components/BookingFlow.tsx`):**
+  - **Slot Step:** 7 Jalali-labelled dates starting `+1` day from Tehran today, `listVenueSlots(venueId, { date, table_pin_id })`, `<24h` & `is_bookable` gating, only returned slots rendered.
+  - **Add-ons Step:** Multi-select `design_addons` labelled `پرداخت حضوری در کافه`.
+  - **Review & Lock Step:** Split summary (`بدون افزودنی` when 0 add-ons), auth gate redirecting guests to `/login?next=/venues/<slug>` (validated inside `Suspense` in `src/app/login/page.tsx`), `initiateBooking` lock with live `mm:ss` countdown and expiry restart, and `SLOT_ALREADY_RESERVED` conflict refresh.
+  - **Payment & Callback (`src/app/bookings/callback/page.tsx`):** `initiatePayment` with `idempotency_key` and top-level `window.location.assign(redirect_url)` (no iframe). Callback page (wrapped in `Suspense`) renders `getBookingReceipt(booking_id)` split receipt on `CONFIRMED` or Persian retry/restart UI on `FAILED`/`TIMEOUT`.

@@ -6,6 +6,7 @@ Supports --clear to remove the sample data cleanly.
 from __future__ import annotations
 
 import io
+from datetime import time
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
@@ -15,7 +16,7 @@ from PIL import Image, ImageDraw
 
 from apps.accounts.models import UserRole
 from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
-from apps.venues.models import SubscriptionPlan, Venue, VenueType
+from apps.venues.models import DesignAddon, OperatingHours, SubscriptionPlan, Venue, VenueType
 from apps.venues.services import activate_subscription
 
 SAMPLE_VENUE_SLUG = "sample-cafe-dev"
@@ -161,10 +162,37 @@ class Command(BaseCommand):
                     },
                 )
 
+            for weekday in OperatingHours.Weekday.values:
+                OperatingHours.objects.update_or_create(
+                    venue=venue,
+                    weekday=weekday,
+                    defaults={
+                        "open_time": time(9, 0),
+                        "close_time": time(23, 0),
+                    },
+                )
+
+            sample_addons = [
+                ("گل‌آرایی میز", 120_000),
+                ("شمع و دیزاین رمانتیک", 80_000),
+                ("کیک کوچک تولد", 250_000),
+            ]
+            for title, fee in sample_addons:
+                DesignAddon.objects.update_or_create(
+                    venue=venue,
+                    title=title,
+                    defaults={
+                        "fee": fee,
+                        "is_active": True,
+                    },
+                )
+
         self.stdout.write(
             self.style.SUCCESS(
                 f"Seeded DEV-ONLY venue '{venue.name}' (slug={venue.slug}), "
                 f"space_id={space.id}, pano={pano.width}x{pano.height} "
-                f"({pano.file_size_bytes} bytes), pins={space.table_pins.count()}"
+                f"({pano.file_size_bytes} bytes), pins={space.table_pins.count()}, "
+                f"hours={venue.operating_hours.count()}, "
+                f"addons={venue.design_addons.filter(is_active=True).count()}"
             )
         )

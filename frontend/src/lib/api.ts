@@ -83,6 +83,102 @@ export interface LogoutOut {
   logged_out: boolean;
 }
 
+export interface SlotOut {
+  start: string;
+  end: string;
+  is_bookable: boolean;
+  disabled_reason: string | null;
+  start_jalali: string;
+  end_jalali: string;
+}
+
+export interface BookingInitiateIn {
+  table_pin_id: number;
+  slot_date: string;
+  slot_start_time: string;
+  venue_id?: number | null;
+  addon_ids?: number[];
+}
+
+export interface BookingInitiateOut {
+  booking_id: number;
+  id: number;
+  status: string;
+  venue_id: number;
+  table_pin_id: number;
+  start_at: string;
+  end_at: string;
+  slot_date: string;
+  slot_start_time: string;
+  locked_at: string | null;
+  lock_expires_at: string | null;
+  amount_online_toman: number;
+  amount_in_person_toman: number;
+  start_jalali: string;
+  end_jalali: string;
+  jalali_start_datetime: string;
+  jalali_end_datetime: string;
+  jalali_date: string;
+}
+
+export interface PaymentInitiateIn {
+  booking_id: number;
+  idempotency_key: string;
+  callback_url: string;
+}
+
+export interface PaymentInitiateOut {
+  transaction_id: number;
+  booking_id: number;
+  amount_toman: number;
+  currency: string;
+  status: string;
+  provider_name: string;
+  provider_reference: string | null;
+  redirect_url: string;
+}
+
+export interface SplitReceiptOnlineSectionOut {
+  label: string;
+  description: string;
+  amount_online_toman: number;
+  provider_name?: string | null;
+  card_pan_masked?: string | null;
+}
+
+export interface SplitReceiptAddonLineOut {
+  addon_id: number;
+  title: string;
+  unit_fee_toman: number;
+  line_total_toman: number;
+}
+
+export interface SplitReceiptInPersonSectionOut {
+  label: string;
+  items: SplitReceiptAddonLineOut[];
+  total_in_person_toman: number;
+}
+
+export interface SplitReceiptOut {
+  booking_id: number;
+  status: string;
+  venue_name: string;
+  venue_slug: string;
+  table_number: string;
+  start_at: string;
+  end_at: string;
+  slot_date: string;
+  slot_start_time: string;
+  jalali_date: string;
+  jalali_start_datetime: string;
+  jalali_end_datetime: string;
+  paid_online: SplitReceiptOnlineSectionOut;
+  payable_in_person: SplitReceiptInPersonSectionOut;
+  total_online_toman: number;
+  total_in_person_toman: number;
+  grand_total_toman: number;
+}
+
 export interface ApiErrorEnvelope {
   error_code: string;
   message: string;
@@ -251,4 +347,39 @@ export async function logout(): Promise<LogoutOut> {
   });
   resetCsrfTokenCache();
   return result;
+}
+
+export async function listVenueSlots(
+  venueId: number,
+  params: { date: string; table_pin_id?: number | null }
+): Promise<SlotOut[]> {
+  const search = new URLSearchParams({ date: params.date });
+  if (params.table_pin_id !== undefined && params.table_pin_id !== null) {
+    search.set("table_pin_id", String(params.table_pin_id));
+  }
+  return apiFetch<SlotOut[]>(`/scheduling/venues/${venueId}/slots?${search.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function initiateBooking(payload: BookingInitiateIn): Promise<BookingInitiateOut> {
+  return apiFetch<BookingInitiateOut>("/bookings/initiate/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function initiatePayment(payload: PaymentInitiateIn): Promise<PaymentInitiateOut> {
+  return apiFetch<PaymentInitiateOut>("/billing/initiate/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getBookingReceipt(bookingId: number): Promise<SplitReceiptOut> {
+  return apiFetch<SplitReceiptOut>(`/bookings/${bookingId}/receipt/`, {
+    method: "GET",
+    cache: "no-store",
+  });
 }

@@ -3,9 +3,11 @@
 import dynamic from "next/dynamic";
 import React, { useState } from "react";
 
+import { BookingFlow } from "@/components/BookingFlow";
 import {
   ApiError,
   getPublicSpacePanorama,
+  type DesignAddonOut,
   type PublicPanoramaOut,
   type PublicTablePinOut,
   type SpaceOut,
@@ -22,12 +24,20 @@ const PanoramaViewer = dynamic(() => import("@/components/PanoramaViewer"), {
 });
 
 export interface VenuePanoramaExplorerProps {
+  venueId: number;
+  venueName: string;
+  venueSlug: string;
+  designAddons: DesignAddonOut[];
   spaces: SpaceOut[];
   initialSpaceId: number | null;
   initialPanorama: PublicPanoramaOut | null;
 }
 
 export function VenuePanoramaExplorer({
+  venueId,
+  venueName,
+  venueSlug,
+  designAddons,
   spaces,
   initialSpaceId,
   initialPanorama,
@@ -37,13 +47,14 @@ export function VenuePanoramaExplorer({
   const [loadingSpace, setLoadingSpace] = useState(false);
   const [spaceError, setSpaceError] = useState<string | null>(null);
   const [selectedPin, setSelectedPin] = useState<PublicTablePinOut | null>(null);
-  const [confirmedPinId, setConfirmedPinId] = useState<number | null>(null);
+  const [bookingPin, setBookingPin] = useState<PublicTablePinOut | null>(null);
+  const [bookingSelectionNonce, setBookingSelectionNonce] = useState(0);
 
   async function handleSelectSpace(spaceId: number) {
     if (spaceId === selectedSpaceId) return;
     setSelectedSpaceId(spaceId);
     setSelectedPin(null);
-    setConfirmedPinId(null);
+    setBookingPin(null);
     setSpaceError(null);
     setLoadingSpace(true);
 
@@ -152,16 +163,14 @@ export function VenuePanoramaExplorer({
                 <div className="flex flex-col items-end gap-2">
                   <button
                     type="button"
-                    onClick={() => setConfirmedPinId(selectedPin.id)}
+                    onClick={() => {
+                      setBookingPin(selectedPin);
+                      setBookingSelectionNonce((prev) => prev + 1);
+                    }}
                     className="min-h-[44px] rounded-lg bg-stone-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800"
                   >
                     انتخاب این میز
                   </button>
-                  {confirmedPinId === selectedPin.id ? (
-                    <span className="text-xs font-medium text-emerald-700">
-                      میز «{selectedPin.table_number}» انتخاب شد
-                    </span>
-                  ) : null}
                   <button
                     type="button"
                     onClick={() => setSelectedPin(null)}
@@ -172,6 +181,18 @@ export function VenuePanoramaExplorer({
                 </div>
               </div>
             </div>
+          ) : null}
+
+          {bookingPin ? (
+            <BookingFlow
+              key={`${bookingPin.id}-${bookingSelectionNonce}`}
+              venueId={venueId}
+              venueName={venueName}
+              venueSlug={venueSlug}
+              designAddons={designAddons}
+              selectedPin={bookingPin}
+              onChangeTable={() => setBookingPin(null)}
+            />
           ) : null}
         </div>
       )}

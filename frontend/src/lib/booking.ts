@@ -1,0 +1,327 @@
+import { ApiError, type DesignAddonOut } from "./api";
+
+export type BookingStep =
+  | "idle"
+  | "table"
+  | "slot"
+  | "addons"
+  | "review"
+  | "locked"
+  | "paying"
+  | "confirmed"
+  | "failed"
+  | "expired";
+
+export interface BookingState {
+  step: BookingStep;
+  tablePinId: number | null;
+  slotDate: string | null;
+  slotStartIso: string | null;
+  slotEndIso: string | null;
+  addonIds: number[];
+  bookingId: number | null;
+  lockExpiresAt: string | null;
+  amountOnlineToman: number | null;
+  amountInPersonToman: number | null;
+  errorMessage: string | null;
+}
+
+export const INITIAL_BOOKING_STATE: BookingState = {
+  step: "idle",
+  tablePinId: null,
+  slotDate: null,
+  slotStartIso: null,
+  slotEndIso: null,
+  addonIds: [],
+  bookingId: null,
+  lockExpiresAt: null,
+  amountOnlineToman: null,
+  amountInPersonToman: null,
+  errorMessage: null,
+};
+
+export type BookingAction =
+  | { type: "START" }
+  | { type: "SELECT_TABLE"; tablePinId: number }
+  | {
+      type: "SELECT_SLOT";
+      slotDate: string;
+      slotStartIso: string;
+      slotEndIso: string;
+    }
+  | { type: "SET_ADDONS"; addonIds: number[] }
+  | { type: "TOGGLE_ADDON"; addonId: number }
+  | { type: "PROCEED_TO_REVIEW" }
+  | { type: "BACK_TO_TABLE" }
+  | { type: "BACK_TO_SLOT" }
+  | { type: "BACK_TO_ADDONS" }
+  | {
+      type: "LOCK_ACQUIRED";
+      bookingId: number;
+      lockExpiresAt: string | null;
+      amountOnlineToman: number;
+      amountInPersonToman: number;
+    }
+  | { type: "START_PAYMENT" }
+  | { type: "PAYMENT_SUCCEEDED" }
+  | { type: "PAYMENT_FAILED"; error?: unknown }
+  | { type: "RETRY_PAYMENT" }
+  | { type: "LOCK_EXPIRED" }
+  | { type: "RESTART" };
+
+const ALLOWED_TRANSITIONS: Record<BookingStep, ReadonlySet<BookingStep>> = {
+  idle: new Set(["table"]),
+  table: new Set(["slot", "idle"]),
+  slot: new Set(["addons", "table", "idle"]),
+  addons: new Set(["review", "slot", "table", "idle"]),
+  review: new Set(["locked", "addons", "slot", "table", "failed", "idle"]),
+  locked: new Set(["paying", "expired", "failed", "idle"]),
+  paying: new Set(["confirmed", "failed", "expired"]),
+  confirmed: new Set(["idle"]),
+  failed: new Set(["paying", "locked", "expired", "idle"]),
+  expired: new Set(["idle", "table"]),
+};
+
+export function canTransitionBookingStep(from: BookingStep, to: BookingStep): boolean {
+  return ALLOWED_TRANSITIONS[from].has(to);
+}
+
+/**
+ * Pure state machine reducer for the customer booking flow.
+ */
+export function bookingReducer(state: BookingState, action: BookingAction): BookingState {
+  switch (action.type) {
+    case "START": {
+      if (!canTransitionBookingStep(state.step, "table")) return state;
+      return { ...state, step: "table", errorMessage: null };
+    }
+
+    case "SELECT_TABLE": {
+      if (state.step !== "table" && !canTransitionBookingStep(state.step, "slot")) {
+        return state;
+      }
+      const tableChanged = state.tablePinId !== action.tablePinId;
+      return {
+        ...state,
+        step: "slot",
+        tablePinId: action.tablePinId,
+        slotDate: tableChanged ? null : state.slotDate,
+        slotStartIso: tableChanged ? null : state.slotStartIso,
+        slotEndIso: tableChanged ? null : state.slotEndIso,
+        errorMessage: null,
+      };
+    }
+
+    case "SELECT_SLOT": {
+      if (state.step !== "slot" && !canTransitionBookingStep(state.step, "addons")) {
+        return state;
+      }
+      return {
+        ...state,
+        step: "addons",
+        slotDate: action.slotDate,
+        slotStartIso: action.slotStartIso,
+        slotEndIso: action.slotEndIso,
+        errorMessage: null,
+      };
+    }
+
+    case "SET_ADDONS": {
+      if (state.step !== "addons" && state.step !== "review") return state;
+      return {
+        ...state,
+        addonIds: Array.from(new Set(action.addonIds)),
+      };
+    }
+
+    case "TOGGLE_ADDON": {
+      if (state.step !== "addons" && state.step !== "review") return state;
+      const exists = state.addonIds.includes(action.addonId);
+      return {
+        ...state,
+        addonIds: exists
+          ? state.addonIds.filter((id) => id !== action.addonId)
+          : [...state.addonIds, action.addonId],
+      };
+    }
+
+    case "PROCEED_TO_REVIEW": {
+      if (!canTransitionBookingStep(state.step, "review")) return state;
+      return { ...state, step: "review", errorMessage: null };
+    }
+
+    case "BACK_TO_TABLE": {
+      if (!canTransitionBookingStep(state.step, "table")) return state;
+      return { ...state, step: "table", errorMessage: null };
+    }
+
+    case "BACK_TO_SLOT": {
+      if (!canTransitionBookingStep(state.step, "slot")) return state;
+      return { ...state, step: "slot", errorMessage: null };
+    }
+
+    case "BACK_TO_ADDONS": {
+      if (!canTransitionBookingStep(state.step, "addons")) return state;
+      return { ...state, step: "addons", errorMessage: null };
+    }
+
+    case "LOCK_ACQUIRED": {
+      if (!canTransitionBookingStep(state.step, "locked")) return state;
+      return {
+        ...state,
+        step: "locked",
+        bookingId: action.bookingId,
+        lockExpiresAt: action.lockExpiresAt,
+        amountOnlineToman: action.amountOnlineToman,
+        amountInPersonToman: action.amountInPersonToman,
+        errorMessage: null,
+      };
+    }
+
+    case "START_PAYMENT": {
+      if (!canTransitionBookingStep(state.step, "paying")) return state;
+      return { ...state, step: "paying", errorMessage: null };
+    }
+
+    case "PAYMENT_SUCCEEDED": {
+      if (!canTransitionBookingStep(state.step, "confirmed")) return state;
+      return { ...state, step: "confirmed", errorMessage: null };
+    }
+
+    case "PAYMENT_FAILED": {
+      if (!canTransitionBookingStep(state.step, "failed")) return state;
+      return {
+        ...state,
+        step: "failed",
+        errorMessage: mapBookingErrorToPersian(action.error),
+      };
+    }
+
+    case "RETRY_PAYMENT": {
+      if (state.step !== "failed") return state;
+      if (state.lockExpiresAt && computeLockRemainingSeconds(state.lockExpiresAt) <= 0) {
+        return {
+          ...state,
+          step: "expired",
+          errorMessage: "زمان قفل رزرو به پایان رسید؛ لطفاً دوباره تلاش کنید.",
+        };
+      }
+      return { ...state, step: "locked", errorMessage: null };
+    }
+
+    case "LOCK_EXPIRED": {
+      if (!canTransitionBookingStep(state.step, "expired")) return state;
+      return {
+        ...state,
+        step: "expired",
+        errorMessage: "زمان قفل رزرو به پایان رسید؛ لطفاً دوباره تلاش کنید.",
+      };
+    }
+
+    case "RESTART": {
+      return { ...INITIAL_BOOKING_STATE };
+    }
+
+    default: {
+      return state;
+    }
+  }
+}
+
+export interface BookingSummary {
+  onlineTotalToman: number;
+  inPersonTotalToman: number;
+  grandTotalToman: number;
+  inPersonLabel: string;
+  addonCount: number;
+}
+
+/**
+ * Compute split-payment booking totals (BR-003):
+ * - Online: table reservation fee only
+ * - In-person: sum of selected design add-ons ('بدون افزودنی' when 0 addons)
+ */
+export function computeBookingSummary(
+  tableFeeToman: number,
+  selectedAddons: ReadonlyArray<Pick<DesignAddonOut, "fee">>
+): BookingSummary {
+  const onlineTotalToman = Math.max(0, tableFeeToman);
+  const inPersonTotalToman = selectedAddons.reduce((sum, addon) => sum + Math.max(0, addon.fee), 0);
+  const addonCount = selectedAddons.length;
+
+  return {
+    onlineTotalToman,
+    inPersonTotalToman,
+    grandTotalToman: onlineTotalToman + inPersonTotalToman,
+    inPersonLabel: addonCount === 0 ? "بدون افزودنی" : "پرداخت در محل برای افزودنی‌های طراحی",
+    addonCount,
+  };
+}
+
+/**
+ * Compute remaining seconds for a booking lock, clamped to 0 at or after expiry.
+ */
+export function computeLockRemainingSeconds(
+  lockExpiresAtIso: string | null | undefined,
+  nowMs: number = Date.now()
+): number {
+  if (!lockExpiresAtIso) {
+    return 0;
+  }
+  const expiresMs = Date.parse(lockExpiresAtIso);
+  if (Number.isNaN(expiresMs) || !Number.isFinite(nowMs)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor((expiresMs - nowMs) / 1000));
+}
+
+/**
+ * Format remaining seconds as MM:SS, reaching '00:00' at expiry.
+ */
+export function formatCountdownMmSs(seconds: number): string {
+  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+  const minutes = Math.floor(safeSeconds / 60);
+  const remSeconds = safeSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remSeconds).padStart(2, "0")}`;
+}
+
+function extractErrorCode(err: unknown): string | null {
+  if (err instanceof ApiError) {
+    return err.errorCode;
+  }
+  if (err && typeof err === "object") {
+    const record = err as Record<string, unknown>;
+    if (typeof record.errorCode === "string") return record.errorCode;
+    if (typeof record.error_code === "string") return record.error_code;
+  }
+  return null;
+}
+
+/**
+ * Map backend booking/payment errors to safe, user-friendly Persian messages.
+ * Never exposes raw error_code values or stack traces.
+ */
+export function mapBookingErrorToPersian(err: unknown): string {
+  const code = extractErrorCode(err);
+
+  if (code === "SLOT_ALREADY_RESERVED") {
+    return "این اسلات همین‌الان رزرو شد؛ یک اسلات دیگر انتخاب کنید";
+  }
+
+  if (code === "LEAD_TIME_VIOLATION") {
+    return "رزرو میز فقط تا ۲۴ ساعت پیش از زمان شروع اسلات امکان‌پذیر است.";
+  }
+
+  if (code === "BOOKING_LOCK_EXPIRED" || code === "LOCK_EXPIRED") {
+    return "زمان قفل رزرو به پایان رسید؛ لطفاً دوباره اسلات را انتخاب کنید.";
+  }
+
+  if (
+    code &&
+    (code.startsWith("PAYMENT_") || code === "GATEWAY_ERROR" || code === "BILLING_ERROR")
+  ) {
+    return "پرداخت ناموفق بود؛ تا پایان زمان قفل رزرو می‌توانید دوباره تلاش کنید.";
+  }
+
+  return "خطایی در پردازش رزرو رخ داد؛ لطفاً دوباره تلاش کنید.";
+}
