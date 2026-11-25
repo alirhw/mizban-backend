@@ -59,3 +59,7 @@ npm test
 - **Routes:** `/owner` (list of owned venues + read-only subscription status) and `/owner/venues/[id]` (spaces & panorama status, table pin fee/capacity/smoking editor, `BlockedSlot` manager, read-only subscription card, and bookings overview with masked customer phones).
 - Unauthenticated users redirect to `/login?next=/owner`; non-owner (`CUSTOMER`) accounts see the Persian **دسترسی ندارید** screen.
 - For local dev testing, `09120009999` (`VENUE_OWNER`) owns both `sample-cafe-dev` (`id=1`) and `real-cafe-dev` (`id=3`).
+
+## Customer My-Bookings, Cancellation & Wallet (`PH-06-03`)
+- **Route:** `/my-bookings` («رزروهای من», redirects guests to `/login?next=/my-bookings`).
+- Displays the customer's bookings newest first (`GET /api/v1/bookings/my/`), split receipts (`GET /api/v1/bookings/{id}/receipt/`), server-driven cancellation (`POST /api/v1/bookings/{id}/cancel/` with BR-004 36-hour rule, wallet refund vs. «بدون بازپرداخت», and non-refundable in-person add-ons notice), and the read-only, non-withdrawable wallet balance + recent ledger entries (`GET /api/v1/wallets/me/`).

@@ -119,6 +119,47 @@ export interface OwnerBookingOut {
   created_at: string;
 }
 
+export interface CustomerBookingOut {
+  booking_id: number;
+  venue_name: string;
+  venue_slug: string;
+  table_number: string;
+  status: string;
+  slot_date: string;
+  jalali_date: string;
+  slot_start_time: string;
+  start_at: string;
+  end_at: string;
+  start_jalali: string;
+  end_jalali: string;
+  amount_online_toman: number;
+  amount_in_person_toman: number;
+  is_cancellable: boolean;
+  cancel_refund_toman: number;
+  created_at: string;
+}
+
+export interface BookingCancelOut {
+  booking_id: number;
+  status: string;
+  refunded_to_wallet_toman: number;
+  wallet_balance_toman: number | null;
+}
+
+export interface WalletLedgerEntryOut {
+  id: number;
+  direction: "credit" | "debit" | string;
+  amount_toman: number;
+  reason: string;
+  jalali_date: string;
+  created_at: string;
+}
+
+export interface WalletMeOut {
+  balance_toman: number;
+  entries: WalletLedgerEntryOut[];
+}
+
 export interface PublicTablePinOut {
   id: number;
   table_number: string;
@@ -546,4 +587,30 @@ export async function listOwnerVenueBookings(
       cache: "no-store",
     }
   );
+}
+
+export async function listMyBookings(
+  params: { limit?: number; offset?: number } = {}
+): Promise<CustomerBookingOut[]> {
+  const search = new URLSearchParams();
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  return apiFetch<CustomerBookingOut[]>(`/bookings/my/${qs ? `?${qs}` : ""}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function cancelBooking(bookingId: number): Promise<BookingCancelOut> {
+  return apiFetch<BookingCancelOut>(`/bookings/${bookingId}/cancel/`, {
+    method: "POST",
+  });
+}
+
+export async function getMyWallet(): Promise<WalletMeOut> {
+  return apiFetch<WalletMeOut>("/wallets/me/", {
+    method: "GET",
+    cache: "no-store",
+  });
 }
