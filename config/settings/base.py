@@ -45,6 +45,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "core.observability.RequestIdMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -155,27 +156,37 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = True
 
-# --- Observability (Architecture Spec section 25) ---
-SENTRY_DSN = env("SENTRY_DSN", default="")
-if SENTRY_DSN:
-    import sentry_sdk
-    from sentry_sdk.integrations.django import DjangoIntegration
+# --- Observability (Architecture Spec section 25 / Task T-031) ---
+from core.observability import init_sentry
 
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        integrations=[DjangoIntegration()],
-        traces_sample_rate=0.1,
-        send_default_pii=False,
-    )
+ENVIRONMENT = env("ENVIRONMENT", default=env("DJANGO_ENV", default="development"))
+APP_RELEASE = env("APP_RELEASE", default="mizban-backend@0.1.0")
+SENTRY_DSN = env("SENTRY_DSN", default="")
+SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.1)
+
+init_sentry(
+    dsn=SENTRY_DSN,
+    environment=ENVIRONMENT,
+    release=APP_RELEASE,
+    traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+)
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "pii_request_id": {"()": "core.observability.PiiScrubbingFilter"},
+    },
     "formatters": {
-        "simple": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"},
+        "simple": {"format": "%(asctime)s %(levelname)s [%(request_id)s] %(name)s %(message)s"},
+        "json": {"()": "core.observability.JsonLogFormatter"},
     },
     "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+            "filters": ["pii_request_id"],
+        },
     },
     "root": {"handlers": ["console"], "level": "INFO"},
 }

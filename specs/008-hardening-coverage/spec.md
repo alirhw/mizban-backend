@@ -34,3 +34,25 @@
   4. **Low** (`apps/wallets/admin.py:23,51`, `apps/billing/services/payment.py:141`): References `phone_number` instead of `accounts.User.phone`.
   5. **Low** (`config/settings/production.py`): No explicit `CSRF_TRUSTED_ORIGINS` env configuration.
   6. **Info** (`apps/billing/services/payment.py:197`): Logs `provider_reference` on idempotent verify hit.
+
+## 4. Sentry, Structured Logging & Operational Alerts (T-031)
+- **Environment Variables:**
+  - `SENTRY_DSN` (default `""` — Sentry completely disabled when unset; owner supplies live DSN in production)
+  - `ENVIRONMENT` (falls back to `DJANGO_ENV`, default `"development"` in `base.py` / `"production"` in `production.py`)
+  - `APP_RELEASE` (default `"mizban-backend@0.1.0"`, matching `pyproject.toml`; CI/CD may override with release/git SHA)
+  - `SENTRY_TRACES_SAMPLE_RATE` (default `0.1`, clamped to `[0.0, 1.0]`)
+- **Sentry & PII Scrubbing (`core/observability.py`):**
+  - `send_default_pii=False`, `before_send=scrub_sentry_event` strips `user`, `request.cookies`, `Cookie`/`Authorization`/`X-CSRFToken` headers, Iranian phone patterns (`09...`/`+989...`/`00989...`), and sensitive keys (`otp`, `code`, `token`, `secret`, `password`, `card_pan`, `raw_payload`, etc.).
+- **Structured Logging & Request ID:**
+  - `core.observability.RequestIdMiddleware` binds a unique `X-Request-ID` per request via `contextvars` and echoes `X-Request-ID` in the response.
+  - `PiiScrubbingFilter` injects `request_id` and scrubs phone/OTP/secret patterns from every `LogRecord`.
+  - Production (`config/settings/production.py`) uses `JsonLogFormatter` (`timestamp`, `level`, `logger`, `message`, `request_id`); development keeps human-readable `"simple"` console output.
+- **Operational Alert Rules Checklist (to be configured by owner once Sentry project exists):**
+
+| Alert Rule | Trigger / Signal | Severity | Owner / Destination |
+| :--- | :--- | :--- | :--- |
+| **5xx Spike / Unhandled Exceptions** | HTTP 5xx rate > 1% over 5 min or new unhandled exception issue | Critical | Backend On-Call (to be configured by owner) |
+| **Payment Callback Failures** | `Payment verify amount mismatch` / callback verification exceptions or timeout spike | High | Payments / Backend Owner (to be configured by owner) |
+| **Booking-Lock Contention Errors** | Repeated `SlotAlreadyLockedError` / `lock_timeout` / DB 5s timeout spikes | Medium | Backend / SRE Owner (to be configured by owner) |
+| **OTP Rate-Limit Abuse** | Sustained `OTP request rate limit exceeded` (`OTP_RATE_LIMITED` 429) per-phone or per-IP spike | Medium | Security / Backend Owner (to be configured by owner) |
+| **Wallet Ledger Invariant Violations** | Any `balance < 0` check constraint error or append-only ledger breach attempt | Critical | Payments / Security Owner (to be configured by owner) |

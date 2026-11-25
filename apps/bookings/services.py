@@ -281,6 +281,12 @@ def create_booking_lock(
                 booking.amount_in_person_toman = total_addon_fee
                 booking.save(update_fields=["amount_in_person_toman", "updated_at"])
 
+        logger.info(
+            "Booking lock created: booking_id=%s venue_id=%s pin_id=%s",
+            booking.id,
+            booking.venue_id,
+            booking.table_pin_id,
+        )
         return booking
 
 

@@ -23,3 +23,7 @@ SESSION_COOKIE_HTTPONLY = True
 SECURE_HSTS_SECONDS = 31_536_000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
+
+# Structured JSON logging in production (Task T-031)
+ENVIRONMENT = env("ENVIRONMENT", default=env("DJANGO_ENV", default="production"))  # noqa: F405
+LOGGING["handlers"]["console"]["formatter"] = "json"  # noqa: F405
