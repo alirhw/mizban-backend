@@ -54,3 +54,8 @@ npm test
   2. **Design Add-ons:** Multi-selects `design_addons` with Toman fees clearly labelled **پرداخت حضوری در کافه**.
   3. **Review & Lock:** Displays split totals (online table fee vs. in-person add-ons or `بدون افزودنی`), redirects unauthenticated users to `/login?next=/venues/<slug>`, and calls `POST /api/v1/bookings/initiate/` to acquire a 10-minute lock with a live `mm:ss` countdown.
   4. **Payment & Callback (`/bookings/callback`):** Calls `POST /api/v1/billing/initiate/` with an `idempotency_key` and performs a top-level `window.location.assign(redirect_url)` (no iframe). On `CONFIRMED`, fetches `GET /api/v1/bookings/{booking_id}/receipt/` and renders the split receipt; on `FAILED`/`TIMEOUT`, offers retry while the lock is active or restart back to `/venues/<venue>`.
+
+## Venue-Owner Dashboard (`PH-06-02`)
+- **Routes:** `/owner` (list of owned venues + read-only subscription status) and `/owner/venues/[id]` (spaces & panorama status, table pin fee/capacity/smoking editor, `BlockedSlot` manager, read-only subscription card, and bookings overview with masked customer phones).
+- Unauthenticated users redirect to `/login?next=/owner`; non-owner (`CUSTOMER`) accounts see the Persian **دسترسی ندارید** screen.
+- For local dev testing, `09120009999` (`VENUE_OWNER`) owns both `sample-cafe-dev` (`id=1`) and `real-cafe-dev` (`id=3`).

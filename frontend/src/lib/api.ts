@@ -36,8 +36,87 @@ export interface SpaceOut {
   display_order: number;
   is_active: boolean;
   active_panorama_id: string | null;
+  panorama_status: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface VenueOwnerOut extends VenuePublicDetailOut {
+  is_approved: boolean;
+  subscription_status: string;
+  is_publicly_visible: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VenueSubscriptionOut {
+  is_active: boolean;
+  plan_name: string | null;
+  starts_at: string | null;
+  expires_at: string | null;
+  jalali_expires_at: string | null;
+  days_remaining: number;
+  has_ever_subscribed: boolean;
+}
+
+export interface TablePinOut {
+  id: number;
+  venue_id: number;
+  space_id: number | null;
+  panorama_image_id: string | null;
+  table_number: string;
+  capacity: number;
+  pitch: number | null;
+  yaw: number | null;
+  description: string;
+  reservation_fee_toman: number;
+  is_smoking: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TablePinUpdateIn {
+  table_number?: string | null;
+  capacity?: number | null;
+  pitch?: number | null;
+  yaw?: number | null;
+  panorama_image_id?: string | null;
+  description?: string | null;
+  reservation_fee_toman?: number | null;
+  is_smoking?: boolean | null;
+  is_active?: boolean | null;
+}
+
+export interface BlockedSlotCreateIn {
+  start_at: string;
+  reason?: string;
+}
+
+export interface BlockedSlotOut {
+  id: number;
+  pin_id: number;
+  start_at: string;
+  end_at: string;
+  jalali_start_at: string;
+  reason: string;
+}
+
+export interface OwnerBookingOut {
+  booking_id: number;
+  status: string;
+  table_number: string;
+  slot_date: string;
+  jalali_date: string;
+  slot_start_time: string;
+  start_at: string;
+  end_at: string;
+  start_jalali: string;
+  end_jalali: string;
+  amount_online_toman: number;
+  amount_in_person_toman: number;
+  customer_phone_masked: string;
+  created_at: string;
 }
 
 export interface PublicTablePinOut {
@@ -382,4 +461,89 @@ export async function getBookingReceipt(bookingId: number): Promise<SplitReceipt
     method: "GET",
     cache: "no-store",
   });
+}
+
+export async function listOwnerVenues(): Promise<VenueOwnerOut[]> {
+  return apiFetch<VenueOwnerOut[]>("/venues/owner/venues", {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function getOwnerVenue(venueId: number): Promise<VenueOwnerOut> {
+  return apiFetch<VenueOwnerOut>(`/venues/owner/venues/${venueId}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function getOwnerVenueSubscription(venueId: number): Promise<VenueSubscriptionOut> {
+  return apiFetch<VenueSubscriptionOut>(`/venues/owner/venues/${venueId}/subscription/`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function listOwnerVenueSpaces(venueId: number): Promise<SpaceOut[]> {
+  return apiFetch<SpaceOut[]>(`/venues/${venueId}/spaces`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function listSpaceTablePins(spaceId: number): Promise<TablePinOut[]> {
+  return apiFetch<TablePinOut[]>(`/panoramas/spaces/${spaceId}/pins`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function updateTablePin(
+  pinId: number,
+  payload: TablePinUpdateIn
+): Promise<TablePinOut> {
+  return apiFetch<TablePinOut>(`/panoramas/pins/${pinId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listPinBlockedSlots(pinId: number): Promise<BlockedSlotOut[]> {
+  return apiFetch<BlockedSlotOut[]>(`/scheduling/pins/${pinId}/blocked-slots/`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function createPinBlockedSlot(
+  pinId: number,
+  payload: BlockedSlotCreateIn
+): Promise<BlockedSlotOut> {
+  return apiFetch<BlockedSlotOut>(`/scheduling/pins/${pinId}/blocked-slots/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteBlockedSlot(blockId: number): Promise<void> {
+  await apiFetch<void>(`/scheduling/blocked-slots/${blockId}/`, {
+    method: "DELETE",
+  });
+}
+
+export async function listOwnerVenueBookings(
+  venueId: number,
+  params: { limit?: number; offset?: number } = {}
+): Promise<OwnerBookingOut[]> {
+  const search = new URLSearchParams();
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  return apiFetch<OwnerBookingOut[]>(
+    `/venues/owner/venues/${venueId}/bookings/${qs ? `?${qs}` : ""}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    }
+  );
 }
