@@ -229,3 +229,42 @@ def list_wallet_transactions(
         .order_by("-created_at", "-id")
     )
     return paginate(qs, page=page, page_size=page_size)
+
+
+def get_customer_wallet_summary(user: Any, *, max_entries: int = 20) -> dict[str, Any]:
+    """Read-only customer wallet balance and recent ledger entries (PH-06-03-PRE).
+
+    - CUSTOMER role only (VENUE_OWNER/non-customer raises PermissionDenied -> 403).
+    - Does NOT create a Wallet row on read: customers without a wallet receive balance 0 and [].
+    - Reuses get_wallet_balance() so balance matches BookingCancelOut.wallet_balance_toman.
+    """
+    from django.core.exceptions import PermissionDenied
+    from apps.accounts.models import UserRole
+    from core.jalali import format_jalali
+
+    if getattr(user, "role", None) != UserRole.CUSTOMER:
+        raise PermissionDenied("Only customers can access their wallet.")
+
+    wallet = Wallet.objects.filter(user=user).first()
+    if wallet is None:
+        return {"balance_toman": 0, "entries": []}
+
+    balance = get_wallet_balance(wallet)
+    txs = list(
+        WalletTransaction.objects.filter(wallet=wallet)
+        .order_by("-created_at", "-id")[:max_entries]
+    )
+    return {
+        "balance_toman": balance,
+        "entries": [
+            {
+                "id": tx.id,
+                "direction": "credit" if tx.type == WalletTransactionType.CREDIT else "debit",
+                "amount_toman": tx.amount_toman,
+                "reason": tx.reason,
+                "jalali_date": format_jalali(tx.created_at, fmt="%Y/%m/%d %H:%M"),
+                "created_at": tx.created_at,
+            }
+            for tx in txs
+        ],
+    }

@@ -1534,6 +1534,59 @@
         ]
       }
     },
+    "/api/v1/bookings/my/": {
+      "get": {
+        "operationId": "apps_bookings_api_list_my_bookings_endpoint",
+        "summary": "List authenticated customer's own bookings (PH-06-03-PRE)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerBookingOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read-only bounded list of the authenticated customer's bookings, newest first.",
+        "tags": [
+          "bookings"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/bookings/initiate/": {
       "post": {
         "operationId": "apps_bookings_api_initiate_booking_endpoint",
@@ -1727,6 +1780,34 @@
         "description": "Process incoming payment gateway callback (Task T-021 / ADR-006).\n\nPublic endpoint (auth=None): Gateway callbacks originate from customer browsers\nor gateway servers without an authorization header.\nExtracts reference via adapter, verifies server-to-server, and atomically confirms\nor flags for refund.",
         "tags": [
           "billing"
+        ]
+      }
+    },
+    "/api/v1/wallets/me/": {
+      "get": {
+        "operationId": "apps_wallets_api_get_my_wallet_endpoint",
+        "summary": "Get authenticated customer's wallet balance and recent entries (PH-06-03-PRE)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletMeOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read-only wallet balance and latest 20 ledger entries for the authenticated customer.",
+        "tags": [
+          "wallets"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
         ]
       }
     }
@@ -3191,6 +3272,106 @@
         "title": "BlockedSlotCreateIn",
         "type": "object"
       },
+      "CustomerBookingOut": {
+        "additionalProperties": false,
+        "description": "Read-only customer booking list item with server-derived cancellability (PH-06-03-PRE).",
+        "properties": {
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "venue_slug": {
+            "title": "Venue Slug",
+            "type": "string"
+          },
+          "table_number": {
+            "title": "Table Number",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "slot_date": {
+            "format": "date",
+            "title": "Slot Date",
+            "type": "string"
+          },
+          "jalali_date": {
+            "title": "Jalali Date",
+            "type": "string"
+          },
+          "slot_start_time": {
+            "format": "time",
+            "title": "Slot Start Time",
+            "type": "string"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          },
+          "end_at": {
+            "format": "date-time",
+            "title": "End At",
+            "type": "string"
+          },
+          "start_jalali": {
+            "title": "Start Jalali",
+            "type": "string"
+          },
+          "end_jalali": {
+            "title": "End Jalali",
+            "type": "string"
+          },
+          "amount_online_toman": {
+            "title": "Amount Online Toman",
+            "type": "integer"
+          },
+          "amount_in_person_toman": {
+            "title": "Amount In Person Toman",
+            "type": "integer"
+          },
+          "is_cancellable": {
+            "title": "Is Cancellable",
+            "type": "boolean"
+          },
+          "cancel_refund_toman": {
+            "title": "Cancel Refund Toman",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "booking_id",
+          "venue_name",
+          "venue_slug",
+          "table_number",
+          "status",
+          "slot_date",
+          "jalali_date",
+          "slot_start_time",
+          "start_at",
+          "end_at",
+          "start_jalali",
+          "end_jalali",
+          "amount_online_toman",
+          "amount_in_person_toman",
+          "is_cancellable",
+          "cancel_refund_toman",
+          "created_at"
+        ],
+        "title": "CustomerBookingOut",
+        "type": "object"
+      },
       "BookingInitiateOut": {
         "description": "Response payload returned upon successfully acquiring a booking lock (201 Created).",
         "properties": {
@@ -3744,6 +3925,70 @@
           "refund_required"
         ],
         "title": "PaymentCallbackOut",
+        "type": "object"
+      },
+      "WalletLedgerEntryOut": {
+        "additionalProperties": false,
+        "description": "Read-only wallet ledger entry for the customer wallet view (PH-06-03-PRE).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "amount_toman": {
+            "title": "Amount Toman",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "jalali_date": {
+            "title": "Jalali Date",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "direction",
+          "amount_toman",
+          "reason",
+          "jalali_date",
+          "created_at"
+        ],
+        "title": "WalletLedgerEntryOut",
+        "type": "object"
+      },
+      "WalletMeOut": {
+        "additionalProperties": false,
+        "description": "Read-only customer wallet balance and latest ledger entries (PH-06-03-PRE).",
+        "properties": {
+          "balance_toman": {
+            "title": "Balance Toman",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/WalletLedgerEntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "balance_toman",
+          "entries"
+        ],
+        "title": "WalletMeOut",
         "type": "object"
       }
     },

@@ -116,6 +116,30 @@ class BookingCancelOut(Schema):
     )
 
 
+class CustomerBookingOut(Schema):
+    """Read-only customer booking list item with server-derived cancellability (PH-06-03-PRE)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    booking_id: int
+    venue_name: str
+    venue_slug: str
+    table_number: str
+    status: str
+    slot_date: date
+    jalali_date: str
+    slot_start_time: time
+    start_at: datetime
+    end_at: datetime
+    start_jalali: str
+    end_jalali: str
+    amount_online_toman: int
+    amount_in_person_toman: int
+    is_cancellable: bool
+    cancel_refund_toman: int
+    created_at: datetime
+
+
 class SplitReceiptOnlineSectionOut(Schema):
     """Online payment section of a split receipt (BR-003: 100% platform share)."""
 

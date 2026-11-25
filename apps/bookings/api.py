@@ -19,10 +19,33 @@ from apps.bookings.schemas import (
     BookingCancelOut,
     BookingInitiateIn,
     BookingInitiateOut,
+    CustomerBookingOut,
     SplitReceiptOut,
 )
 
 router = Router(tags=["bookings"])
+
+
+@router.get(
+    "/my/",
+    response={200: list[CustomerBookingOut]},
+    auth=auth,
+    summary="List authenticated customer's own bookings (PH-06-03-PRE)",
+)
+@router.get(
+    "/my",
+    response={200: list[CustomerBookingOut]},
+    auth=auth,
+    summary="List authenticated customer's own bookings (trailing-slash alias)",
+    include_in_schema=False,
+)
+def list_my_bookings_endpoint(request, limit: int = 50, offset: int = 0):
+    """Read-only bounded list of the authenticated customer's bookings, newest first."""
+    return services.list_customer_bookings(
+        user=request.auth,
+        limit=limit,
+        offset=offset,
+    )
 
 
 

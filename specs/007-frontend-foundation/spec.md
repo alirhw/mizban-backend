@@ -35,3 +35,12 @@
   - Returns `OwnerBookingOut`: `booking_id`, `status`, `table_number`, `slot_date` (ISO), `jalali_date`, `slot_start_time`, `start_at`, `end_at`, `start_jalali`, `end_jalali`, `amount_online_toman`, `amount_in_person_toman`, `customer_phone_masked` (server-masked `0912***789`; full phone never returned), `created_at`.
 - **Derived `SpaceOut.panorama_status`:**
   - Read-only field (`READY` / `PROCESSING` / `UPLOADED` / `FAILED` or `null` when `active_panorama_id` is null), populated via `.select_related("active_panorama")` with zero N+1 queries and zero migrations.
+
+## 6. Customer My-Bookings & Wallet Pre-Task Contracts (PH-06-03-PRE)
+- **Customer Bookings List (`GET /api/v1/bookings/my/`):**
+  - `ActiveSessionAuth`, `CUSTOMER` role only (`401` unauthenticated, `403` `VENUE_OWNER`).
+  - Ordered newest first (`created_at DESC, id DESC`), bounded via `limit=50` (`1..200`), `offset=0`.
+  - Returns `CustomerBookingOut`: `booking_id`, `venue_name`, `venue_slug`, `table_number`, `status`, `slot_date` (ISO), `jalali_date`, `slot_start_time`, `start_at`, `end_at`, `start_jalali`, `end_jalali`, `amount_online_toman`, `amount_in_person_toman`, `is_cancellable` (server-derived from T-023 decision tree), `cancel_refund_toman`, `created_at`.
+- **Customer Wallet Read (`GET /api/v1/wallets/me/`):**
+  - `ActiveSessionAuth`, `CUSTOMER` role only (`401` unauthenticated, `403` `VENUE_OWNER`).
+  - Returns `WalletMeOut`: `balance_toman` (via `get_wallet_balance`, matching `BookingCancelOut.wallet_balance_toman`) and `entries` (newest 20 `WalletLedgerEntryOut`: `id`, `direction`, `amount_toman`, `reason`, `jalali_date`, `created_at`). Customers without a wallet receive `balance_toman=0, entries=[]` (`200`, no wallet created on read).

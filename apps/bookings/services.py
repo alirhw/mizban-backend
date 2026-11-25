@@ -28,7 +28,7 @@ from core.exceptions import (
     ReceiptNotAvailableError,
     SlotAlreadyReservedError,
 )
-from core.jalali import TEHRAN
+from core.jalali import TEHRAN, format_jalali
 
 logger = logging.getLogger(__name__)
 
@@ -511,6 +511,81 @@ def cancel_booking(
             f"Booking in status '{locked_booking.status}' cannot be cancelled.",
             details={"booking_id": locked_booking.id, "current_status": locked_booking.status},
         )
+
+
+def compute_booking_cancel_eligibility(
+    booking: Booking,
+    *,
+    now: Optional[datetime] = None,
+) -> tuple[bool, int]:
+    """Derive (is_cancellable, cancel_refund_toman) from the T-023 cancel_booking decision tree."""
+    from django.conf import settings
+
+    current_time = now or dj_timezone.now()
+    lead_hours = getattr(settings, "CANCELLATION_MIN_LEAD_HOURS", 36)
+
+    if booking.status == BookingStatus.CONFIRMED:
+        if booking.start_at - current_time >= timedelta(hours=lead_hours):
+            return True, booking.amount_online_toman
+        return False, 0
+
+    if booking.status == BookingStatus.PENDING_PAYMENT:
+        return True, 0
+
+    return False, 0
+
+
+def list_customer_bookings(
+    user: Any,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    now: Optional[datetime] = None,
+) -> list[dict[str, Any]]:
+    """List authenticated customer's own bookings, newest first (PH-06-03-PRE)."""
+    from apps.accounts.models import UserRole
+
+    if getattr(user, "role", None) != UserRole.CUSTOMER:
+        raise PermissionDenied("Only customers can view their bookings.")
+
+    clamped_limit = max(1, min(int(limit), 200))
+    clamped_offset = max(0, int(offset))
+    current_time = now or dj_timezone.now()
+
+    bookings = list(
+        Booking.objects.select_related("venue", "table_pin")
+        .filter(customer=user)
+        .order_by("-created_at", "-id")[clamped_offset : clamped_offset + clamped_limit]
+    )
+
+    results: list[dict[str, Any]] = []
+    for booking in bookings:
+        is_cancellable, cancel_refund_toman = compute_booking_cancel_eligibility(
+            booking,
+            now=current_time,
+        )
+        results.append(
+            {
+                "booking_id": booking.id,
+                "venue_name": booking.venue.name,
+                "venue_slug": booking.venue.slug,
+                "table_number": booking.table_pin.table_number,
+                "status": booking.status,
+                "slot_date": booking.slot_date,
+                "jalali_date": format_jalali(booking.start_at, fmt="%Y/%m/%d"),
+                "slot_start_time": booking.slot_start_time,
+                "start_at": booking.start_at,
+                "end_at": booking.end_at,
+                "start_jalali": format_jalali(booking.start_at, fmt="%Y/%m/%d %H:%M"),
+                "end_jalali": format_jalali(booking.end_at, fmt="%Y/%m/%d %H:%M"),
+                "amount_online_toman": booking.amount_online_toman,
+                "amount_in_person_toman": booking.amount_in_person_toman,
+                "is_cancellable": is_cancellable,
+                "cancel_refund_toman": cancel_refund_toman,
+                "created_at": booking.created_at,
+            }
+        )
+    return results
 
 
 def get_split_receipt(
