@@ -31,3 +31,19 @@ npm test
 1. Authentication uses Django's `HttpOnly` / `SameSite=Lax` `sessionid` cookie issued by `POST /api/v1/auth/otp/verify/` — zero JWTs, zero `localStorage` tokens, zero `Authorization` headers.
 2. Every `fetch` passes `credentials: "include"`, and unsafe methods (`POST`/`PUT`/`PATCH`/`DELETE`) automatically fetch `GET /api/v1/auth/csrf/` and inject `X-CSRFToken`.
 3. Client auth state (`AuthProvider`) derives exclusively from `GET /api/v1/auth/me/`.
+
+## 360° Panorama Viewer (`T-027`)
+- Uses `pannellum@2.5.7` loaded client-only (`next/dynamic` with `{ ssr: false }`) on `/venues/[slug]`.
+- In `next.config.ts`, `/media/:path*` is proxied to `BACKEND_INTERNAL_URL/media/:path*` so relative `/media/...` WebP panorama URLs load same-origin in dev (with `config/urls.py` serving `MEDIA_URL` when `DEBUG=True`).
+- To seed clearly-labelled DEV-ONLY sample data (venue `کافه نمونه — توسعه`, slug `sample-cafe-dev`, 1 space, synthetic `4096x2048` WebP panorama, 4 table pins):
+  ```bash
+  python manage.py seed_dev_panorama
+  ```
+  To remove the dev seed:
+  ```bash
+  python manage.py seed_dev_panorama --clear
+  ```
+- For LAN mobile testing (e.g., Galaxy A31):
+  ```bash
+  npm run dev -- -H 0.0.0.0 -p 3000
+  ```

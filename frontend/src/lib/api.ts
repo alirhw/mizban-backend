@@ -28,6 +28,42 @@ export interface VenuePublicDetailOut extends VenuePublicItemOut {
   design_addons: DesignAddonOut[];
 }
 
+export interface SpaceOut {
+  id: number;
+  venue_id: number;
+  name: string;
+  description: string;
+  display_order: number;
+  is_active: boolean;
+  active_panorama_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublicTablePinOut {
+  id: number;
+  table_number: string;
+  capacity: number;
+  pitch: number | null;
+  yaw: number | null;
+  description: string;
+  reservation_fee_toman: number;
+  is_smoking: boolean;
+}
+
+export interface PublicPanoramaOut {
+  space_id: number;
+  space_name: string;
+  venue_id: number;
+  venue_name: string;
+  panorama_image_id: string;
+  image_url: string;
+  thumbnail_url: string | null;
+  width: number | null;
+  height: number | null;
+  pins: PublicTablePinOut[];
+}
+
 export interface OtpRequestOut {
   sent: boolean;
   expires_in_seconds: number;
@@ -169,6 +205,20 @@ export async function listPublicVenues(params?: {
 
 export async function getPublicVenueBySlug(slug: string): Promise<VenuePublicDetailOut> {
   return apiFetch<VenuePublicDetailOut>(`/venues/${encodeURIComponent(slug)}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function listPublicVenueSpaces(slug: string): Promise<SpaceOut[]> {
+  return apiFetch<SpaceOut[]>(`/venues/${encodeURIComponent(slug)}/spaces`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function getPublicSpacePanorama(spaceId: number): Promise<PublicPanoramaOut> {
+  return apiFetch<PublicPanoramaOut>(`/spaces/${spaceId}/panorama`, {
     method: "GET",
     cache: "no-store",
   });
