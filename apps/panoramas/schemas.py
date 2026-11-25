@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import math
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from ninja import Schema
@@ -265,6 +265,13 @@ class SpacePublicOut(Schema):
     display_order: int
     is_active: bool
     active_panorama_id: Optional[UUID] = None
+    panorama_status: Optional[str] = None
+
+    @staticmethod
+    def resolve_panorama_status(obj: Any) -> Optional[str]:
+        if getattr(obj, "active_panorama_id", None) and getattr(obj, "active_panorama", None):
+            return obj.active_panorama.status
+        return None
 
 
 class SpaceOut(SpacePublicOut):

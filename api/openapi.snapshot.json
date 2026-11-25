@@ -364,6 +364,68 @@
         ]
       }
     },
+    "/api/v1/venues/owner/venues/{venue_id}/bookings/": {
+      "get": {
+        "operationId": "apps_venues_api_list_my_venue_bookings",
+        "summary": "List owner venue bookings (PH-06-02-PRE)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OwnerBookingOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read-only bounded list of bookings for the authenticated owner's venue.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/venues/admin/venues/{venue_id}/approve": {
       "post": {
         "operationId": "apps_venues_api_approve_venue_endpoint",
@@ -2136,6 +2198,91 @@
         "title": "VenueSubscriptionOut",
         "type": "object"
       },
+      "OwnerBookingOut": {
+        "additionalProperties": false,
+        "description": "Read-only owner booking list item with server-masked customer phone (PH-06-02-PRE).",
+        "properties": {
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "table_number": {
+            "title": "Table Number",
+            "type": "string"
+          },
+          "slot_date": {
+            "format": "date",
+            "title": "Slot Date",
+            "type": "string"
+          },
+          "jalali_date": {
+            "title": "Jalali Date",
+            "type": "string"
+          },
+          "slot_start_time": {
+            "format": "time",
+            "title": "Slot Start Time",
+            "type": "string"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          },
+          "end_at": {
+            "format": "date-time",
+            "title": "End At",
+            "type": "string"
+          },
+          "start_jalali": {
+            "title": "Start Jalali",
+            "type": "string"
+          },
+          "end_jalali": {
+            "title": "End Jalali",
+            "type": "string"
+          },
+          "amount_online_toman": {
+            "title": "Amount Online Toman",
+            "type": "integer"
+          },
+          "amount_in_person_toman": {
+            "title": "Amount In Person Toman",
+            "type": "integer"
+          },
+          "customer_phone_masked": {
+            "title": "Customer Phone Masked",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "booking_id",
+          "status",
+          "table_number",
+          "slot_date",
+          "jalali_date",
+          "slot_start_time",
+          "start_at",
+          "end_at",
+          "start_jalali",
+          "end_jalali",
+          "amount_online_toman",
+          "amount_in_person_toman",
+          "customer_phone_masked",
+          "created_at"
+        ],
+        "title": "OwnerBookingOut",
+        "type": "object"
+      },
       "VenueApprovalOut": {
         "properties": {
           "id": {
@@ -2306,6 +2453,17 @@
               }
             ],
             "title": "Active Panorama Id"
+          },
+          "panorama_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Panorama Status"
           },
           "created_at": {
             "format": "date-time",

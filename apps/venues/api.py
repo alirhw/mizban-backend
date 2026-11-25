@@ -18,6 +18,7 @@ from ninja.responses import Status
 from apps.accounts.auth import auth
 from apps.venues import services
 from apps.venues.schemas import (
+    OwnerBookingOut,
     VenueApprovalOut,
     VenueCreateIn,
     VenueOwnerOut,
@@ -93,6 +94,29 @@ def update_my_venue(request, venue_id: int, payload: VenueUpdateIn):
 def get_my_venue_subscription(request, venue_id: int):
     """Read-only subscription status for the authenticated owner's venue."""
     return services.get_owner_venue_subscription(request.auth, venue_id)
+
+
+@router.get(
+    "/owner/venues/{venue_id}/bookings/",
+    response=List[OwnerBookingOut],
+    auth=auth,
+    summary="List owner venue bookings (PH-06-02-PRE)",
+)
+@router.get(
+    "/owner/venues/{venue_id}/bookings",
+    response=List[OwnerBookingOut],
+    auth=auth,
+    summary="List owner venue bookings (trailing-slash alias)",
+    include_in_schema=False,
+)
+def list_my_venue_bookings(request, venue_id: int, limit: int = 50, offset: int = 0):
+    """Read-only bounded list of bookings for the authenticated owner's venue."""
+    return services.list_owner_venue_bookings(
+        request.auth,
+        venue_id,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ---------------------------------------------------------------------------

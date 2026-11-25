@@ -27,3 +27,11 @@
   - **Add-ons Step:** Multi-select `design_addons` labelled `پرداخت حضوری در کافه`.
   - **Review & Lock Step:** Split summary (`بدون افزودنی` when 0 add-ons), auth gate redirecting guests to `/login?next=/venues/<slug>` (validated inside `Suspense` in `src/app/login/page.tsx`), `initiateBooking` lock with live `mm:ss` countdown and expiry restart, and `SLOT_ALREADY_RESERVED` conflict refresh.
   - **Payment & Callback (`src/app/bookings/callback/page.tsx`):** `initiatePayment` with `idempotency_key` and top-level `window.location.assign(redirect_url)` (no iframe). Callback page (wrapped in `Suspense`) renders `getBookingReceipt(booking_id)` split receipt on `CONFIRMED` or Persian retry/restart UI on `FAILED`/`TIMEOUT`.
+
+## 5. Owner Dashboard Pre-Task Contracts (PH-06-02-PRE)
+- **Owner Bookings List (`GET /api/v1/venues/owner/venues/{venue_id}/bookings/`):**
+  - `ActiveSessionAuth` (`VENUE_OWNER` / `ADMIN` only; `401` unauthenticated, `403` `CUSTOMER` or foreign owner, `404` unknown venue).
+  - Bounded pagination via `limit=50` (`1..200`), `offset=0`, ordered by `start_at ASC, id ASC` (nearest slot first).
+  - Returns `OwnerBookingOut`: `booking_id`, `status`, `table_number`, `slot_date` (ISO), `jalali_date`, `slot_start_time`, `start_at`, `end_at`, `start_jalali`, `end_jalali`, `amount_online_toman`, `amount_in_person_toman`, `customer_phone_masked` (server-masked `0912***789`; full phone never returned), `created_at`.
+- **Derived `SpaceOut.panorama_status`:**
+  - Read-only field (`READY` / `PROCESSING` / `UPLOADED` / `FAILED` or `null` when `active_panorama_id` is null), populated via `.select_related("active_panorama")` with zero N+1 queries and zero migrations.

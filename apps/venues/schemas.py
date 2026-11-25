@@ -6,7 +6,7 @@ Never expose customer or owner phone numbers in public schemas (NFR-005).
 """
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import List, Optional
 
 from ninja import Schema
@@ -107,3 +107,24 @@ class VenueSubscriptionOut(Schema):
     jalali_expires_at: Optional[str] = None
     days_remaining: int
     has_ever_subscribed: bool
+
+
+class OwnerBookingOut(Schema):
+    """Read-only owner booking list item with server-masked customer phone (PH-06-02-PRE)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    booking_id: int
+    status: str
+    table_number: str
+    slot_date: date
+    jalali_date: str
+    slot_start_time: time
+    start_at: datetime
+    end_at: datetime
+    start_jalali: str
+    end_jalali: str
+    amount_online_toman: int
+    amount_in_person_toman: int
+    customer_phone_masked: str
+    created_at: datetime

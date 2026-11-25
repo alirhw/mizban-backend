@@ -416,3 +416,58 @@ def get_owner_venue_subscription(
         "days_remaining": days_remaining,
         "has_ever_subscribed": True,
     }
+
+
+def mask_phone(phone: str) -> str:
+    """Mask middle digits of a phone number so full numbers never leave the server."""
+    digits = (phone or "").strip()
+    if len(digits) >= 7:
+        return f"{digits[:4]}***{digits[-3:]}"
+    if len(digits) >= 3:
+        return f"{digits[:1]}***{digits[-1:]}"
+    return "***"
+
+
+def list_owner_venue_bookings(
+    user: Any,
+    venue_id: int,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> List[dict[str, Any]]:
+    """List bookings for an owner's venue ordered by nearest slot start first (PH-06-02-PRE).
+
+    Enforces identical role/IDOR checks (403/404) via get_owner_venue().
+    Constant-query read via select_related('table_pin', 'customer').
+    """
+    from apps.bookings.models import Booking
+
+    venue = get_owner_venue(user, venue_id)
+    clamped_limit = max(1, min(int(limit), 200))
+    clamped_offset = max(0, int(offset))
+
+    bookings = list(
+        Booking.objects.select_related("table_pin", "customer")
+        .filter(venue=venue)
+        .order_by("start_at", "id")[clamped_offset : clamped_offset + clamped_limit]
+    )
+
+    return [
+        {
+            "booking_id": booking.id,
+            "status": booking.status,
+            "table_number": booking.table_pin.table_number,
+            "slot_date": booking.slot_date,
+            "jalali_date": format_jalali(booking.start_at, fmt="%Y/%m/%d"),
+            "slot_start_time": booking.slot_start_time,
+            "start_at": booking.start_at,
+            "end_at": booking.end_at,
+            "start_jalali": format_jalali(booking.start_at, fmt="%Y/%m/%d %H:%M"),
+            "end_jalali": format_jalali(booking.end_at, fmt="%Y/%m/%d %H:%M"),
+            "amount_online_toman": booking.amount_online_toman,
+            "amount_in_person_toman": booking.amount_in_person_toman,
+            "customer_phone_masked": mask_phone(booking.customer.phone),
+            "created_at": booking.created_at,
+        }
+        for booking in bookings
+    ]

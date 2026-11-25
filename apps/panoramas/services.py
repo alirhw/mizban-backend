@@ -143,7 +143,7 @@ def authorize_space_owner(user: Any, space_id: int) -> Space:
     if not (getattr(user, "is_staff", False) or getattr(user, "role", None) in (UserRole.VENUE_OWNER, UserRole.ADMIN)):
         raise PermissionDenied("Only venue owners or admins can upload panorama images.")
 
-    space = Space.objects.select_related("venue").filter(id=space_id).first()
+    space = Space.objects.select_related("venue", "active_panorama").filter(id=space_id).first()
     if not space:
         raise Http404("Space not found.")
 
@@ -540,7 +540,11 @@ def create_space_for_venue(user: Any, venue_id: int, data: SpaceCreateIn) -> Spa
 def list_owner_spaces(user: Any, venue_id: int) -> list[Space]:
     """List all spaces (active and inactive) in a venue for the owner."""
     venue = authorize_venue_owner(user, venue_id)
-    return list(venue.spaces.all().order_by("display_order", "name", "id"))
+    return list(
+        venue.spaces.select_related("active_panorama")
+        .all()
+        .order_by("display_order", "name", "id")
+    )
 
 
 def get_space_detail(user: Any, space_id: int) -> Space:
@@ -551,7 +555,7 @@ def get_space_detail(user: Any, space_id: int) -> Space:
       the venue satisfies BR-005 (approved + active subscription) AND the space
       is active. Otherwise raises Http404 with zero info leak.
     """
-    space = Space.objects.select_related("venue").filter(id=space_id).first()
+    space = Space.objects.select_related("venue", "active_panorama").filter(id=space_id).first()
     if not space:
         raise Http404("Space not found.")
 
@@ -655,4 +659,8 @@ def list_public_spaces(slug: str) -> list[Space]:
     if not venue or not venue.is_publicly_visible:
         raise Http404("Venue not found.")
 
-    return list(venue.spaces.filter(is_active=True).order_by("display_order", "name", "id"))
+    return list(
+        venue.spaces.select_related("active_panorama")
+        .filter(is_active=True)
+        .order_by("display_order", "name", "id")
+    )
