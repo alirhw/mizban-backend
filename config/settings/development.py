@@ -15,6 +15,7 @@ DEBUG = True
 SECRET_KEY = SECRET_KEY or "dev-only-insecure-key-do-not-use-in-production"  # noqa: F405
 ALLOWED_HOSTS = ["*"]
 SESSION_COOKIE_SECURE = False
+SANDBOX_BASE_URL = os.environ.get("SANDBOX_BASE_URL", "http://127.0.0.1:8001")
 
 if not os.environ.get("SMS_SENDER") and "pytest" in sys.modules:
     SMS_SENDER = "fake"

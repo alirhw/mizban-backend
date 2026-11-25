@@ -198,7 +198,7 @@ All mutations go exclusively through the service layer inside `transaction.atomi
 
 ### 7.4 API Endpoint
 - **URL:** `POST /api/v1/bookings/{booking_id}/cancel/` (and `/cancel`, trailing-slash tolerant).
-- **Authentication:** `auth=auth` (Customer JWT). Only the customer who owns the booking may cancel (HTTP 403 `PermissionDenied` otherwise).
+- **Authentication:** `auth=auth` (Django session cookie + CSRF per TD-006). Only the customer who owns the booking may cancel (HTTP 403 `PermissionDenied` otherwise).
 - **Response Schema:** `BookingCancelOut(booking_id, status, refunded_to_wallet_toman, wallet_balance_toman)`.
 - **Occupancy Impact:** Once cancelled, `is_table_slot_occupied` immediately excludes the booking, releasing the slot for other customers without delay.
 
@@ -246,6 +246,22 @@ A split receipt is a **read-only, structured JSON document** for ONE booking. It
 - **Response Schema:** `SplitReceiptOut` (with `extra="forbid"` on root and all nested schemas).
 - **Bounded Query Performance:** Executed in 3 constant SQL queries (`Booking+Venue+TablePin`, `BookingAddon+DesignAddon`, and `SUCCESS` `PaymentTransaction` safe columns via `.only()`), guaranteeing zero N+1 queries.
 - **Migrations:** Zero schema changes and zero migrations.
+
+---
+
+## 9. Payment Initiate Endpoint & Dev-Only Sandbox Page (Task T-028-PRE)
+
+- **Endpoint:** `POST /api/v1/billing/initiate/` (and `/initiate`, `auth=auth` via Django session cookie + CSRF per TD-006, `CUSTOMER` role only).
+- **Input (`PaymentInitiateIn`, `extra="forbid"`):** `{ booking_id, idempotency_key, callback_url }`. Amount is always derived server-side from `booking.amount_online_toman`.
+- **Output (`201 PaymentInitiateOut`):** `{ transaction_id, booking_id, amount_toman, currency, status, provider_name, provider_reference, redirect_url }`.
+- **Errors:** `401` unauthenticated, `403` non-owner or non-customer, `404` unknown booking, `400 INVALID_STATUS_TRANSITION` for non-payable status or expired lock, `422` validation / extra fields.
+- **Settings Override (`SANDBOX_BASE_URL`):**
+  - `config/settings/base.py` defaults `SANDBOX_BASE_URL` to `https://sandbox.mizban.local` (production never selects the sandbox adapter).
+  - `config/settings/development.py` sets `SANDBOX_BASE_URL` to `http://127.0.0.1:8001` so `SandboxGatewayAdapter.initiate()` redirects to `http://127.0.0.1:8001/billing/sandbox/pay/{authority}/?callback_url=...`.
+- **Dev-Only Sandbox Page (`GET /billing/sandbox/pay/{authority}/`):**
+  - Gated strictly on `settings.DEBUG` (returns `404` whenever `DEBUG=False`).
+  - Refuses to render (`404`) for unknown/expired/non-pending authorities or any non-sandbox provider.
+  - Displays Persian UI («صفحه‌ی آزمایشی درگاه — فقط محیط توسعه») with booking id, Toman amount, and «پرداخت موفق (تست)» / «پرداخت ناموفق (تست)» actions that submit through `GET /api/v1/billing/callback/` and redirect back to `callback_url` in `DEBUG=True`.
 
 
 

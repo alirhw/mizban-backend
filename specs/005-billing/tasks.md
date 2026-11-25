@@ -77,3 +77,9 @@
   - Refreshed `api/openapi.snapshot.json`.
   - Zero schema changes / zero migrations; zero money-moving code paths touched.
   - Test suite in `apps/bookings/tests/test_split_receipt.py` (19 tests passed, including PostgreSQL bounded query-count assertion).
+- [x] **T-028-PRE — Payment Initiate HTTP Endpoint & Dev-Only Sandbox Page**
+  - Exposed `POST /api/v1/billing/initiate/` (and `/initiate`) in `apps/billing/api.py` (`auth=auth` Django session cookie + CSRF per TD-006, `CUSTOMER` role only, 404 for unknown booking, delegates to `initiate_payment_for_booking()` unchanged).
+  - Added `SANDBOX_BASE_URL` setting in `config/settings/base.py` (`https://sandbox.mizban.local`) and `config/settings/development.py` (`http://127.0.0.1:8001`).
+  - Added `DEBUG=True`-only sandbox simulation page `GET /billing/sandbox/pay/{authority}/` (`apps/billing/views.py`, `apps/billing/templates/billing/sandbox_pay.html`, `config/urls.py`) gated on `settings.DEBUG` (`404` when `False`) and `provider_name == "sandbox"`.
+  - Fixed `"Customer JWT"` drift in `specs/005-billing/spec.md` to Django session cookie + CSRF per TD-006, and refreshed `api/openapi.snapshot.json`.
+  - Test suite in `apps/billing/tests/test_billing_initiate_and_sandbox.py`.

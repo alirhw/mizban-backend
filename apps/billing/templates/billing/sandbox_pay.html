@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>صفحه‌ی آزمایشی درگاه — فقط محیط توسعه</title>
+  <style>
+    body {
+      font-family: Tahoma, Arial, sans-serif;
+      background: #f5f5f4;
+      color: #1c1917;
+      margin: 0;
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e7e5e4;
+      border-radius: 16px;
+      max-width: 420px;
+      width: 100%;
+      padding: 24px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    }
+    .badge {
+      display: inline-block;
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 16px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #f5f5f4;
+      font-size: 14px;
+    }
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    button {
+      width: 100%;
+      min-height: 44px;
+      border: 0;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .btn-success {
+      background: #15803d;
+      color: #ffffff;
+    }
+    .btn-fail {
+      background: #b91c1c;
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <span class="badge">صفحه‌ی آزمایشی درگاه — فقط محیط توسعه</span>
+    <h1>شبیه‌ساز پرداخت سندباکس میزبان</h1>
+
+    <div class="row">
+      <span>شماره رزرو</span>
+      <strong>#{{ booking_id }}</strong>
+    </div>
+    <div class="row">
+      <span>مجموعه</span>
+      <strong>{{ venue_name }}</strong>
+    </div>
+    <div class="row">
+      <span>مبلغ قابل پرداخت</span>
+      <strong>{{ amount_toman }} تومان</strong>
+    </div>
+
+    <div class="actions">
+      <form method="get" action="/api/v1/billing/callback/">
+        <input type="hidden" name="authority" value="{{ authority }}" />
+        <input type="hidden" name="outcome" value="success" />
+        {% if callback_url %}
+          <input type="hidden" name="callback_url" value="{{ callback_url }}" />
+        {% endif %}
+        <button type="submit" class="btn-success">پرداخت موفق (تست)</button>
+      </form>
+
+      <form method="get" action="/api/v1/billing/callback/">
+        <input type="hidden" name="authority" value="{{ authority }}" />
+        <input type="hidden" name="outcome" value="fail" />
+        {% if callback_url %}
+          <input type="hidden" name="callback_url" value="{{ callback_url }}" />
+        {% endif %}
+        <button type="submit" class="btn-fail">پرداخت ناموفق (تست)</button>
+      </form>
+    </div>
+  </main>
+</body>
+</html>

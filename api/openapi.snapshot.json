@@ -1586,6 +1586,44 @@
         ]
       }
     },
+    "/api/v1/billing/initiate/": {
+      "post": {
+        "operationId": "apps_billing_api_initiate_payment",
+        "summary": "Initiate online payment for a pending booking",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentInitiateOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Expose initiate_payment_for_booking over HTTP (Task T-028-PRE).\n\n- Session cookie + CSRF (ActiveSessionAuth), CUSTOMER role only.\n- Derives amount_toman strictly server-side from booking.amount_online_toman.",
+        "tags": [
+          "billing"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentInitiateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/billing/callback/": {
       "get": {
         "operationId": "apps_billing_api_payment_callback",
@@ -3410,6 +3448,92 @@
           "grand_total_toman"
         ],
         "title": "SplitReceiptOut",
+        "type": "object"
+      },
+      "PaymentInitiateOut": {
+        "additionalProperties": false,
+        "description": "Response returned upon initiating a payment.",
+        "properties": {
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "integer"
+          },
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "amount_toman": {
+            "title": "Amount Toman",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "provider_name": {
+            "title": "Provider Name",
+            "type": "string"
+          },
+          "provider_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Reference"
+          },
+          "redirect_url": {
+            "title": "Redirect Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "booking_id",
+          "amount_toman",
+          "currency",
+          "status",
+          "provider_name",
+          "provider_reference",
+          "redirect_url"
+        ],
+        "title": "PaymentInitiateOut",
+        "type": "object"
+      },
+      "PaymentInitiateIn": {
+        "additionalProperties": false,
+        "description": "Payload to initiate an online payment for a booking.",
+        "properties": {
+          "booking_id": {
+            "description": "ID of the booking to pay for.",
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "description": "Client-generated unique idempotency token.",
+            "maxLength": 100,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "callback_url": {
+            "description": "URL where the user returns after gateway interaction.",
+            "title": "Callback Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "booking_id",
+          "idempotency_key",
+          "callback_url"
+        ],
+        "title": "PaymentInitiateIn",
         "type": "object"
       },
       "PaymentCallbackOut": {

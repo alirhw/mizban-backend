@@ -178,14 +178,17 @@ class TestPaymentTransactionStateMachine:
 
 class TestSandboxGatewayAdapter:
     def test_initiate_success_path(self):
-        adapter = SandboxGatewayAdapter(mode="success")
-        req = PaymentInitiateRequest(
-            amount_toman=100_000,
-            callback_url="http://127.0.0.1:8000/api/v1/billing/callback/",
-            description="Test payment",
-            order_id="123",
-        )
-        result = adapter.initiate(req)
+        from django.test import override_settings
+
+        with override_settings(SANDBOX_BASE_URL="https://sandbox.mizban.local"):
+            adapter = SandboxGatewayAdapter(mode="success")
+            req = PaymentInitiateRequest(
+                amount_toman=100_000,
+                callback_url="http://127.0.0.1:8000/api/v1/billing/callback/",
+                description="Test payment",
+                order_id="123",
+            )
+            result = adapter.initiate(req)
         assert result.success is True
         assert result.authority.startswith("SBX-")
         assert result.redirect_url.startswith("https://sandbox.mizban.local/pg/startpay/")
@@ -321,12 +324,15 @@ class TestInitiatePaymentService:
             lock_expires_at=now + timedelta(minutes=10),
         )
         key = f"key-{uuid.uuid4()}"
-        tx, redirect_url = initiate_payment_for_booking(
-            user=customer,
-            booking_id=booking.id,
-            idempotency_key=key,
-            callback_url="http://127.0.0.1:8000/cb",
-        )
+        from django.test import override_settings
+
+        with override_settings(SANDBOX_BASE_URL="https://sandbox.mizban.local"):
+            tx, redirect_url = initiate_payment_for_booking(
+                user=customer,
+                booking_id=booking.id,
+                idempotency_key=key,
+                callback_url="http://127.0.0.1:8000/cb",
+            )
         assert tx.status == PaymentStatus.PENDING
         assert tx.provider_name == "sandbox"
         assert tx.amount_toman == 60_000  # Table fee only (BR-003)

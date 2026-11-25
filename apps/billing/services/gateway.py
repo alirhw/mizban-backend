@@ -11,6 +11,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlencode
 import uuid
 
 from django.conf import settings
@@ -139,7 +140,13 @@ class SandboxGatewayAdapter(PaymentGatewayAdapter):
             )
 
         authority = f"SBX-{uuid.uuid4().hex[:16].upper()}"
-        redirect_url = f"https://sandbox.mizban.local/pg/startpay/{authority}"
+        base_url = getattr(settings, "SANDBOX_BASE_URL", "https://sandbox.mizban.local").rstrip("/")
+        if base_url == "https://sandbox.mizban.local":
+            redirect_url = f"{base_url}/pg/startpay/{authority}"
+        else:
+            redirect_url = f"{base_url}/billing/sandbox/pay/{authority}/"
+            if request.callback_url:
+                redirect_url = f"{redirect_url}?{urlencode({'callback_url': request.callback_url})}"
         self._records[authority] = {
             "amount_toman": request.amount_toman,
             "order_id": request.order_id,
@@ -161,6 +168,16 @@ class SandboxGatewayAdapter(PaymentGatewayAdapter):
             raise PaymentGatewayTimeoutError("Sandbox gateway verify timed out (simulated 8.0s timeout).")
 
         if self.mode == "failure":
+            return PaymentVerifyResult(
+                success=False,
+                status="FAILED",
+                raw_status="-2",
+                error_message="Sandbox gateway simulated verification failure.",
+            )
+
+        outcome = str(request.callback_params.get("outcome", "")).strip().lower()
+        status_param = str(request.callback_params.get("Status", "")).strip().upper()
+        if outcome in {"fail", "failed", "cancel"} or status_param == "NOK":
             return PaymentVerifyResult(
                 success=False,
                 status="FAILED",
