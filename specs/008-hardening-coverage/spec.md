@@ -18,3 +18,19 @@
 - **Baseline (`383 passed`):** `3478` statements, `217` missed, **94%** overall line coverage (`apps/accounts`: 92–100%, `apps/billing`: 86–100%, `apps/bookings`: 86–100%, `apps/panoramas`: 88–100%, `apps/reviews`: 100%, `apps/scheduling`: 95–100%, `apps/venues`: 74–100%, `apps/wallets`: 95–100%, `core`: 71–100%).
 - **Final (`386 passed`, 0 failed, 0 skipped):** `3478` statements, `192` missed, **94%** overall line coverage (`apps/venues/admin.py`: 74% $\to$ 100%, `core/utils.py`: 79% $\to$ 100%, `core/jalali.py`: 71% $\to$ 80%).
 - **Open Item (Real Bug Found, Untouched):** `core/jalali.py:45` and `core/jalali.py:54-55` call `timezone.utc` on `django.utils.timezone` instead of `datetime.timezone.utc`, raising `AttributeError` in `parse_jalali_datetime` and `jalali_slot_window`.
+
+## 3. Security & Privacy Audit (T-030)
+- **Critical / High Findings:** None (`0` Critical, `0` High).
+- **Verified Invariants:**
+  - `ActiveSessionAuth` (`apps/accounts/auth.py:14-24`) requires `user.is_authenticated and user.is_active`; zero `MinimalAuth` or Bearer-phone backdoor exists.
+  - `config/settings/production.py:11-25` enforces `DEBUG = False`, fail-closed `SECRET_KEY` and `ALLOWED_HOSTS`, `SECURE_SSL_REDIRECT = True`, `SESSION_COOKIE_SECURE = True`, `CSRF_COOKIE_SECURE = True`, `SESSION_COOKIE_HTTPONLY = True`, `SECURE_HSTS_SECONDS = 31_536_000`.
+  - OTP (`apps/accounts/services.py`) uses CSPRNG (`secrets`), SHA-256 hash in Redis (120s TTL), constant-time comparison, 5-attempt burn, single-use delete, and 3/10min per-phone & per-IP rate limits.
+  - Frontend (`frontend/src/`) stores zero tokens in `localStorage`/`sessionStorage` and sends session cookies + CSRF headers.
+  - Role/IDOR/No-PII-leak regression suite added in `apps/accounts/tests/test_security_audit_t030.py`.
+- **Open Items (Medium / Low / Info — not modified in T-030):**
+  1. **Medium** (`apps/accounts/api.py:29-35`): `_get_client_ip` trusts the first hop of `X-Forwarded-For` without a trusted-proxy check (per-phone 3/10min limit still mitigates single-number SMS bombing).
+  2. **Medium** (Tooling): `pip-audit` is not installed in `.venv` (`No module named pip_audit`) and `npm audit` in `frontend/` failed with `unable to verify the first certificate` (local CA/proxy).
+  3. **Low** (`apps/venues/schemas.py:69,78`, `apps/panoramas/schemas.py:28,84`): `VenueCreateIn`, `VenueUpdateIn`, `TablePinCreateIn`, `TablePinUpdateIn` lack `model_config = ConfigDict(extra="forbid")`.
+  4. **Low** (`apps/wallets/admin.py:23,51`, `apps/billing/services/payment.py:141`): References `phone_number` instead of `accounts.User.phone`.
+  5. **Low** (`config/settings/production.py`): No explicit `CSRF_TRUSTED_ORIGINS` env configuration.
+  6. **Info** (`apps/billing/services/payment.py:197`): Logs `provider_reference` on idempotent verify hit.
