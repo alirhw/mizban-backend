@@ -1,0 +1,5 @@
+# Tasks — M3 Hardening (Coverage, Security, Observability, Release)
+
+| Task ID | Description | Owner | Status |
+| :--- | :--- | :--- | :--- |
+| **T-029** | Configure `coverage` + `pytest-cov` per Decision 8 (`apps/` + `core/`, `branch=false`, excluding migrations/tests/`config/*`), measure baseline (`94%`, `383` tests), add 3 regression tests in `apps/venues/tests/test_coverage_hardening.py` (`386 passed`, `94%` overall, `3478` stmts / `192` miss), report `core/jalali.py:45,54-55` bug | `orchestrator` | Done |
