@@ -6,7 +6,7 @@ Jalali input at the boundary. Never store a Jalali value in the database.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone as dt_timezone
 from typing import Union
 from zoneinfo import ZoneInfo
 
@@ -42,7 +42,7 @@ def parse_jalali_datetime(value: str, fmt: str = JALALI_DATETIME_FORMAT) -> date
     """
     naive_tehran = jdatetime.datetime.strptime(value, fmt).togregorian()
     aware_tehran = naive_tehran.replace(tzinfo=TEHRAN)
-    return aware_tehran.astimezone(timezone.utc)
+    return aware_tehran.astimezone(dt_timezone.utc)
 
 
 def jalali_slot_window(value: str, fmt: str = JALALI_DATE_FORMAT) -> tuple[datetime, datetime]:
@@ -51,8 +51,8 @@ def jalali_slot_window(value: str, fmt: str = JALALI_DATE_FORMAT) -> tuple[datet
     Useful for 'slots of this Jalali date' queries at the API boundary.
     """
     gdate = parse_jalali_date(value, fmt)
-    start = datetime.combine(gdate, time.min, tzinfo=TEHRAN).astimezone(timezone.utc)
-    end = datetime.combine(gdate, time.max, tzinfo=TEHRAN).astimezone(timezone.utc)
+    start = datetime.combine(gdate, time.min, tzinfo=TEHRAN).astimezone(dt_timezone.utc)
+    end = datetime.combine(gdate, time.max, tzinfo=TEHRAN).astimezone(dt_timezone.utc)
     return start, end
 
 

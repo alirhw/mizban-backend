@@ -12,7 +12,7 @@ from apps.accounts.models import UserRole
 from apps.venues.admin import VenueAdmin
 from apps.venues.models import Venue
 from apps.venues.tests.factories import UserFactory, VenueFactory
-from core.jalali import resolve_date, to_jalali
+from core.jalali import jalali_slot_window, parse_jalali_datetime, resolve_date, to_jalali
 from core.utils import normalize_phone, utcnow
 
 pytestmark = pytest.mark.django_db
@@ -25,6 +25,22 @@ def test_core_jalali_helpers_and_naive_guard():
 
     assert resolve_date(datetime(2026, 11, 25, 10, 0, tzinfo=dt_timezone.utc)) == date(2026, 11, 25)
     assert resolve_date(date(2026, 11, 25)) == date(2026, 11, 25)
+
+
+def test_parse_jalali_datetime_returns_aware_utc():
+    # 1405/09/04 12:30 Asia/Tehran (+03:30) == 2026-11-25 09:00 UTC
+    utc_dt = parse_jalali_datetime("1405/09/04 12:30")
+    assert utc_dt.tzinfo == dt_timezone.utc
+    assert utc_dt == datetime(2026, 11, 25, 9, 0, tzinfo=dt_timezone.utc)
+
+
+def test_jalali_slot_window_returns_tehran_day_utc_bounds():
+    start, end = jalali_slot_window("1405/09/04")
+    assert start.tzinfo == dt_timezone.utc
+    assert end.tzinfo == dt_timezone.utc
+    assert start == datetime(2026, 11, 24, 20, 30, tzinfo=dt_timezone.utc)
+    assert end > start
+    assert end.date() == date(2026, 11, 25)
 
 
 def test_core_utils_utcnow_and_normalize_phone():
