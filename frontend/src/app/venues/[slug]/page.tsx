@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
 import { VenuePanoramaExplorer } from "@/components/VenuePanoramaExplorer";
 import {
@@ -78,15 +79,23 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
         </Link>
       </div>
 
-      <VenuePanoramaExplorer
-        venueId={venue.id}
-        venueName={venue.name}
-        venueSlug={venue.slug}
-        designAddons={venue.design_addons}
-        spaces={spaces}
-        initialSpaceId={firstSpaceId}
-        initialPanorama={initialPanorama}
-      />
+      <Suspense
+        fallback={
+          <div className="flex h-[380px] w-full items-center justify-center rounded-xl border border-stone-200 bg-stone-100 text-sm text-stone-600 sm:h-[480px]">
+            در حال بارگذاری...
+          </div>
+        }
+      >
+        <VenuePanoramaExplorer
+          venueId={venue.id}
+          venueName={venue.name}
+          venueSlug={venue.slug}
+          designAddons={venue.design_addons}
+          spaces={spaces}
+          initialSpaceId={firstSpaceId}
+          initialPanorama={initialPanorama}
+        />
+      </Suspense>
     </section>
   );
 }

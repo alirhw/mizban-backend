@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../api";
 import {
   bookingReducer,
+  buildBookingReturnUrl,
   computeBookingSummary,
   computeLockRemainingSeconds,
   formatCountdownMmSs,
+  getOrCreateBookingIdempotencyKey,
   INITIAL_BOOKING_STATE,
   mapBookingErrorToPersian,
+  parseBookingResumeParams,
+  resolveCallbackReceiptConfirmed,
 } from "../booking";
 import { formatJalaliFromIsoDate, getTehranDateIso, isSlotAtLeast24HoursAhead } from "../jalali";
 
@@ -35,7 +39,7 @@ describe("booking fee summary (BR-003)", () => {
   });
 });
 
-describe("24-hour lead time rule & Tehran Jalali date helpers (BR-001 / ARCH-006)", () => {
+describe("24-hour lead time rule & Tehran Jalali date helpers (BR-002 / ARCH-006)", () => {
   it("returns false when slot is less than 24 hours ahead and true at or beyond 24 hours", () => {
     const nowMs = Date.parse("2026-05-01T10:00:00Z");
     const exactly24h = "2026-05-02T10:00:00Z";
@@ -194,5 +198,55 @@ describe("Persian booking error mapping", () => {
     const unknownMsg = mapBookingErrorToPersian(unknownErr);
     expect(unknownMsg).not.toContain("TypeError");
     expect(unknownMsg).not.toContain("foo.ts");
+  });
+});
+
+describe("T-028-FIX regression helpers (B2, B3, B4)", () => {
+  it("B2: only marks callback confirmed when fetched receipt succeeded with CONFIRMED/COMPLETED", () => {
+    expect(resolveCallbackReceiptConfirmed(null, "خطا در دریافت رسید")).toBe(false);
+    expect(resolveCallbackReceiptConfirmed(null, null)).toBe(false);
+    expect(resolveCallbackReceiptConfirmed({ status: "PENDING_PAYMENT" }, null)).toBe(false);
+    expect(resolveCallbackReceiptConfirmed({ status: "CONFIRMED" }, "err")).toBe(false);
+    expect(resolveCallbackReceiptConfirmed({ status: "CONFIRMED" }, null)).toBe(true);
+    expect(resolveCallbackReceiptConfirmed({ status: "COMPLETED" }, null)).toBe(true);
+  });
+
+  it("B3: builds and parses booking return URL for login redirect restoration", () => {
+    const returnUrl = buildBookingReturnUrl("real-cafe-dev", {
+      pinId: 12,
+      slotDate: "2026-11-27",
+      slotStartIso: "2026-11-27T11:30:00Z",
+      slotLabel: "۱۵:۰۰ تا ۱۶:۳۰",
+      addonIds: [1, 3],
+      step: "review",
+    });
+
+    expect(returnUrl.startsWith("/venues/real-cafe-dev?")).toBe(true);
+    const query = returnUrl.split("?")[1] ?? "";
+    const parsed = parseBookingResumeParams(new URLSearchParams(query), [10, 12], [1, 2, 3]);
+
+    expect(parsed).toEqual({
+      pinId: 12,
+      slotDate: "2026-11-27",
+      slotStartIso: "2026-11-27T11:30:00Z",
+      slotLabel: "۱۵:۰۰ تا ۱۶:۳۰",
+      addonIds: [1, 3],
+      step: "review",
+    });
+
+    expect(parseBookingResumeParams(new URLSearchParams(query), [99], [1, 3])).toBeNull();
+  });
+
+  it("B4: reuses the same idempotency key across retries for a booking and mints a new one on new booking", () => {
+    let counter = 0;
+    const mint = () => `idem-${++counter}`;
+
+    const first = getOrCreateBookingIdempotencyKey(null, 42, mint);
+    const retry = getOrCreateBookingIdempotencyKey(first, 42, mint);
+    expect(first.key).toBe("idem-1");
+    expect(retry.key).toBe("idem-1");
+
+    const nextBooking = getOrCreateBookingIdempotencyKey(retry, 43, mint);
+    expect(nextBooking.key).toBe("idem-2");
   });
 });

@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { ApiError, getBookingReceipt, initiatePayment, type SplitReceiptOut } from "@/lib/api";
-import { mapBookingErrorToPersian } from "@/lib/booking";
+import {
+  getOrCreateBookingIdempotencyKey,
+  mapBookingErrorToPersian,
+  resolveCallbackReceiptConfirmed,
+} from "@/lib/booking";
 import { formatToman } from "@/lib/panorama";
 
 function generateIdempotencyKey(bookingId: number): string {
@@ -36,6 +40,7 @@ function BookingCallbackContent() {
   const [retryingPayment, setRetryingPayment] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [lockExpired, setLockExpired] = useState(false);
+  const retryIdempotencyRef = useRef<{ bookingId: number; key: string } | null>(null);
 
   useEffect(() => {
     if (!isConfirmed || !hasValidBookingId) {
@@ -69,11 +74,17 @@ function BookingCallbackContent() {
     setRetryError(null);
 
     try {
+      const nextKey = getOrCreateBookingIdempotencyKey(
+        retryIdempotencyRef.current,
+        parsedBookingId,
+        () => generateIdempotencyKey(parsedBookingId)
+      );
+      retryIdempotencyRef.current = nextKey;
       const venueQuery = venueSlug ? `venue=${encodeURIComponent(venueSlug)}&` : "";
       const callbackUrl = `${window.location.origin}/bookings/callback?${venueQuery}booking_id=${parsedBookingId}`;
       const res = await initiatePayment({
         booking_id: parsedBookingId,
-        idempotency_key: generateIdempotencyKey(parsedBookingId),
+        idempotency_key: nextKey.key,
         callback_url: callbackUrl,
       });
       window.location.assign(res.redirect_url);
@@ -118,7 +129,7 @@ function BookingCallbackContent() {
     if (receiptError || !receipt) {
       return (
         <div className="mx-auto max-w-xl space-y-4 rounded-xl border border-red-200 bg-white p-6">
-          <h1 className="text-lg font-bold text-stone-900">رزرو تایید شد</h1>
+          <h1 className="text-lg font-bold text-red-900">دریافت رسید رزرو ناموفق بود</h1>
           <p className="text-sm text-red-800">
             {receiptError ?? "دریافت جزئیات رسید با خطا مواجه شد."}
           </p>
@@ -132,12 +143,16 @@ function BookingCallbackContent() {
       );
     }
 
+    const isReceiptConfirmed = resolveCallbackReceiptConfirmed(receipt, receiptError);
+
     return (
       <div className="mx-auto max-w-2xl space-y-5 rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
         <div className="space-y-1 border-b border-stone-200 pb-4">
-          <div className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
-            رزرو تایید شد
-          </div>
+          {isReceiptConfirmed ? (
+            <div className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
+              رزرو تایید شد
+            </div>
+          ) : null}
           <h1 className="text-xl font-bold text-stone-900">
             رسید تفکیک‌شده رزرو #{receipt.booking_id}
           </h1>

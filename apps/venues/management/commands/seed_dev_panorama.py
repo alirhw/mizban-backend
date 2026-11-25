@@ -16,7 +16,14 @@ from PIL import Image, ImageDraw
 
 from apps.accounts.models import UserRole
 from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
-from apps.venues.models import DesignAddon, OperatingHours, SubscriptionPlan, Venue, VenueType
+from apps.venues.models import (
+    DesignAddon,
+    OperatingHours,
+    SubscriptionPlan,
+    Venue,
+    VenueSubscription,
+    VenueType,
+)
 from apps.venues.services import activate_subscription
 
 SAMPLE_VENUE_SLUG = "sample-cafe-dev"
@@ -79,7 +86,8 @@ class Command(BaseCommand):
 
         if options["clear"]:
             deleted, _ = Venue.objects.filter(slug=SAMPLE_VENUE_SLUG).delete()
-            SubscriptionPlan.objects.filter(name=SAMPLE_PLAN_NAME).delete()
+            if not VenueSubscription.objects.filter(plan__name=SAMPLE_PLAN_NAME).exists():
+                SubscriptionPlan.objects.filter(name=SAMPLE_PLAN_NAME).delete()
             self.stdout.write(self.style.SUCCESS(f"Cleared sample venue (rows removed: {deleted})."))
             return
 

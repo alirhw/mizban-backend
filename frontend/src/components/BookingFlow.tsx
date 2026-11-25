@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useReducer, useState } from "react";
+import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -15,11 +15,14 @@ import {
 import { useAuth } from "@/lib/auth";
 import {
   bookingReducer,
+  buildBookingReturnUrl,
   computeBookingSummary,
   computeLockRemainingSeconds,
   formatCountdownMmSs,
+  getOrCreateBookingIdempotencyKey,
   INITIAL_BOOKING_STATE,
   mapBookingErrorToPersian,
+  type BookingResumeParams,
 } from "@/lib/booking";
 import {
   formatJalaliDate,
@@ -36,6 +39,7 @@ export interface BookingFlowProps {
   designAddons: DesignAddonOut[];
   selectedPin: PublicTablePinOut;
   onChangeTable?: () => void;
+  initialResume?: BookingResumeParams | null;
 }
 
 function getTehranTimeHhMm(isoUtc: string): string {
@@ -65,20 +69,42 @@ export function BookingFlow({
   designAddons,
   selectedPin,
   onChangeTable,
+  initialResume = null,
 }: BookingFlowProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const [state, dispatch] = useReducer(bookingReducer, selectedPin.id, (pinId) => {
-    const started = bookingReducer(INITIAL_BOOKING_STATE, { type: "START" });
-    return bookingReducer(started, { type: "SELECT_TABLE", tablePinId: pinId });
-  });
+  const [state, dispatch] = useReducer(
+    bookingReducer,
+    { pinId: selectedPin.id, resume: initialResume },
+    ({ pinId, resume }) => {
+      let next = bookingReducer(INITIAL_BOOKING_STATE, { type: "START" });
+      next = bookingReducer(next, { type: "SELECT_TABLE", tablePinId: pinId });
+      if (resume && resume.pinId === pinId) {
+        next = bookingReducer(next, {
+          type: "SELECT_SLOT",
+          slotDate: resume.slotDate,
+          slotStartIso: resume.slotStartIso,
+          slotEndIso: resume.slotStartIso,
+        });
+        for (const addonId of resume.addonIds) {
+          next = bookingReducer(next, { type: "TOGGLE_ADDON", addonId });
+        }
+        if (resume.step === "review") {
+          next = bookingReducer(next, { type: "PROCEED_TO_REVIEW" });
+        }
+      }
+      return next;
+    }
+  );
 
   const dateOptions = useMemo(
     () => Array.from({ length: 7 }, (_, index) => getTehranDateIso(index + 1)),
     []
   );
 
-  const [activeDate, setActiveDate] = useState<string>(() => getTehranDateIso(1));
+  const [activeDate, setActiveDate] = useState<string>(
+    () => initialResume?.slotDate ?? getTehranDateIso(1)
+  );
   const [slotsRefreshNonce, setSlotsRefreshNonce] = useState(0);
   const currentRequestKey = `${activeDate}:${selectedPin.id}:${slotsRefreshNonce}`;
   const [slotsState, setSlotsState] = useState<{
@@ -91,12 +117,15 @@ export function BookingFlow({
     error: null,
   });
   const [slotConflictNotice, setSlotConflictNotice] = useState<string | null>(null);
-  const [selectedSlotLabel, setSelectedSlotLabel] = useState<string | null>(null);
+  const [selectedSlotLabel, setSelectedSlotLabel] = useState<string | null>(
+    () => initialResume?.slotLabel ?? null
+  );
 
   const [submittingLock, setSubmittingLock] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const paymentIdempotencyRef = useRef<{ bookingId: number; key: string } | null>(null);
 
   const loadingSlots = state.step === "slot" && slotsState.requestKey !== currentRequestKey;
   const slots = slotsState.requestKey === currentRequestKey ? slotsState.slots : [];
@@ -175,7 +204,14 @@ export function BookingFlow({
     setSubmitError(null);
 
     if (!user) {
-      const returnPath = `/venues/${venueSlug}`;
+      const returnPath = buildBookingReturnUrl(venueSlug, {
+        pinId: selectedPin.id,
+        slotDate: state.slotDate,
+        slotStartIso: state.slotStartIso,
+        slotLabel: selectedSlotLabel,
+        addonIds: state.addonIds,
+        step: "review",
+      });
       router.push(`/login?next=${encodeURIComponent(returnPath)}`);
       return;
     }
@@ -226,10 +262,17 @@ export function BookingFlow({
     setSubmittingPayment(true);
 
     try {
-      const callbackUrl = `${window.location.origin}/bookings/callback?venue=${encodeURIComponent(venueSlug)}&booking_id=${state.bookingId}`;
+      const bookingId = state.bookingId;
+      const nextKey = getOrCreateBookingIdempotencyKey(
+        paymentIdempotencyRef.current,
+        bookingId,
+        () => generateIdempotencyKey(bookingId)
+      );
+      paymentIdempotencyRef.current = nextKey;
+      const callbackUrl = `${window.location.origin}/bookings/callback?venue=${encodeURIComponent(venueSlug)}&booking_id=${bookingId}`;
       const res = await initiatePayment({
-        booking_id: state.bookingId,
-        idempotency_key: generateIdempotencyKey(state.bookingId),
+        booking_id: bookingId,
+        idempotency_key: nextKey.key,
         callback_url: callbackUrl,
       });
       window.location.assign(res.redirect_url);
@@ -240,6 +283,7 @@ export function BookingFlow({
   }
 
   function handleRestartBooking() {
+    paymentIdempotencyRef.current = null;
     setSlotConflictNotice(null);
     setSubmitError(null);
     setSelectedSlotLabel(null);

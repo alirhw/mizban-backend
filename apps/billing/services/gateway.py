@@ -150,6 +150,7 @@ class SandboxGatewayAdapter(PaymentGatewayAdapter):
         self._records[authority] = {
             "amount_toman": request.amount_toman,
             "order_id": request.order_id,
+            "callback_url": request.callback_url,
             "tracking_code": f"TRK-{uuid.uuid4().hex[:10].upper()}",
             "card_pan_masked": "603799******1234",
             "verified": False,

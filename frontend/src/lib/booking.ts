@@ -325,3 +325,103 @@ export function mapBookingErrorToPersian(err: unknown): string {
 
   return "خطایی در پردازش رزرو رخ داد؛ لطفاً دوباره تلاش کنید.";
 }
+
+export interface BookingResumeParams {
+  pinId: number;
+  slotDate: string;
+  slotStartIso: string;
+  slotLabel: string | null;
+  addonIds: number[];
+  step: "slot" | "addons" | "review";
+}
+
+export function buildBookingReturnUrl(
+  venueSlug: string,
+  params: {
+    pinId: number;
+    slotDate: string | null;
+    slotStartIso: string | null;
+    slotLabel?: string | null;
+    addonIds: number[];
+    step: "slot" | "addons" | "review";
+  }
+): string {
+  const search = new URLSearchParams();
+  search.set("pin", String(params.pinId));
+  search.set("step", params.step);
+  if (params.slotDate) {
+    search.set("date", params.slotDate);
+  }
+  if (params.slotStartIso) {
+    search.set("slot", params.slotStartIso);
+  }
+  if (params.slotLabel) {
+    search.set("slotLabel", params.slotLabel);
+  }
+  if (params.addonIds.length > 0) {
+    search.set("addons", params.addonIds.join(","));
+  }
+  return `/venues/${encodeURIComponent(venueSlug)}?${search.toString()}`;
+}
+
+export function parseBookingResumeParams(
+  searchParams: Pick<URLSearchParams, "get">,
+  availablePinIds: number[],
+  availableAddonIds: number[]
+): BookingResumeParams | null {
+  const rawPin = searchParams.get("pin");
+  if (!rawPin) return null;
+
+  const pinId = Number(rawPin);
+  if (!Number.isInteger(pinId) || !availablePinIds.includes(pinId)) {
+    return null;
+  }
+
+  const slotDate = searchParams.get("date") ?? "";
+  const slotStartIso = searchParams.get("slot") ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(slotDate) || !slotStartIso) {
+    return null;
+  }
+
+  const rawStep = searchParams.get("step");
+  const step: "slot" | "addons" | "review" =
+    rawStep === "addons" || rawStep === "review" ? rawStep : "review";
+
+  const rawAddons = searchParams.get("addons") ?? "";
+  const addonSet = new Set(availableAddonIds);
+  const addonIds = rawAddons
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0 && addonSet.has(id));
+
+  const slotLabel = searchParams.get("slotLabel");
+
+  return {
+    pinId,
+    slotDate,
+    slotStartIso,
+    slotLabel: slotLabel && slotLabel.trim() ? slotLabel.trim() : null,
+    addonIds: Array.from(new Set(addonIds)),
+    step,
+  };
+}
+
+export function resolveCallbackReceiptConfirmed(
+  receipt: { status: string } | null,
+  receiptError: string | null
+): boolean {
+  return Boolean(
+    !receiptError && receipt && (receipt.status === "CONFIRMED" || receipt.status === "COMPLETED")
+  );
+}
+
+export function getOrCreateBookingIdempotencyKey(
+  existing: { bookingId: number; key: string } | null,
+  bookingId: number,
+  mint: () => string
+): { bookingId: number; key: string } {
+  if (existing && existing.bookingId === bookingId) {
+    return existing;
+  }
+  return { bookingId, key: mint() };
+}

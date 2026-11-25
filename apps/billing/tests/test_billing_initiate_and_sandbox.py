@@ -313,3 +313,56 @@ class TestDevSandboxPayView:
         client = Client()
         resp = client.get(f"/billing/sandbox/pay/{tx.provider_reference}/")
         assert resp.status_code == 404
+
+    @override_settings(DEBUG=True)
+    def test_debug_callback_ignores_crafted_foreign_callback_url(self):
+        customer = UserFactory(role=UserRole.CUSTOMER)
+        booking = _pending_booking(customer=customer, amount_online_toman=95_000)
+        client = Client()
+        data = self._initiate(
+            client,
+            customer,
+            booking,
+            callback_url="http://127.0.0.1:3000/bookings/callback",
+        )
+        authority = data["provider_reference"]
+
+        cb_resp = client.get(
+            "/api/v1/billing/callback/",
+            data={
+                "authority": authority,
+                "outcome": "success",
+                "callback_url": "https://evil.example/steal",
+            },
+            HTTP_ACCEPT="text/html",
+        )
+        assert cb_resp.status_code == 302
+        assert cb_resp["Location"].startswith("http://127.0.0.1:3000/bookings/callback?")
+        assert "evil.example" not in cb_resp["Location"]
+
+    @override_settings(DEBUG=True)
+    def test_debug_callback_blocks_unlisted_foreign_url_when_none_stored(self):
+        customer = UserFactory(role=UserRole.CUSTOMER)
+        booking = _pending_booking(customer=customer, amount_online_toman=95_000)
+        tx = PaymentTransaction.objects.create(
+            booking=booking,
+            customer=customer,
+            amount_toman=booking.amount_online_toman,
+            currency="TOMAN",
+            status=PaymentStatus.PENDING,
+            provider_name="sandbox",
+            provider_reference=f"SBX-{uuid.uuid4().hex[:16].upper()}",
+            idempotency_key=f"idem-{uuid.uuid4().hex}",
+        )
+        client = Client()
+        cb_resp = client.get(
+            "/api/v1/billing/callback/",
+            data={
+                "authority": tx.provider_reference,
+                "outcome": "success",
+                "callback_url": "https://evil.example/steal",
+            },
+            HTTP_ACCEPT="text/html",
+        )
+        assert cb_resp.status_code == 200
+        assert cb_resp.json()["booking_status"] == BookingStatus.CONFIRMED

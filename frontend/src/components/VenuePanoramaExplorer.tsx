@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import React, { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import React, { useMemo, useState } from "react";
 
 import { BookingFlow } from "@/components/BookingFlow";
 import {
@@ -12,6 +13,7 @@ import {
   type PublicTablePinOut,
   type SpaceOut,
 } from "@/lib/api";
+import { parseBookingResumeParams } from "@/lib/booking";
 import { formatToman, smokingStatusLabel } from "@/lib/panorama";
 
 const PanoramaViewer = dynamic(() => import("@/components/PanoramaViewer"), {
@@ -42,12 +44,30 @@ export function VenuePanoramaExplorer({
   initialSpaceId,
   initialPanorama,
 }: VenuePanoramaExplorerProps) {
+  const searchParams = useSearchParams();
+  const initialResume = useMemo(
+    () =>
+      parseBookingResumeParams(
+        searchParams,
+        (initialPanorama?.pins ?? []).map((p) => p.id),
+        designAddons.filter((a) => a.is_active).map((a) => a.id)
+      ),
+    [searchParams, initialPanorama, designAddons]
+  );
+  const resumedPin = useMemo(
+    () =>
+      initialResume
+        ? ((initialPanorama?.pins ?? []).find((p) => p.id === initialResume.pinId) ?? null)
+        : null,
+    [initialResume, initialPanorama]
+  );
+
   const [selectedSpaceId, setSelectedSpaceId] = useState<number | null>(initialSpaceId);
   const [panorama, setPanorama] = useState<PublicPanoramaOut | null>(initialPanorama);
   const [loadingSpace, setLoadingSpace] = useState(false);
   const [spaceError, setSpaceError] = useState<string | null>(null);
-  const [selectedPin, setSelectedPin] = useState<PublicTablePinOut | null>(null);
-  const [bookingPin, setBookingPin] = useState<PublicTablePinOut | null>(null);
+  const [selectedPin, setSelectedPin] = useState<PublicTablePinOut | null>(resumedPin);
+  const [bookingPin, setBookingPin] = useState<PublicTablePinOut | null>(resumedPin);
   const [bookingSelectionNonce, setBookingSelectionNonce] = useState(0);
 
   async function handleSelectSpace(spaceId: number) {
@@ -191,6 +211,13 @@ export function VenuePanoramaExplorer({
               venueSlug={venueSlug}
               designAddons={designAddons}
               selectedPin={bookingPin}
+              initialResume={
+                initialResume &&
+                initialResume.pinId === bookingPin.id &&
+                bookingSelectionNonce === 0
+                  ? initialResume
+                  : null
+              }
               onChangeTable={() => setBookingPin(null)}
             />
           ) : null}

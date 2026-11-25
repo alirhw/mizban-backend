@@ -20,11 +20,13 @@ from ninja.responses import Status
 
 from apps.accounts.auth import auth
 from apps.accounts.models import UserRole
+from apps.billing.models import PaymentTransaction
 from apps.billing.schemas import (
     PaymentCallbackOut,
     PaymentInitiateIn,
     PaymentInitiateOut,
 )
+from apps.billing.services.gateway import get_gateway
 from apps.billing.services.payment import (
     handle_payment_callback,
     initiate_payment_for_booking,
@@ -80,6 +82,69 @@ def _extract_callback_params(request: HttpRequest) -> dict[str, Any]:
                 )
 
     return params
+
+
+def _resolve_safe_dev_redirect_url(
+    request: HttpRequest,
+    params: dict[str, Any],
+) -> str | None:
+    """Resolve redirect target for DEBUG browser callback (Task T-028-FIX / B5).
+
+    Prefers the callback_url stored on the sandbox gateway record for this authority.
+    If none is stored, only allows relative paths, same-origin URLs, or configured
+    local frontend origins.
+    """
+    reference = str(
+        params.get("provider_reference")
+        or params.get("reference")
+        or params.get("authority")
+        or ""
+    ).strip()
+
+    stored_url: str | None = None
+    if reference:
+        tx = (
+            PaymentTransaction.objects.filter(provider_reference=reference)
+            .only("provider_name")
+            .first()
+        )
+        if tx and tx.provider_name == "sandbox":
+            gateway = get_gateway("sandbox")
+            records = getattr(gateway, "_records", {})
+            record = records.get(reference) if isinstance(records, dict) else None
+            if isinstance(record, dict) and isinstance(record.get("callback_url"), str):
+                candidate = record["callback_url"].strip()
+                if candidate:
+                    stored_url = candidate
+
+    target = stored_url or (
+        params.get("callback_url").strip()
+        if isinstance(params.get("callback_url"), str)
+        else ""
+    )
+    if not target:
+        return None
+
+    if target.startswith("/") and not target.startswith("//"):
+        return target
+
+    parsed = urlparse(target)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+
+    allowed_origins = {
+        f"{request.scheme}://{request.get_host()}",
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+    }
+    frontend_origin = getattr(settings, "FRONTEND_ORIGIN", "")
+    if isinstance(frontend_origin, str) and frontend_origin.strip():
+        allowed_origins.add(frontend_origin.strip().rstrip("/"))
+
+    target_origin = f"{parsed.scheme}://{parsed.netloc}"
+    if target_origin in allowed_origins:
+        return target
+    return None
 
 
 def _append_callback_query(callback_url: str, result: Any) -> str:
@@ -170,15 +235,14 @@ def payment_callback(request: HttpRequest):
     params = _extract_callback_params(request)
     result = handle_payment_callback(callback_params=params)
 
-    callback_url = params.get("callback_url")
     accept = request.META.get("HTTP_ACCEPT", "")
     if (
         getattr(settings, "DEBUG", False)
         and request.method == "GET"
-        and isinstance(callback_url, str)
-        and callback_url
         and "text/html" in accept
     ):
-        return HttpResponseRedirect(_append_callback_query(callback_url, result))
+        safe_callback_url = _resolve_safe_dev_redirect_url(request, params)
+        if safe_callback_url:
+            return HttpResponseRedirect(_append_callback_query(safe_callback_url, result))
 
     return result
