@@ -1,66 +1,61 @@
-# Miz Ban - بک‌اند میزبان
+# Miz Ban — Backend & Full-Stack Platform
 
-پلتفرم دوسویه رزرو بصری میز کافه و رستوران روی عکس‌های پانورامای ۳۶۰ درجه:
-مشتری داخل عکس ۳۶۰ درجه می‌چرخد، میز را از روی پین انتخاب می‌کند و رزرو می‌کند؛
-صاحب ونیو فضاها، میزها و اشتراکش را مدیریت می‌کند.
-این مخزن فقط **بک‌اند** است (Django 5.2 + Django Ninja، معماری Modular Monolith).
-فرانت‌اند Next.js فاز جداگانه بعدی است و این‌جا scaffold نشده است.
+A two-sided 360-degree visual table-reservation platform for cafes and restaurants:
+customers explore 360-degree panoramas, pick a table directly from interactive pins, and reserve a slot;
+venue owners manage spaces, table pins, blocked slots, and subscriptions.
 
-## نقشه پوشه‌ها
+- **Backend:** Django 5.2 + Django Ninja (modular monolith), PostgreSQL 16, Redis, Celery
+- **Frontend:** Next.js 16 (App Router, TypeScript, Tailwind CSS) under `frontend/`
 
-```
-config/          تنظیمات (base/development/production)، API مرکزی نینجا، Celery، URLها
-core/            ابزارهای مستقل از دامنه: خطاها و envelope استاندارد، تبدیل جلالی، صفحه‌بندی
+## Project Structure
+
+```text
+config/          Settings (base / development / production), central Ninja API, Celery, URLs
+core/            Domain-independent helpers: exceptions & error envelope, Jalali, pagination, observability
 apps/
-  accounts/      کاربر سفارشی (ورود با موبایل + OTP)، نقش‌ها: CUSTOMER / VENUE_OWNER / ADMIN
-  venues/        ونیوها، ساعت کاری، آیتم‌های طراحی، اشتراک
-  panoramas/     فضاها، عکس‌های ۳۶۰ درجه، پین میزها (+ تسک Celery فشرده‌سازی)
-  scheduling/    موتور تولید اسلات ۹۰ دقیقه + ۳۰ دقیقه فاصله (BR-001/BR-002)
-  bookings/      رزرو، قفل ۱۰ دقیقه‌ای دیتابیس، ماشین وضعیت رزرو (+ managers)
-  billing/       درگاه پرداخت، تراکنش‌ها، رسید دوقسمتی
-  wallets/       کیف پول داخلی و دفتر تراکنش (برگشت وجه کنسلی فقط به کیف پول)
-  reviews/       امتیاز و نظر بعد از اتمام رزرو
-specs/           قالب Spec/Design/Tasks و اولین فیچر پرشده: 001-booking-lock
-api/             اسنپ‌شات قرارداد OpenAPI (با check-contract.sh مقایسه می‌شود)
+  accounts/      Custom phone-based User + OTP auth (roles: CUSTOMER / VENUE_OWNER / ADMIN)
+  venues/        Venues, operating hours, design add-ons, subscriptions
+  panoramas/     Spaces, 360-degree panoramas, table pins (+ Celery WebP/thumbnail pipeline)
+  scheduling/    90-minute slot + 30-minute buffer engine & owner blocked slots (BR-001 / BR-002)
+  bookings/      Reservations, 10-minute DB booking lock, cancellation & split receipts
+  billing/       Payment gateway adapter, payment transactions, idempotent callbacks
+  wallets/       Internal non-withdrawable wallet & append-only refund ledger
+  reviews/       Post-completion ratings and reviews
+frontend/        Next.js web application (customer booking flow, my-bookings/wallet, owner panel)
+specs/           Feature specifications, designs, and task checklists
+api/             OpenAPI contract snapshot (verified against live schema via check-contract.sh)
 ```
 
-## قدم ۳ - راه‌اندازی قدم‌به‌قدم
+## Quick Start
 
-### گزینه الف) لوکال با venv
+### Option A: Local with Virtual Environment
+
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # ویندوز: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
 python manage.py migrate
 python manage.py runserver
 ```
 
-### گزینه ب) با Docker
+### Option B: Docker Compose
+
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-### بعد از بالا آمدن
-- مستندات API: http://127.0.0.1:8000/api/v1/docs
-- سلامت سرویس: http://127.0.0.1:8000/api/v1/healthz
-- اجرای تست‌ها: `pytest -q`
-- چک قرارداد API: `./check-contract.sh`
+### Useful Endpoints & Commands
 
-نکته توسعه: اگر `DATABASE_URL` ست نشده باشد، تنظیمات development به‌صورت
-خودکار روی SQLite می‌افتد تا `check` و تست‌ها بدون سرویس اجرا شوند؛ ولی
-**تست رقابت رزرو فقط روی PostgreSQL معتبر است** (SQLite قفل ردیفی ندارد).
+- **API Docs:** `http://127.0.0.1:8000/api/v1/docs`
+- **Health Check:** `http://127.0.0.1:8000/api/v1/healthz`
+- **Run Backend Tests:** `pytest -q` (with coverage: `pytest --cov --cov-report=term-missing -q`)
+- **Verify OpenAPI Contract:** `./check-contract.sh`
+- **Run Frontend Tests:** `cd frontend && npm test`
 
-## نکته‌های صادقانه این پک
+> **Development note:** When `DATABASE_URL` is unset, `config.settings.development` falls back to SQLite so `manage.py check` and unit tests can run without external services. However, **booking concurrency / row-lock tests require PostgreSQL** (SQLite does not support `select_for_update()` row locking).
 
-- مدل کاربر سفارشی (`accounts.User` با شماره موبایل و نقش) ساخته و Migration
-  اولیه‌اش گرفته شده، چون باید قبل از هر مدل دیگری وجود داشته باشد.
-- بقیه مدل‌های دامنه (Venue، TablePin، Booking و ...) عمداً ساخته نشده‌اند؛
-  آن‌ها تسک‌های T-005 به بعدِ سند معماری خودت هستند و هر کدام Spec جدا دارند.
-- دو تست fail-first به‌صورت Skip در پک هست تا وقتی تسک‌هایشان برسد:
-  تست رقابت دو رزرو هم‌زمان (`apps/bookings/tests/test_booking_race.py`،
-  منتظر T-011/T-012) و تست قانون اسلات‌ها
-  (`apps/scheduling/tests/test_slot_rules.py`، منتظر T-010).
-- قانون‌های معماری ARCH-001 تا ARCH-006 و قوانین کسب‌وکار BR-001 تا BR-005
-  در `AGENTS.md` آمده‌اند؛ قبل از هر کاری آن فایل را بخوان.
+## Architecture & Business Rules
+
+Key architectural guardrails (`ARCH-001`–`ARCH-006`) and business rules (`BR-001`–`BR-006`, including 90-minute slots + 30-minute cleaning buffers, 24h booking lead time, 36h cancellation window with wallet-only refunds, integer Toman currency, and UTC storage) are documented in [AGENTS.md](AGENTS.md).
