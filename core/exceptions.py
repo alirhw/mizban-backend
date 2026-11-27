@@ -201,6 +201,14 @@ class TableNumberAlreadyExistsError(DomainError):
     default_message = "A table with this number already exists in this venue."
 
 
+class VenueNotSubmittableError(DomainError):
+    """Venue cannot be submitted for review in its current review state."""
+
+    error_code = "VENUE_NOT_SUBMITTABLE"
+    status_code = 409
+    default_message = "Venue cannot be submitted for review in its current status."
+
+
 class PaymentGatewayError(DomainError):
     """Payment gateway rejected operation or experienced communication failure (ARCH-005)."""
 

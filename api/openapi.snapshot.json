@@ -326,6 +326,44 @@
         ]
       }
     },
+    "/api/v1/venues/owner/venues/{venue_id}/submit": {
+      "post": {
+        "operationId": "apps_venues_api_submit_my_venue",
+        "summary": "Submit owner venue for review (FR-33)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueOwnerOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Submit a DRAFT or REJECTED venue for platform admin review.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/venues/owner/venues/{venue_id}/subscription/": {
       "get": {
         "operationId": "apps_venues_api_get_my_venue_subscription",
@@ -719,10 +757,20 @@
             }
           }
         },
-        "description": "Reject/unapprove a venue and invalidate its public cache.",
+        "description": "Reject/unapprove a venue with a reason and invalidate its public cache.",
         "tags": [
           "venues"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueRejectIn"
+              }
+            }
+          },
+          "required": true
+        },
         "security": [
           {
             "ActiveSessionAuth": []
@@ -2316,6 +2364,26 @@
             "title": "Is Approved",
             "type": "boolean"
           },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "rejection_reason": {
+            "title": "Rejection Reason",
+            "type": "string"
+          },
+          "submitted_for_review_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted For Review At"
+          },
           "subscription_status": {
             "title": "Subscription Status",
             "type": "string"
@@ -2360,6 +2428,9 @@
           "address",
           "description",
           "is_approved",
+          "review_status",
+          "rejection_reason",
+          "submitted_for_review_at",
           "subscription_status",
           "is_publicly_visible",
           "created_at",
@@ -2700,6 +2771,15 @@
             "title": "Is Approved",
             "type": "boolean"
           },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "rejection_reason": {
+            "default": "",
+            "title": "Rejection Reason",
+            "type": "string"
+          },
           "message": {
             "title": "Message",
             "type": "string"
@@ -2709,9 +2789,27 @@
           "id",
           "slug",
           "is_approved",
+          "review_status",
           "message"
         ],
         "title": "VenueApprovalOut",
+        "type": "object"
+      },
+      "VenueRejectIn": {
+        "additionalProperties": false,
+        "description": "Admin payload for rejecting a venue with a reason (FR-37 / T-036).",
+        "properties": {
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "VenueRejectIn",
         "type": "object"
       },
       "VenuePublicItemOut": {

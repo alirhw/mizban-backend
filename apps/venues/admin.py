@@ -8,6 +8,7 @@ from .models import (
     OperatingHours,
     SubscriptionPlan,
     Venue,
+    VenueReviewStatus,
     VenueSubscription,
 )
 from .services import activate_subscription, invalidate_venue_cache
@@ -47,18 +48,21 @@ class VenueAdmin(admin.ModelAdmin):
     def approve_selected_venues(self, request, queryset):
         for venue in queryset:
             venue.is_approved = True
-            venue.save(update_fields=["is_approved", "updated_at"])
+            venue.review_status = VenueReviewStatus.APPROVED
+            venue.rejection_reason = ""
+            venue.save(update_fields=["is_approved", "review_status", "rejection_reason", "updated_at"])
             vid, vslug = venue.id, venue.slug
-            transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))
+            transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
         self.message_user(request, f"{queryset.count()} venue(s) approved.")
 
     @admin.action(description="Reject selected venues (is_approved=False)")
     def reject_selected_venues(self, request, queryset):
         for venue in queryset:
             venue.is_approved = False
-            venue.save(update_fields=["is_approved", "updated_at"])
+            venue.review_status = VenueReviewStatus.REJECTED
+            venue.save(update_fields=["is_approved", "review_status", "updated_at"])
             vid, vslug = venue.id, venue.slug
-            transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))
+            transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
         self.message_user(request, f"{queryset.count()} venue(s) rejected.")
 
 

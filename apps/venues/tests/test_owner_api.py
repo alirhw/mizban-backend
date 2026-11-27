@@ -19,7 +19,7 @@ from django.core.cache import cache
 from django.test import Client, override_settings
 
 from apps.accounts.models import UserRole
-from apps.venues.models import SubscriptionStatus, Venue
+from apps.venues.models import SubscriptionStatus, Venue, VenueReviewStatus
 from apps.venues.services import (
     VENUE_CACHE_TTL,
     get_venue_slug_cache_key,
@@ -301,11 +301,14 @@ def test_admin_can_approve_and_reject_venue(api, admin_user, owner_user):
     # 2. Reject
     reject_resp = api.post(
         f"/api/v1/venues/admin/venues/{venue.id}/reject",
+        data={"reason": "Missing photos"},
         user=admin_user,
     )
     assert reject_resp.status_code == 200
     venue.refresh_from_db()
     assert venue.is_approved is False
+    assert venue.review_status == VenueReviewStatus.REJECTED
+    assert venue.rejection_reason == "Missing photos"
 
 
 @pytest.mark.django_db

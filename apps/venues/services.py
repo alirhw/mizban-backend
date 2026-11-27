@@ -25,8 +25,18 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.accounts.models import UserRole
-from apps.venues.models import DesignAddon, SubscriptionPlan, Venue, VenueSubscription
-from core.exceptions import AddonInUseError, InactiveSubscriptionPlanError
+from apps.venues.models import (
+    DesignAddon,
+    SubscriptionPlan,
+    Venue,
+    VenueReviewStatus,
+    VenueSubscription,
+)
+from core.exceptions import (
+    AddonInUseError,
+    InactiveSubscriptionPlanError,
+    VenueNotSubmittableError,
+)
 from core.jalali import format_jalali
 
 logger = logging.getLogger(__name__)
@@ -254,12 +264,56 @@ def update_venue_for_owner(
     return venue
 
 
+def submit_venue_for_review(user: Any, venue_id: int) -> Venue:
+    """Owner workflow: submit a DRAFT or REJECTED venue for admin review (FR-33 / T-036)."""
+    venue = get_owner_venue(user, venue_id)
+
+    with transaction.atomic():
+        locked_venue = (
+            Venue.objects.select_for_update()
+            .prefetch_related("operating_hours", "design_addons")
+            .filter(id=venue.id)
+            .first()
+        )
+        if not locked_venue:
+            raise Http404("Venue not found.")
+
+        if locked_venue.review_status not in (
+            VenueReviewStatus.DRAFT,
+            VenueReviewStatus.REJECTED,
+        ):
+            raise VenueNotSubmittableError(
+                "Venue can only be submitted for review from DRAFT or REJECTED status.",
+                details={"review_status": locked_venue.review_status},
+            )
+
+        locked_venue.review_status = VenueReviewStatus.PENDING_REVIEW
+        locked_venue.is_approved = False
+        locked_venue.submitted_for_review_at = timezone.now()
+        locked_venue.rejection_reason = ""
+        locked_venue.save(
+            update_fields=[
+                "review_status",
+                "is_approved",
+                "submitted_for_review_at",
+                "rejection_reason",
+                "updated_at",
+            ]
+        )
+
+        vid, vslug = locked_venue.id, locked_venue.slug
+        transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))
+
+    logger.info("Owner id=%s submitted venue id=%s slug=%s for review", user.id, vid, vslug)
+    return locked_venue
+
+
 def approve_venue(admin_user: Any, venue_id: int) -> Venue:
     """Platform admin workflow: approve a venue.
 
     Invariants:
     - Admin only (role == ADMIN or is_staff=True).
-    - is_approved becomes True.
+    - is_approved becomes True, review_status becomes APPROVED, rejection_reason cleared.
     - Invalidation on transaction commit.
     """
     if not (admin_user.is_staff or admin_user.role == UserRole.ADMIN):
@@ -270,39 +324,52 @@ def approve_venue(admin_user: Any, venue_id: int) -> Venue:
         if not venue:
             raise Http404("Venue not found.")
 
+        venue.review_status = VenueReviewStatus.APPROVED
         venue.is_approved = True
-        venue.save(update_fields=["is_approved", "updated_at"])
+        venue.rejection_reason = ""
+        venue.save(update_fields=["review_status", "is_approved", "rejection_reason", "updated_at"])
 
         vid, vslug = venue.id, venue.slug
         transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))
 
-    logger.info("Admin %s approved venue id=%s slug=%s", admin_user, vid, vslug)
+    logger.info("Admin id=%s approved venue id=%s slug=%s", admin_user.id, vid, vslug)
     return venue
 
 
-def reject_venue(admin_user: Any, venue_id: int) -> Venue:
-    """Platform admin workflow: reject/unapprove a venue.
+def reject_venue(admin_user: Any, venue_id: int, *, reason: str) -> Venue:
+    """Platform admin workflow: reject/unapprove a venue with a reason (FR-37 / T-036).
 
     Invariants:
     - Admin only (role == ADMIN or is_staff=True).
-    - is_approved becomes False.
+    - reason must be a non-blank string up to 1000 characters.
+    - is_approved becomes False, review_status becomes REJECTED.
     - Invalidation on transaction commit.
     """
     if not (admin_user.is_staff or admin_user.role == UserRole.ADMIN):
         raise PermissionDenied("Only administrators can reject venues.")
+
+    if not isinstance(reason, str):
+        raise DjangoValidationError({"reason": "Rejection reason must be a string."})
+    cleaned = reason.strip()
+    if not cleaned or len(cleaned) > 1000:
+        raise DjangoValidationError(
+            {"reason": "Rejection reason must be between 1 and 1000 characters."}
+        )
 
     with transaction.atomic():
         venue = Venue.objects.select_for_update().filter(id=venue_id).first()
         if not venue:
             raise Http404("Venue not found.")
 
+        venue.review_status = VenueReviewStatus.REJECTED
         venue.is_approved = False
-        venue.save(update_fields=["is_approved", "updated_at"])
+        venue.rejection_reason = cleaned
+        venue.save(update_fields=["review_status", "is_approved", "rejection_reason", "updated_at"])
 
         vid, vslug = venue.id, venue.slug
         transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))
 
-    logger.info("Admin %s rejected venue id=%s slug=%s", admin_user, vid, vslug)
+    logger.info("Admin id=%s rejected venue id=%s slug=%s", admin_user.id, vid, vslug)
     return venue
 
 

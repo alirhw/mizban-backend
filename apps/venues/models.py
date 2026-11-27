@@ -28,6 +28,13 @@ class SubscriptionStatus(models.TextChoices):
     EXPIRED = "EXPIRED", "Expired"
 
 
+class VenueReviewStatus(models.TextChoices):
+    DRAFT = "DRAFT", "Draft"
+    PENDING_REVIEW = "PENDING_REVIEW", "Pending Review"
+    APPROVED = "APPROVED", "Approved"
+    REJECTED = "REJECTED", "Rejected"
+
+
 class Venue(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -46,6 +53,13 @@ class Venue(models.Model):
         default=False,
         help_text="Set by a platform admin only (workflow lands in T-009).",
     )
+    review_status = models.CharField(
+        max_length=20,
+        choices=VenueReviewStatus.choices,
+        default=VenueReviewStatus.DRAFT,
+    )
+    rejection_reason = models.TextField(blank=True, default="")
+    submitted_for_review_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

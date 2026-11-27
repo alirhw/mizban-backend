@@ -25,6 +25,7 @@ from apps.venues.schemas import (
     VenueOwnerOut,
     VenuePublicDetailOut,
     VenuePublicItemOut,
+    VenueRejectIn,
     VenueSubscriptionOut,
     VenueUpdateIn,
 )
@@ -77,6 +78,17 @@ def update_my_venue(request, venue_id: int, payload: VenueUpdateIn):
         description=payload.description,
     )
     return venue
+
+
+@router.post(
+    "/owner/venues/{venue_id}/submit",
+    response=VenueOwnerOut,
+    auth=auth,
+    summary="Submit owner venue for review (FR-33)",
+)
+def submit_my_venue(request, venue_id: int):
+    """Submit a DRAFT or REJECTED venue for platform admin review."""
+    return services.submit_venue_for_review(request.auth, venue_id)
 
 
 @router.get(
@@ -208,6 +220,8 @@ def approve_venue_endpoint(request, venue_id: int):
         "id": venue.id,
         "slug": venue.slug,
         "is_approved": venue.is_approved,
+        "review_status": venue.review_status,
+        "rejection_reason": venue.rejection_reason,
         "message": "Venue approved successfully.",
     }
 
@@ -218,13 +232,15 @@ def approve_venue_endpoint(request, venue_id: int):
     auth=auth,
     summary="Admin reject venue",
 )
-def reject_venue_endpoint(request, venue_id: int):
-    """Reject/unapprove a venue and invalidate its public cache."""
-    venue = services.reject_venue(request.auth, venue_id)
+def reject_venue_endpoint(request, venue_id: int, payload: VenueRejectIn):
+    """Reject/unapprove a venue with a reason and invalidate its public cache."""
+    venue = services.reject_venue(request.auth, venue_id, reason=payload.reason)
     return {
         "id": venue.id,
         "slug": venue.slug,
         "is_approved": venue.is_approved,
+        "review_status": venue.review_status,
+        "rejection_reason": venue.rejection_reason,
         "message": "Venue unapproved/rejected.",
     }
 

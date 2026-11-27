@@ -86,6 +86,9 @@ class VenueOwnerOut(Schema):
     address: str
     description: str
     is_approved: bool
+    review_status: str
+    rejection_reason: str
+    submitted_for_review_at: datetime | None
     subscription_status: str
     is_publicly_visible: bool
     created_at: datetime
@@ -116,10 +119,28 @@ class VenueUpdateIn(Schema):
     description: str | None = None
 
 
+class VenueRejectIn(Schema):
+    """Admin payload for rejecting a venue with a reason (FR-37 / T-036)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_reason(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Rejection reason cannot be blank.")
+        return cleaned
+
+
 class VenueApprovalOut(Schema):
     id: int
     slug: str
     is_approved: bool
+    review_status: str
+    rejection_reason: str = ""
     message: str
 
 
