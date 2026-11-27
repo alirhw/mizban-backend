@@ -474,6 +474,14 @@ def handle_payment_callback(
         if booking.status == BookingStatus.INITIATED:
             booking.transition_to(BookingStatus.PENDING_PAYMENT)
         booking.transition_to(BookingStatus.CONFIRMED)
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import create_notification
+
+        create_notification(
+            recipient=booking.venue.owner,
+            type=NotificationType.BOOKING_CONFIRMED,
+            booking=booking,
+        )
         logger.info(
             "Payment callback confirmed booking_id=%s tx_id=%s authority=%s",
             booking.id,
@@ -572,6 +580,14 @@ def pay_booking_with_wallet(
         tx.transition_to(PaymentStatus.SUCCESS, verified_at=now)
 
         booking.transition_to(BookingStatus.CONFIRMED)
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import create_notification
+
+        create_notification(
+            recipient=booking.venue.owner,
+            type=NotificationType.BOOKING_CONFIRMED,
+            booking=booking,
+        )
 
         logger.info(
             "Wallet payment completed: booking_id=%s tx_id=%s amount_toman=%s",

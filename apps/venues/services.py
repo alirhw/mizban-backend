@@ -330,6 +330,15 @@ def approve_venue(admin_user: Any, venue_id: int) -> Venue:
         venue.rejection_reason = ""
         venue.save(update_fields=["review_status", "is_approved", "rejection_reason", "updated_at"])
 
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import create_notification
+
+        create_notification(
+            recipient=venue.owner,
+            type=NotificationType.VENUE_APPROVED,
+            venue=venue,
+        )
+
         vid, vslug = venue.id, venue.slug
         transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))
 
@@ -366,6 +375,15 @@ def reject_venue(admin_user: Any, venue_id: int, *, reason: str) -> Venue:
         venue.is_approved = False
         venue.rejection_reason = cleaned
         venue.save(update_fields=["review_status", "is_approved", "rejection_reason", "updated_at"])
+
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import create_notification
+
+        create_notification(
+            recipient=venue.owner,
+            type=NotificationType.VENUE_REJECTED,
+            venue=venue,
+        )
 
         vid, vslug = venue.id, venue.slug
         transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))

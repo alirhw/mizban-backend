@@ -2482,6 +2482,153 @@
           }
         ]
       }
+    },
+    "/api/v1/notifications/": {
+      "get": {
+        "operationId": "apps_notifications_api_list_notifications",
+        "summary": "List my notifications",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Return the authenticated user's own notifications, newest first.",
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/notifications/unread-count": {
+      "get": {
+        "operationId": "apps_notifications_api_get_unread_count",
+        "summary": "Unread notifications count",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCountOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Return the number of unread notifications for the authenticated user.",
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/notifications/{notification_id}/read": {
+      "post": {
+        "operationId": "apps_notifications_api_read_notification",
+        "summary": "Mark a notification as read",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "schema": {
+              "title": "Notification Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Mark one of the authenticated user's notifications as read.",
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/notifications/read-all": {
+      "post": {
+        "operationId": "apps_notifications_api_read_all_notifications",
+        "summary": "Mark all notifications as read",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkAllReadOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Mark all unread notifications for the authenticated user as read.",
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -5091,6 +5238,101 @@
           "venue_id"
         ],
         "title": "ReviewAdminOut",
+        "type": "object"
+      },
+      "NotificationOut": {
+        "additionalProperties": false,
+        "description": "Serialized in-app notification with read-time rendered Persian copy.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "booking_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Id"
+          },
+          "venue_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "is_read": {
+            "title": "Is Read",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "booking_id",
+          "venue_id",
+          "title",
+          "body",
+          "is_read",
+          "created_at"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
+      "UnreadCountOut": {
+        "additionalProperties": false,
+        "description": "Count of unread notifications for the authenticated user.",
+        "properties": {
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unread_count"
+        ],
+        "title": "UnreadCountOut",
+        "type": "object"
+      },
+      "MarkAllReadOut": {
+        "additionalProperties": false,
+        "description": "Number of notifications marked as read.",
+        "properties": {
+          "marked": {
+            "title": "Marked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "marked"
+        ],
+        "title": "MarkAllReadOut",
         "type": "object"
       }
     },

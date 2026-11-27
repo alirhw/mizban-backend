@@ -469,6 +469,14 @@ def cancel_booking(
 
             # Case (a): Valid cancellation >= 36h ahead -> CANCEL & refund online table fee
             locked_booking.transition_to(BookingStatus.CANCELLED)
+            from apps.notifications.models import NotificationType
+            from apps.notifications.services import create_notification
+
+            create_notification(
+                recipient=locked_booking.venue.owner,
+                type=NotificationType.BOOKING_CANCELLED,
+                booking=locked_booking,
+            )
 
             amount_to_refund = locked_booking.amount_online_toman
             wallet_balance = None
@@ -502,6 +510,14 @@ def cancel_booking(
         # Case (c): PENDING_PAYMENT -> release hold, no refund
         if locked_booking.status == BookingStatus.PENDING_PAYMENT:
             locked_booking.transition_to(BookingStatus.CANCELLED)
+            from apps.notifications.models import NotificationType
+            from apps.notifications.services import create_notification
+
+            create_notification(
+                recipient=locked_booking.venue.owner,
+                type=NotificationType.BOOKING_CANCELLED,
+                booking=locked_booking,
+            )
             logger.info("Pending hold on booking id=%s cancelled and released early", locked_booking.id)
             return BookingCancelResult(
                 booking_id=locked_booking.id,

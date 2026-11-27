@@ -18,6 +18,8 @@ agents:
     write: ["apps/panoramas/**"]
   platform-engineer:                 # identity, venues, reviews
     write: ["apps/accounts/**", "apps/venues/**", "apps/reviews/**"]
+  notifications-engineer:            # in-app notifications (FR-36)
+    write: ["apps/notifications/**"]
   finance-engineer:                  # payments + wallet ledger (TD-005)
     write: ["apps/billing/**", "apps/wallets/**"]
     deny: ["apps/wallets/migrations/**", "apps/billing/migrations/**"]
