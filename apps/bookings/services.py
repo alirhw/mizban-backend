@@ -40,6 +40,7 @@ SLOT_DURATION = timedelta(minutes=90)
 LEAD_TIME_THRESHOLD = timedelta(hours=24)
 CANCELLATION_WINDOW_THRESHOLD = timedelta(hours=36)
 RECEIPT_AVAILABLE_STATUSES = {BookingStatus.CONFIRMED, BookingStatus.COMPLETED}
+MAX_AUTO_COMPLETE_BATCH = 500
 
 
 @dataclass(frozen=True)
@@ -719,5 +720,56 @@ def get_split_receipt(
         total_in_person_toman=computed_in_person_toman,
         grand_total_toman=grand_total_toman,
     )
+
+
+def _normalize_utc_now(now: datetime | None = None) -> datetime:
+    """Resolve `now` to an aware UTC datetime, rejecting naive datetimes (ARCH-006)."""
+    if now is None:
+        now = dj_timezone.now()
+    if dj_timezone.is_naive(now):
+        raise ValueError("now must be timezone-aware (ARCH-006).")
+    return now.astimezone(timezone.utc)
+
+
+def _completable_bookings_queryset(now: datetime) -> models.QuerySet[Booking]:
+    """Return the deterministic base queryset of CONFIRMED bookings eligible for auto-completion."""
+    return Booking.objects.filter(
+        status=BookingStatus.CONFIRMED,
+        end_at__lte=now,
+    ).order_by("end_at", "id")
+
+
+def list_completable_booking_ids(now: datetime | None = None) -> list[int]:
+    """Return up to MAX_AUTO_COMPLETE_BATCH eligible booking IDs without mutating state."""
+    utc_now = _normalize_utc_now(now)
+    return list(
+        _completable_bookings_queryset(utc_now).values_list("id", flat=True)[:MAX_AUTO_COMPLETE_BATCH]
+    )
+
+
+def complete_expired_bookings(now: datetime | None = None) -> int:
+    """Transition elapsed CONFIRMED bookings (end_at <= now) to COMPLETED in a bounded batch.
+
+    Guarantees:
+    - Aware UTC evaluation only (ARCH-006).
+    - Atomic and concurrency-safe via transaction.atomic() + select_for_update(skip_locked=True) (ARCH-002).
+    - Bounded to MAX_AUTO_COMPLETE_BATCH (500) rows ordered by end_at ASC, id ASC.
+    - Uses Booking.transition_to(BookingStatus.COMPLETED) state-machine validation.
+    - Structured logging with booking_id and count only (zero PII).
+    """
+    utc_now = _normalize_utc_now(now)
+    with transaction.atomic():
+        bookings = list(
+            _completable_bookings_queryset(utc_now)
+            .select_for_update(skip_locked=True)[:MAX_AUTO_COMPLETE_BATCH]
+        )
+        completed_count = 0
+        for booking in bookings:
+            booking.transition_to(BookingStatus.COMPLETED)
+            logger.info("Auto-completed booking: booking_id=%s", booking.id)
+            completed_count += 1
+
+    logger.info("Auto-complete run finished: completed_count=%d", completed_count)
+    return completed_count
 
 
