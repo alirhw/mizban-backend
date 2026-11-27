@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+
 import factory
 
 from apps.venues.tests.factories import UserFactory

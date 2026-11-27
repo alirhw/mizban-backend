@@ -1,8 +1,8 @@
 """PostgreSQL tests for owner bookings list and SpaceOut.panorama_status (Task PH-06-02-PRE)."""
 from __future__ import annotations
 
-from datetime import timedelta
 import uuid
+from datetime import timedelta
 
 import pytest
 from django.db import connection
@@ -140,7 +140,7 @@ class TestSpaceOutPanoramaStatus:
         owner = UserFactory(role=UserRole.VENUE_OWNER)
         venue = VenueFactory(owner=owner, is_approved=True)
 
-        s_none = Space.objects.create(venue=venue, name="No Pano", display_order=1, is_active=True)
+        Space.objects.create(venue=venue, name="No Pano", display_order=1, is_active=True)
         s_ready = Space.objects.create(venue=venue, name="Ready", display_order=2, is_active=True)
         p_ready = PanoramaImage.objects.create(
             id=uuid.uuid4(),

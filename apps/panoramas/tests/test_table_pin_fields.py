@@ -20,23 +20,23 @@ Verifies:
    - Locking a pin priced at 120_000 creates a Booking with amount_online_toman == 120_000 (not 50_000)
    - Pin left at the 50_000 migration default creates a Booking with amount_online_toman == 50_000
 """
-from datetime import date, time, timedelta
+from datetime import date, time
+from typing import Any
+
+import pytest
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.test import Client
 from django.utils import timezone
-import pytest
 
 from apps.accounts.models import UserRole
 from apps.bookings.services import create_booking_lock
-from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
+from apps.panoramas.models import PanoramaStatus, TablePin
 from apps.panoramas.tests.factories import PanoramaImageFactory, SpaceFactory, TablePinFactory
-from apps.venues.models import SubscriptionStatus
-from apps.venues.tests.factories import UserFactory, VenueFactory
+from apps.venues.tests.factories import UserFactory, VenueFactory, activate_test_subscription
 from core.testing import authenticate_client
-from apps.venues.tests.factories import activate_test_subscription
 
 
 @pytest.fixture(autouse=True)
@@ -86,7 +86,10 @@ def ready_panorama(space):
         width=4096,
         height=2048,
     )
-    fake_webp = b"RIFF\x24\x00\x00\x00WEBPVP8 \x18\x00\x00\x00\x30\x01\x00\x9d\x01\x2a\x01\x00\x01\x00\x02\x00\x34\x25\xa4\x00\x03\x70\x00\xfe\xfb\xfd\xb5\x00"
+    fake_webp = (
+        b"RIFF\x24\x00\x00\x00WEBPVP8 \x18\x00\x00\x00\x30\x01\x00\x9d\x01\x2a\x01\x00\x01\x00"
+        b"\x02\x00\x34\x25\xa4\x00\x03\x70\x00\xfe\xfb\xfd\xb5\x00"
+    )
     pano.webp_file.save("panorama_ready.webp", ContentFile(fake_webp), save=False)
     pano.thumb_file.save("panorama_thumb.webp", ContentFile(fake_webp), save=False)
     pano.save(update_fields=["webp_file", "thumb_file"])
@@ -178,7 +181,8 @@ class TestTablePinOwnerAPI:
     def test_create_pin_with_fee_and_smoking(self, client: Client, venue_owner, space, ready_panorama):
         """Creating a pin with fee 120_000 and is_smoking True returns 201 with both fields."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
         payload = {
             "table_number": "VIP-1",
             "capacity": 4,
@@ -204,7 +208,8 @@ class TestTablePinOwnerAPI:
     def test_create_pin_without_fee_returns_422(self, client: Client, venue_owner, space):
         """POST without reservation_fee_toman returns 422 VALIDATION_ERROR."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
         payload = {
             "table_number": "T-NOFEE",
             "capacity": 2,
@@ -218,7 +223,8 @@ class TestTablePinOwnerAPI:
     def test_create_pin_with_negative_fee_returns_422(self, client: Client, venue_owner, space):
         """POST with negative reservation_fee_toman returns 422 VALIDATION_ERROR."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
         payload = {
             "table_number": "T-NEGFEE",
             "capacity": 2,
@@ -244,7 +250,8 @@ class TestTablePinOwnerAPI:
             is_smoking=False,
         )
         url = f"/api/v1/panoramas/pins/{pin.id}"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.patch(
             url,
@@ -275,7 +282,8 @@ class TestTablePinOwnerAPI:
             is_smoking=True,
         )
         url = f"/api/v1/panoramas/pins/{pin.id}"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.patch(url, {"reservation_fee_toman": 95_000}, content_type="application/json", **auth)
         assert resp.status_code == 200
@@ -287,7 +295,8 @@ class TestTablePinOwnerAPI:
         """PATCH with negative reservation_fee_toman returns 422."""
         pin = TablePinFactory(venue=space.venue, space=space, reservation_fee_toman=50_000)
         url = f"/api/v1/panoramas/pins/{pin.id}"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.patch(url, {"reservation_fee_toman": -1}, content_type="application/json", **auth)
         assert resp.status_code == 422
@@ -296,7 +305,8 @@ class TestTablePinOwnerAPI:
         """Owner B cannot PATCH Owner A's pin -> HTTP 403."""
         pin = TablePinFactory(venue=space.venue, space=space, reservation_fee_toman=50_000)
         url = f"/api/v1/panoramas/pins/{pin.id}"
-        authenticate_client(client, other_owner); auth = {}
+        authenticate_client(client, other_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.patch(url, {"reservation_fee_toman": 200_000}, content_type="application/json", **auth)
         assert resp.status_code == 403
@@ -321,7 +331,7 @@ class TestTablePinOwnerAPI:
 class TestTablePinPublicAPI:
     def test_public_panorama_returns_fee_and_smoking(self, client: Client, space, ready_panorama):
         """Public panorama endpoint exposes reservation_fee_toman and is_smoking for active pins."""
-        pin1 = TablePinFactory(
+        TablePinFactory(
             venue=space.venue,
             space=space,
             panorama_image=ready_panorama,
@@ -330,7 +340,7 @@ class TestTablePinPublicAPI:
             is_smoking=False,
             is_active=True,
         )
-        pin2 = TablePinFactory(
+        TablePinFactory(
             venue=space.venue,
             space=space,
             panorama_image=ready_panorama,

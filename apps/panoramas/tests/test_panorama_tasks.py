@@ -38,34 +38,28 @@ from __future__ import annotations
 
 import io
 import os
-from unittest.mock import MagicMock, patch
 import uuid
+from unittest.mock import patch
 
+import pytest
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.test import override_settings
 from django.utils import timezone
 from PIL import Image
-import pytest
 
 from apps.panoramas import services
 from apps.panoramas.models import PanoramaImage, PanoramaStatus
 from apps.panoramas.tasks import (
     MAX_PANORAMA_HEIGHT,
     MAX_PANORAMA_WIDTH,
-    PANORAMA_QUALITY,
-    ROADMAP_SIZE_TARGET_BYTES,
-    THUMB_HEIGHT,
-    THUMB_WIDTH,
-    THUMB_QUALITY,
     atomic_storage_save,
     convert_equirectangular_image,
     process_panorama_image,
     verify_storage_output,
 )
-from apps.panoramas.tests.factories import PanoramaImageFactory, SpaceFactory
-from apps.venues.tests.factories import UserFactory, VenueFactory
+from apps.panoramas.tests.factories import SpaceFactory
+from apps.venues.tests.factories import VenueFactory
 
 
 @pytest.fixture(autouse=True)

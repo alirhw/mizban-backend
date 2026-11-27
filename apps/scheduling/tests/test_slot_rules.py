@@ -10,25 +10,23 @@ Contract under test (see services.py docstring):
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import UTC, date, datetime, time, timedelta
 
-from django.test import Client
 import pytest
+from django.test import Client
 
 from apps.accounts.models import UserRole
 from apps.scheduling.services import (
-    LEAD_TIME_THRESHOLD,
     SLOT_DURATION,
     generate_slots,
     get_venue_slots_for_date,
 )
-from apps.venues.models import OperatingHours, SubscriptionStatus, Venue
+from apps.venues.models import OperatingHours
 from apps.venues.tests.factories import OperatingHoursFactory, UserFactory, VenueFactory
 from core.jalali import TEHRAN
 
-NOW = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
-DAY = datetime(2026, 1, 5, tzinfo=timezone.utc).date()  # > 24h after NOW
+NOW = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
+DAY = datetime(2026, 1, 5, tzinfo=UTC).date()  # > 24h after NOW
 
 
 def test_slots_are_90_minutes_with_30_minute_buffer():
@@ -84,19 +82,19 @@ def test_exact_24h_boundary_bookability():
 
     # Slot 0 starts at 2026-01-02 06:30:00 UTC.
     # Case 1: now is exactly 24h before slot start (2026-01-01 06:30:00 UTC) -> bookable (>= 24h)
-    now_exact_24h = datetime(2026, 1, 1, 6, 30, 0, tzinfo=timezone.utc)
+    now_exact_24h = datetime(2026, 1, 1, 6, 30, 0, tzinfo=UTC)
     slots = generate_slots(open_time=open_t, close_time=close_t, on_date=target_date, now=now_exact_24h)
     assert slots[0].is_bookable is True
     assert slots[0].disabled_reason is None
 
     # Case 2: now is 1 second later (2026-01-01 06:30:01 UTC) -> 23h 59m 59s -> NOT bookable
-    now_23h_59m_59s = datetime(2026, 1, 1, 6, 30, 1, tzinfo=timezone.utc)
+    now_23h_59m_59s = datetime(2026, 1, 1, 6, 30, 1, tzinfo=UTC)
     slots = generate_slots(open_time=open_t, close_time=close_t, on_date=target_date, now=now_23h_59m_59s)
     assert slots[0].is_bookable is False
     assert slots[0].disabled_reason == "LEAD_TIME_VIOLATION"
 
     # Case 3: now is 1 second earlier (2026-01-01 06:29:59 UTC) -> 24h 00m 01s -> bookable
-    now_24h_01s = datetime(2026, 1, 1, 6, 29, 59, tzinfo=timezone.utc)
+    now_24h_01s = datetime(2026, 1, 1, 6, 29, 59, tzinfo=UTC)
     slots = generate_slots(open_time=open_t, close_time=close_t, on_date=target_date, now=now_24h_01s)
     assert slots[0].is_bookable is True
     assert slots[0].disabled_reason is None
@@ -193,7 +191,6 @@ def test_scheduling_api_endpoint_with_t011_availability_filter():
 
     # TablePinFactory auto-generates 7-day operating hours (08:00-23:00).
     # Update weekday 0 (Monday) to 09:00 - 13:00 (producing 09:00 and 11:00 slots)
-    from apps.venues.models import OperatingHours
     OperatingHours.objects.filter(venue=venue, weekday=0).update(
         open_time=time(9, 0),
         close_time=time(13, 0),

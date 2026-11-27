@@ -240,6 +240,7 @@ def get_customer_wallet_summary(user: Any, *, max_entries: int = 20) -> dict[str
     - Reuses get_wallet_balance() so balance matches BookingCancelOut.wallet_balance_toman.
     """
     from django.core.exceptions import PermissionDenied
+
     from apps.accounts.models import UserRole
     from core.jalali import format_jalali
 

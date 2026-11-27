@@ -17,7 +17,7 @@ Task T-022 (PH-05 / WS-BILLING-WALLET / TD-005 / BR-004):
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NoReturn
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
@@ -144,6 +144,6 @@ class WalletTransaction(models.Model):
             raise PermissionDenied("Ledger entries are append-only and cannot be updated.")
         super().save(*args, **kwargs)
 
-    def delete(self, *args: Any, **kwargs: Any) -> None:
+    def delete(self, *args: Any, **kwargs: Any) -> NoReturn:
         """Enforce append-only ledger immutability: ledger entries cannot be deleted."""
         raise PermissionDenied("Ledger entries are append-only and cannot be deleted.")

@@ -41,7 +41,7 @@ def login_via_otp(client: Client, phone: str, *, ip: str = "127.0.0.1") -> dict[
     assert code is not None
 
     # Fetch CSRF token if client enforces CSRF checks
-    headers: dict[str, str] = {}
+    headers: dict[str, Any] = {}
     if getattr(client, "enforce_csrf_checks", False):
         csrf_resp = client.get("/api/v1/auth/csrf/")
         csrf_token = csrf_resp.json()["csrf_token"]

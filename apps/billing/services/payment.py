@@ -17,8 +17,8 @@ Task T-020 (PH-05 / WS-BILLING-WALLET / ARCH-005):
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from django.conf import settings
@@ -89,7 +89,7 @@ def initiate_payment_for_booking(
         return existing_tx, existing_tx.redirect_url
 
     # 2. Lock and validate booking inside transaction.atomic()
-    provider = (gateway_name or getattr(settings, "PAYMENT_GATEWAY_PROVIDER", "sandbox")).lower()
+    provider = (gateway_name or str(getattr(settings, "PAYMENT_GATEWAY_PROVIDER", "sandbox") or "sandbox")).lower()
     with transaction.atomic():
         booking = (
             Booking.objects.select_for_update()
@@ -274,7 +274,7 @@ def handle_payment_callback(
     - Zero network calls inside transaction.atomic().
     - Never logs callback payloads, card numbers, or secrets (AGENTS.md).
     """
-    provider = (gateway_name or getattr(settings, "PAYMENT_GATEWAY_PROVIDER", "sandbox")).lower()
+    provider = (gateway_name or str(getattr(settings, "PAYMENT_GATEWAY_PROVIDER", "sandbox") or "sandbox")).lower()
     gateway = get_gateway(provider)
 
     reference = gateway.extract_reference(callback_params)

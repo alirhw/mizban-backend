@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import time, timedelta
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
@@ -9,7 +10,6 @@ from django.utils import timezone
 
 from apps.bookings.models import Booking, BookingStatus
 from apps.panoramas.models import (
-    PanoramaImage,
     PanoramaStatus,
     Space,
     TablePin,
@@ -19,7 +19,8 @@ from apps.panoramas.tests.factories import (
     SpaceFactory,
     TablePinFactory,
 )
-from apps.venues.tests.factories import UserFactory as user_factory, VenueFactory
+from apps.venues.tests.factories import UserFactory as user_factory
+from apps.venues.tests.factories import VenueFactory
 from core.exceptions import InvalidStatusTransitionError
 
 

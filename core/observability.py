@@ -11,10 +11,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-from contextvars import ContextVar, Token
-from datetime import datetime, timezone as dt_timezone
-from typing import Any
 import uuid
+from contextvars import ContextVar, Token
+from datetime import UTC, datetime
+from typing import Any
 
 _request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
 
@@ -133,7 +133,7 @@ class JsonLogFormatter(logging.Formatter):
     """Structured single-line JSON log formatter for production logs."""
 
     def format(self, record: logging.LogRecord) -> str:
-        timestamp = datetime.fromtimestamp(record.created, tz=dt_timezone.utc).isoformat()
+        timestamp = datetime.fromtimestamp(record.created, tz=UTC).isoformat()
         payload: dict[str, Any] = {
             "timestamp": timestamp,
             "level": record.levelname,

@@ -14,28 +14,25 @@ Success criteria (from project doc & TD-004):
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
 import json
 import statistics
 import threading
 import time as pytime
-from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import date, time, timedelta
 
+import pytest
 from django.db import connection
 from django.test import Client
 from django.utils import timezone as dj_timezone
-import pytest
 
 from apps.accounts.models import UserRole
 from apps.bookings.models import Booking, BookingStatus
 from apps.bookings.services import create_booking_lock
 from apps.panoramas.tests.factories import TablePinFactory
-from apps.venues.models import SubscriptionStatus
-from apps.venues.tests.factories import UserFactory, VenueFactory
+from apps.venues.tests.factories import UserFactory, VenueFactory, activate_test_subscription
 from core.exceptions import SlotAlreadyReservedError
-from apps.venues.tests.factories import activate_test_subscription
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -47,8 +44,8 @@ class AttemptResult:
     worker_id: int
     outcome: str  # "winner", "conflict", "deadlock", "error"
     duration_ms: float
-    error_message: Optional[str] = None
-    booking_id: Optional[int] = None
+    error_message: str | None = None
+    booking_id: int | None = None
 
 
 @dataclass
@@ -67,7 +64,7 @@ class RoundStats:
     mean_ms: float
 
 
-def compute_percentiles(durations: List[float]) -> dict:
+def compute_percentiles(durations: list[float]) -> dict:
     if not durations:
         return {"p50": 0.0, "p90": 0.0, "p95": 0.0, "p99": 0.0, "min": 0.0, "max": 0.0, "mean": 0.0}
     sorted_d = sorted(durations)
@@ -147,10 +144,10 @@ def test_spike_service_multiway_contention_20_rounds():
     """
     CONCURRENCY = 5
     ROUNDS = 20
-    round_stats_list: List[RoundStats] = []
-    all_durations: List[float] = []
-    all_winner_durations: List[float] = []
-    all_conflict_durations: List[float] = []
+    round_stats_list: list[RoundStats] = []
+    all_durations: list[float] = []
+    all_winner_durations: list[float] = []
+    all_conflict_durations: list[float] = []
 
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     venue = VenueFactory(owner=owner, is_approved=True)
@@ -162,7 +159,6 @@ def test_spike_service_multiway_contention_20_rounds():
     for r in range(ROUNDS):
         # Unique slot time per round to isolate rounds
         hour = 8 + (r % 14)
-        minute = (r * 10) % 60
         slot_date = base_date + timedelta(days=(r // 14))
         slot_time = time(hour, 0)
 
@@ -244,7 +240,10 @@ def test_spike_service_multiway_contention_20_rounds():
     print(f"Total Errors: {sum(s.errors for s in round_stats_list)} (Zero unhandled exceptions)")
     print("-" * 80)
     print("LATENCY DISTRIBUTION (ms):")
-    print(f"  Overall:   p50={overall_p['p50']:.2f}ms | p90={overall_p['p90']:.2f}ms | p95={overall_p['p95']:.2f}ms | max={overall_p['max']:.2f}ms")
+    print(
+        f"  Overall:   p50={overall_p['p50']:.2f}ms | p90={overall_p['p90']:.2f}ms | "
+        f"p95={overall_p['p95']:.2f}ms | max={overall_p['max']:.2f}ms"
+    )
     print(f"  Winners:   p50={winner_p['p50']:.2f}ms | p95={winner_p['p95']:.2f}ms | max={winner_p['max']:.2f}ms")
     print(f"  Conflicts: p50={conflict_p['p50']:.2f}ms | p95={conflict_p['p95']:.2f}ms | max={conflict_p['max']:.2f}ms")
     print("=" * 80 + "\n")
@@ -258,8 +257,8 @@ def test_spike_high_contention_10_way_10_rounds():
     """
     CONCURRENCY = 10
     ROUNDS = 10
-    round_stats_list: List[RoundStats] = []
-    all_durations: List[float] = []
+    round_stats_list: list[RoundStats] = []
+    all_durations: list[float] = []
 
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     venue = VenueFactory(owner=owner, is_approved=True)
@@ -295,7 +294,9 @@ def test_spike_high_contention_10_way_10_rounds():
         errors = [res for res in results if res.outcome == "error"]
 
         assert len(winners) == 1, f"High Contention Round {r}: Expected 1 winner, got {len(winners)}"
-        assert len(conflicts) == CONCURRENCY - 1, f"High Contention Round {r}: Expected {CONCURRENCY-1} conflicts, got {len(conflicts)}"
+        assert len(conflicts) == CONCURRENCY - 1, (
+            f"High Contention Round {r}: Expected {CONCURRENCY - 1} conflicts, got {len(conflicts)}"
+        )
         assert len(deadlocks) == 0, f"High Contention Round {r}: Deadlock detected"
         assert len(errors) == 0, f"High Contention Round {r}: Error detected"
 
@@ -323,8 +324,15 @@ def test_spike_high_contention_10_way_10_rounds():
     print("\n" + "=" * 80)
     print("T-014 POSTGRESQL CONCURRENCY SPIKE — PART 2 (10-WAY HIGH CONTENTION, 10 ROUNDS)")
     print("=" * 80)
-    print(f"Total Transactions: {ROUNDS * CONCURRENCY} | Winners: {sum(s.winners for s in round_stats_list)} | Conflicts: {sum(s.conflicts for s in round_stats_list)}")
-    print(f"Overall Latency: p50={overall_p['p50']:.2f}ms | p90={overall_p['p90']:.2f}ms | p95={overall_p['p95']:.2f}ms | max={overall_p['max']:.2f}ms")
+    print(
+        f"Total Transactions: {ROUNDS * CONCURRENCY} | "
+        f"Winners: {sum(s.winners for s in round_stats_list)} | "
+        f"Conflicts: {sum(s.conflicts for s in round_stats_list)}"
+    )
+    print(
+        f"Overall Latency: p50={overall_p['p50']:.2f}ms | p90={overall_p['p90']:.2f}ms | "
+        f"p95={overall_p['p95']:.2f}ms | max={overall_p['max']:.2f}ms"
+    )
     print("=" * 80 + "\n")
 
 
@@ -386,7 +394,7 @@ def test_spike_api_multiway_contention_10_rounds(settings):
     settings.DEBUG = True  # Enable debug auth bridge for test client
     CONCURRENCY = 5
     ROUNDS = 10
-    all_api_durations: List[float] = []
+    all_api_durations: list[float] = []
 
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     venue = VenueFactory(owner=owner, is_approved=True)
@@ -422,7 +430,9 @@ def test_spike_api_multiway_contention_10_rounds(settings):
 
         # Invariants: exactly one 201, four 409s, zero others
         assert status_codes.count(201) == 1, f"API Round {r}: Expected 1 winner (201), got {status_codes.count(201)}"
-        assert status_codes.count(409) == CONCURRENCY - 1, f"API Round {r}: Expected {CONCURRENCY-1} conflicts (409), got {status_codes.count(409)}"
+        assert status_codes.count(409) == CONCURRENCY - 1, (
+            f"API Round {r}: Expected {CONCURRENCY - 1} conflicts (409), got {status_codes.count(409)}"
+        )
         assert status_codes.count(500) == 0, f"API Round {r}: Server errors detected!"
 
         # Winner verification
@@ -437,8 +447,14 @@ def test_spike_api_multiway_contention_10_rounds(settings):
     print("\n" + "=" * 80)
     print("T-014 POSTGRESQL CONCURRENCY SPIKE — PART 3 (API-LEVEL 5-WAY CONTENTION, 10 ROUNDS)")
     print("=" * 80)
-    print(f"Total API Requests: {ROUNDS * CONCURRENCY} | 201 Winners: {ROUNDS} | 409 Conflicts: {ROUNDS * (CONCURRENCY - 1)}")
-    print(f"API Latency: p50={api_p['p50']:.2f}ms | p90={api_p['p90']:.2f}ms | p95={api_p['p95']:.2f}ms | max={api_p['max']:.2f}ms")
+    print(
+        f"Total API Requests: {ROUNDS * CONCURRENCY} | 201 Winners: {ROUNDS} | "
+        f"409 Conflicts: {ROUNDS * (CONCURRENCY - 1)}"
+    )
+    print(
+        f"API Latency: p50={api_p['p50']:.2f}ms | p90={api_p['p90']:.2f}ms | "
+        f"p95={api_p['p95']:.2f}ms | max={api_p['max']:.2f}ms"
+    )
     print("=" * 80 + "\n")
 
 
@@ -464,7 +480,7 @@ def test_spike_independent_slots_concurrency_no_cross_blocking():
         barrier.wait()
         t0 = pytime.perf_counter()
         try:
-            booking = create_booking_lock(
+            create_booking_lock(
                 user=users[i],
                 table_pin=pins[i],
                 slot_date=target_date,
@@ -487,6 +503,6 @@ def test_spike_independent_slots_concurrency_no_cross_blocking():
     print("\n" + "=" * 80)
     print("T-014 POSTGRESQL CONCURRENCY SPIKE — PART 4 (PARALLEL NON-CONTENDING TABLES)")
     print("=" * 80)
-    print(f"5 Concurrent distinct table reservations: 5/5 succeeded in parallel.")
+    print("5 Concurrent distinct table reservations: 5/5 succeeded in parallel.")
     print(f"Non-contending Latency: p50={p['p50']:.2f}ms | p95={p['p95']:.2f}ms | max={p['max']:.2f}ms")
     print("=" * 80 + "\n")

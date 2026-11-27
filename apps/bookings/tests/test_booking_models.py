@@ -11,15 +11,14 @@ Acceptance criteria:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from django.db import IntegrityError, transaction
 import pytest
+from django.db import IntegrityError, transaction
 
 from apps.accounts.models import UserRole
 from apps.bookings.models import Booking, BookingAddon, BookingStatus
 from apps.bookings.services import is_table_slot_occupied
-from apps.bookings.tests.factories import BookingAddonFactory, BookingFactory
 from apps.panoramas.tests.factories import TablePinFactory
 from apps.venues.tests.factories import DesignAddonFactory, UserFactory, VenueFactory
 from core.exceptions import InvalidStatusTransitionError
@@ -45,7 +44,7 @@ def customer():
 
 def test_booking_creation_and_auto_sync(venue, table_pin, customer):
     """Booking auto-derives local slot_date, slot_start_time, end_at and venue."""
-    start_utc = datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc)  # 19:00 Tehran
+    start_utc = datetime(2026, 1, 10, 15, 30, tzinfo=UTC)  # 19:00 Tehran
     booking = Booking.objects.create(
         customer=customer,
         table_pin=table_pin,
@@ -67,7 +66,7 @@ def test_booking_creation_and_auto_sync(venue, table_pin, customer):
 
 def test_double_booking_rejected_at_db_level(table_pin, customer):
     """Two active bookings on the same table_pin and slot raise IntegrityError at DB level."""
-    slot_start = datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc)
+    slot_start = datetime(2026, 1, 10, 15, 30, tzinfo=UTC)
 
     # 1. Create first CONFIRMED booking
     Booking.objects.create(
@@ -100,7 +99,7 @@ def test_double_booking_rejected_at_db_level(table_pin, customer):
 
 def test_cancelled_booking_does_not_block_rebooking(table_pin, customer):
     """Cancelled bookings do not block another customer from booking the slot."""
-    slot_start = datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc)
+    slot_start = datetime(2026, 1, 10, 15, 30, tzinfo=UTC)
 
     # 1. Create booking and cancel it
     b1 = Booking.objects.create(
@@ -126,7 +125,7 @@ def test_cancelled_booking_does_not_block_rebooking(table_pin, customer):
 
 def test_expired_booking_does_not_block_rebooking(table_pin, customer):
     """Expired bookings do not block new bookings on the slot."""
-    slot_start = datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc)
+    slot_start = datetime(2026, 1, 10, 15, 30, tzinfo=UTC)
 
     # 1. Create booking and let it expire
     b1 = Booking.objects.create(
@@ -150,7 +149,7 @@ def test_expired_booking_does_not_block_rebooking(table_pin, customer):
 
 def test_status_transitions_follow_lifecycle(table_pin, customer):
     """Booking state machine enforces valid transitions and rejects invalid ones."""
-    slot_start = datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc)
+    slot_start = datetime(2026, 1, 10, 15, 30, tzinfo=UTC)
     b = Booking.objects.create(
         table_pin=table_pin,
         customer=customer,
@@ -180,7 +179,7 @@ def test_cancellation_from_pending_payment(table_pin, customer):
     b = Booking.objects.create(
         table_pin=table_pin,
         customer=customer,
-        start_at=datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc),
+        start_at=datetime(2026, 1, 10, 15, 30, tzinfo=UTC),
         status=BookingStatus.PENDING_PAYMENT,
     )
     b.transition_to(BookingStatus.CANCELLED)
@@ -192,7 +191,7 @@ def test_invalid_transition_from_initiated_to_completed_rejected(table_pin, cust
     b = Booking.objects.create(
         table_pin=table_pin,
         customer=customer,
-        start_at=datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc),
+        start_at=datetime(2026, 1, 10, 15, 30, tzinfo=UTC),
         status=BookingStatus.INITIATED,
     )
     with pytest.raises(InvalidStatusTransitionError):
@@ -201,7 +200,7 @@ def test_invalid_transition_from_initiated_to_completed_rejected(table_pin, cust
 
 def test_booking_end_after_start_check_constraint(table_pin, customer):
     """end_at must be strictly greater than start_at."""
-    start_utc = datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc)
+    start_utc = datetime(2026, 1, 10, 15, 30, tzinfo=UTC)
     with pytest.raises(IntegrityError):
         with transaction.atomic():
             Booking.objects.create(
@@ -215,7 +214,7 @@ def test_booking_end_after_start_check_constraint(table_pin, customer):
 
 def test_booking_amounts_non_negative_check_constraint(table_pin, customer):
     """Amounts cannot be negative."""
-    start_utc = datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc)
+    start_utc = datetime(2026, 1, 10, 15, 30, tzinfo=UTC)
     with pytest.raises(IntegrityError):
         with transaction.atomic():
             Booking.objects.create(
@@ -229,8 +228,8 @@ def test_booking_amounts_non_negative_check_constraint(table_pin, customer):
 
 def test_is_table_slot_occupied_interface(table_pin, customer):
     """Slot availability intersection interface correctly identifies occupied slots."""
-    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-    slot_start = datetime(2026, 1, 5, 10, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    slot_start = datetime(2026, 1, 5, 10, 0, tzinfo=UTC)
 
     # 1. Unbooked slot is NOT occupied
     assert not is_table_slot_occupied(table_pin, start_at=slot_start, now=now)
@@ -270,7 +269,7 @@ def test_booking_addon_snapshot(table_pin, customer, venue):
     booking = Booking.objects.create(
         table_pin=table_pin,
         customer=customer,
-        start_at=datetime(2026, 1, 10, 15, 30, tzinfo=timezone.utc),
+        start_at=datetime(2026, 1, 10, 15, 30, tzinfo=UTC),
         status=BookingStatus.CONFIRMED,
     )
     booking_addon = BookingAddon.objects.create(

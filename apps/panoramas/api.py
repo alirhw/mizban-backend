@@ -21,7 +21,6 @@ from apps.panoramas.schemas import (
     PublicPanoramaOut,
     SpaceCreateIn,
     SpaceOut,
-    SpacePublicOut,
     SpaceUpdateIn,
     TablePinCreateIn,
     TablePinOut,

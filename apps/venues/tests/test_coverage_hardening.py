@@ -1,7 +1,7 @@
 """Targeted regression tests for core helpers and VenueAdmin actions (Task T-029)."""
 from __future__ import annotations
 
-from datetime import date, datetime, timezone as dt_timezone
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -23,22 +23,22 @@ def test_core_jalali_helpers_and_naive_guard():
     with pytest.raises(ValueError):
         to_jalali(naive)
 
-    assert resolve_date(datetime(2026, 11, 25, 10, 0, tzinfo=dt_timezone.utc)) == date(2026, 11, 25)
+    assert resolve_date(datetime(2026, 11, 25, 10, 0, tzinfo=UTC)) == date(2026, 11, 25)
     assert resolve_date(date(2026, 11, 25)) == date(2026, 11, 25)
 
 
 def test_parse_jalali_datetime_returns_aware_utc():
     # 1405/09/04 12:30 Asia/Tehran (+03:30) == 2026-11-25 09:00 UTC
     utc_dt = parse_jalali_datetime("1405/09/04 12:30")
-    assert utc_dt.tzinfo == dt_timezone.utc
-    assert utc_dt == datetime(2026, 11, 25, 9, 0, tzinfo=dt_timezone.utc)
+    assert utc_dt.tzinfo == UTC
+    assert utc_dt == datetime(2026, 11, 25, 9, 0, tzinfo=UTC)
 
 
 def test_jalali_slot_window_returns_tehran_day_utc_bounds():
     start, end = jalali_slot_window("1405/09/04")
-    assert start.tzinfo == dt_timezone.utc
-    assert end.tzinfo == dt_timezone.utc
-    assert start == datetime(2026, 11, 24, 20, 30, tzinfo=dt_timezone.utc)
+    assert start.tzinfo == UTC
+    assert end.tzinfo == UTC
+    assert start == datetime(2026, 11, 24, 20, 30, tzinfo=UTC)
     assert end > start
     assert end.date() == date(2026, 11, 25)
 

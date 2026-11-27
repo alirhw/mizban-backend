@@ -43,7 +43,10 @@ class PaymentVerifyIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
     provider_reference: str = Field(..., description="Gateway authority / reference token.")
-    callback_params: dict[str, Any] = Field(default_factory=dict, description="Raw query parameters returned by gateway.")
+    callback_params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Raw query parameters returned by gateway.",
+    )
 
 
 class PaymentTransactionOut(Schema):

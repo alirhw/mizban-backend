@@ -11,7 +11,8 @@ from ninja import NinjaAPI, Schema
 from apps.accounts.api import router as accounts_router
 from apps.billing.api import router as billing_router
 from apps.bookings.api import router as bookings_router
-from apps.panoramas.api import router as panoramas_router, spaces_router, venue_spaces_router
+from apps.panoramas.api import router as panoramas_router
+from apps.panoramas.api import spaces_router, venue_spaces_router
 from apps.reviews.api import router as reviews_router
 from apps.scheduling.api import router as scheduling_router
 from apps.venues.api import router as venues_router

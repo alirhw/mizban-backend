@@ -5,6 +5,8 @@ There is no shared UserFactory in apps/accounts/tests (its tests call
 here for the venues suite. If a project-wide factory module appears
 later, this should be replaced by an import from it.
 """
+from typing import TYPE_CHECKING, Any
+
 import factory
 from django.contrib.auth import get_user_model
 
@@ -51,6 +53,10 @@ class OperatingHoursFactory(factory.django.DjangoModelFactory):
 class DesignAddonFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = DesignAddon
+
+    if TYPE_CHECKING:
+        def __new__(cls, *args: Any, **kwargs: Any) -> DesignAddon:  # type: ignore[misc]  # factory_boy returns DesignAddon
+            ...
 
     venue = factory.SubFactory(VenueFactory)
     title = factory.Sequence(lambda n: f"Addon {n}")

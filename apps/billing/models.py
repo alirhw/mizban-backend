@@ -125,7 +125,10 @@ class PaymentTransaction(models.Model):
     )
     refund_required = models.BooleanField(
         default=False,
-        help_text="Whether this transaction requires a refund to customer bank card (e.g. late payment when slot occupied).",
+        help_text=(
+            "Whether this transaction requires a refund to customer bank card "
+            "(e.g. late payment when slot occupied)."
+        ),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -154,7 +157,10 @@ class PaymentTransaction(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PaymentTransaction(id={self.pk}, booking={self.booking_id}, amount={self.amount_toman} {self.currency}, status={self.status})"
+        return (
+            f"PaymentTransaction(id={self.pk}, booking={self.booking_id}, "
+            f"amount={self.amount_toman} {self.currency}, status={self.status})"
+        )
 
     def transition_to(self, new_status: str, **kwargs: Any) -> None:
         """Validate and apply state transition."""

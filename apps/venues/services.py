@@ -9,10 +9,10 @@ Architecture rules:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 import logging
 import math
-from typing import Any, List, Optional
+from datetime import datetime, timedelta
+from typing import Any
 
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
@@ -40,7 +40,7 @@ def get_venue_slug_cache_key(slug: str) -> str:
     return f"venue:metadata:slug:{slug}"
 
 
-def invalidate_venue_cache(venue_id: int, slug: Optional[str] = None) -> None:
+def invalidate_venue_cache(venue_id: int, slug: str | None = None) -> None:
     """Invalidate cached venue metadata.
 
     Called via transaction.on_commit() to ensure cache eviction only happens
@@ -54,9 +54,9 @@ def invalidate_venue_cache(venue_id: int, slug: Optional[str] = None) -> None:
 
 
 def list_public_venues(
-    city: Optional[str] = None,
-    venue_type: Optional[str] = None,
-) -> List[Venue]:
+    city: str | None = None,
+    venue_type: str | None = None,
+) -> list[Venue]:
     """Return publicly listed venues (BR-005: approved + active subscription)."""
     qs = Venue.objects.public().order_by("name")
     if city:
@@ -120,7 +120,7 @@ def get_public_venue_by_slug(slug: str) -> dict[str, Any]:
     return data
 
 
-def list_owner_venues(user: Any) -> List[Venue]:
+def list_owner_venues(user: Any) -> list[Venue]:
     """List venues owned by the authenticated caller.
 
     Role enforcement: must be VENUE_OWNER or ADMIN.
@@ -170,7 +170,7 @@ def create_venue_for_owner(
     venue_type: str,
     address: str,
     description: str = "",
-    slug: Optional[str] = None,
+    slug: str | None = None,
 ) -> Venue:
     """Create a new venue for an owner.
 
@@ -211,11 +211,11 @@ def update_venue_for_owner(
     user: Any,
     venue_id: int,
     *,
-    name: Optional[str] = None,
-    city: Optional[str] = None,
-    venue_type: Optional[str] = None,
-    address: Optional[str] = None,
-    description: Optional[str] = None,
+    name: str | None = None,
+    city: str | None = None,
+    venue_type: str | None = None,
+    address: str | None = None,
+    description: str | None = None,
 ) -> Venue:
     """Update a venue owned by the caller.
 
@@ -310,7 +310,7 @@ def activate_subscription(
     plan: SubscriptionPlan | int,
     activated_by: Any,
     note: str = "",
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> VenueSubscription:
     """Manually activate or stack a subscription window for a venue (Decision 5 / Task T-025).
 
@@ -375,7 +375,7 @@ def get_owner_venue_subscription(
     user: Any,
     venue_id: int,
     *,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Return current subscription status for an owner's venue (Task T-025).
 
@@ -434,7 +434,7 @@ def list_owner_venue_bookings(
     *,
     limit: int = 50,
     offset: int = 0,
-) -> List[dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """List bookings for an owner's venue ordered by nearest slot start first (PH-06-02-PRE).
 
     Enforces identical role/IDOR checks (403/404) via get_owner_venue().

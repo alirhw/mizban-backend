@@ -80,7 +80,7 @@ def test_public_visibility_rule_br005(is_approved, sub_state, expected_public):
     elif sub_state == "EXPIRED":
         activate_test_subscription(
             venue,
-            now=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
+            now=datetime.datetime(2020, 1, 1, tzinfo=datetime.UTC),
         )
     assert venue.is_publicly_visible is expected_public
     assert Venue.objects.public().filter(pk=venue.pk).exists() is expected_public

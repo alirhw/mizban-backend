@@ -7,8 +7,8 @@ SmsSender protocol resolved via get_sms_sender().
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import sys
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from django.conf import settings
@@ -83,7 +83,7 @@ def register_sms_sender(name: str, sender_cls: type[SmsSender]) -> None:
 
 def get_sms_sender(sender_name: str | None = None) -> SmsSender:
     """Factory returning the singleton SMS sender configured via settings.SMS_SENDER."""
-    name = (sender_name or getattr(settings, "SMS_SENDER", "console")).lower()
+    name = (sender_name or str(getattr(settings, "SMS_SENDER", "console") or "console")).lower()
     if name not in _SMS_INSTANCES:
         sender_cls = _SMS_SENDERS.get(name)
         if not sender_cls:
@@ -97,6 +97,7 @@ def get_sms_sender(sender_name: str | None = None) -> SmsSender:
 def reset_fake_sms_sender() -> FakeSmsSender:
     """Reset the fake SMS sender singleton and clear recorded messages."""
     sender = get_sms_sender("fake")
-    if isinstance(sender, FakeSmsSender):
-        sender.reset()
-    return sender  # type: ignore[return-value]
+    if not isinstance(sender, FakeSmsSender):
+        raise TypeError(f"Expected FakeSmsSender for 'fake', got {type(sender).__name__}")
+    sender.reset()
+    return sender

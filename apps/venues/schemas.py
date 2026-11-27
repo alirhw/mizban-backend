@@ -7,7 +7,6 @@ Never expose customer or owner phone numbers in public schemas (NFR-005).
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import List, Optional
 
 from ninja import Schema
 from pydantic import ConfigDict
@@ -44,8 +43,8 @@ class VenuePublicItemOut(Schema):
 
 class VenuePublicDetailOut(VenuePublicItemOut):
     """Public catalogue detail view."""
-    operating_hours: List[OperatingHoursOut] = []
-    design_addons: List[DesignAddonOut] = []
+    operating_hours: list[OperatingHoursOut] = []
+    design_addons: list[DesignAddonOut] = []
 
 
 class VenueOwnerOut(Schema):
@@ -62,8 +61,8 @@ class VenueOwnerOut(Schema):
     is_publicly_visible: bool
     created_at: datetime
     updated_at: datetime
-    operating_hours: List[OperatingHoursOut] = []
-    design_addons: List[DesignAddonOut] = []
+    operating_hours: list[OperatingHoursOut] = []
+    design_addons: list[DesignAddonOut] = []
 
 
 class VenueCreateIn(Schema):
@@ -72,7 +71,7 @@ class VenueCreateIn(Schema):
     venue_type: str
     address: str
     description: str = ""
-    slug: Optional[str] = None
+    slug: str | None = None
 
 
 class VenueUpdateIn(Schema):
@@ -81,11 +80,11 @@ class VenueUpdateIn(Schema):
     Explicit fields only: is_approved and subscription_status cannot be
     modified by owners (mass assignment prevention).
     """
-    name: Optional[str] = None
-    city: Optional[str] = None
-    venue_type: Optional[str] = None
-    address: Optional[str] = None
-    description: Optional[str] = None
+    name: str | None = None
+    city: str | None = None
+    venue_type: str | None = None
+    address: str | None = None
+    description: str | None = None
 
 
 class VenueApprovalOut(Schema):
@@ -101,10 +100,10 @@ class VenueSubscriptionOut(Schema):
     model_config = ConfigDict(extra="forbid")
 
     is_active: bool
-    plan_name: Optional[str] = None
-    starts_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
-    jalali_expires_at: Optional[str] = None
+    plan_name: str | None = None
+    starts_at: datetime | None = None
+    expires_at: datetime | None = None
+    jalali_expires_at: str | None = None
     days_remaining: int
     has_ever_subscribed: bool
 

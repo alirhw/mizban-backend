@@ -1,10 +1,10 @@
 """Factories for the billing app (PaymentTransactionFactory)."""
 import uuid
+
 import factory
 
 from apps.billing.models import PaymentStatus, PaymentTransaction
 from apps.bookings.tests.factories import BookingFactory
-from apps.venues.tests.factories import UserFactory
 
 
 class PaymentTransactionFactory(factory.django.DjangoModelFactory):

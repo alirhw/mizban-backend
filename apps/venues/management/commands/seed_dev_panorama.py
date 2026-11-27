@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 from datetime import time
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile

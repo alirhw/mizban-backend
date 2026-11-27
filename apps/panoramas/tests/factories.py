@@ -1,4 +1,6 @@
 """Factories for panoramas app (Space, PanoramaImage, TablePin)."""
+from typing import TYPE_CHECKING, Any
+
 import factory
 
 from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
@@ -8,6 +10,10 @@ from apps.venues.tests.factories import VenueFactory
 class SpaceFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Space
+
+    if TYPE_CHECKING:
+        def __new__(cls, *args: Any, **kwargs: Any) -> Space:  # type: ignore[misc]  # factory_boy returns Space
+            ...
 
     venue = factory.SubFactory(VenueFactory)
     name = factory.Sequence(lambda n: f"Space {n}")
@@ -20,6 +26,10 @@ class PanoramaImageFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = PanoramaImage
 
+    if TYPE_CHECKING:
+        def __new__(cls, *args: Any, **kwargs: Any) -> PanoramaImage:  # type: ignore[misc]  # factory_boy returns PanoramaImage
+            ...
+
     space = factory.SubFactory(SpaceFactory)
     status = PanoramaStatus.UPLOADED
     width = 4096
@@ -31,6 +41,10 @@ class TablePinFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = TablePin
         skip_postgeneration_save = True
+
+    if TYPE_CHECKING:
+        def __new__(cls, *args: Any, **kwargs: Any) -> TablePin:  # type: ignore[misc]  # factory_boy returns TablePin
+            ...
 
     venue = factory.SubFactory(VenueFactory)
     space = factory.SubFactory(SpaceFactory, venue=factory.SelfAttribute("..venue"))

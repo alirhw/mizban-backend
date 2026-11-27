@@ -18,12 +18,12 @@ Task T-021 (PH-05 / WS-BILLING-WALLET / ADR-006):
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from datetime import date, time, timedelta
 import json
 import uuid
-import pytest
+from concurrent.futures import ThreadPoolExecutor
+from datetime import time, timedelta
 
+import pytest
 from django.db import connection
 from django.test import Client
 from django.utils import timezone
@@ -36,10 +36,8 @@ from apps.billing.services.gateway import (
     reset_sandbox_gateway,
 )
 from apps.billing.services.payment import handle_payment_callback
-from apps.billing.tests.factories import PaymentTransactionFactory
 from apps.bookings.models import Booking, BookingStatus
 from apps.bookings.services import create_booking_lock
-from apps.bookings.tests.factories import BookingFactory
 from apps.panoramas.tests.factories import TablePinFactory
 from apps.venues.tests.factories import UserFactory
 
@@ -556,7 +554,7 @@ def test_callback_methods_and_trailing_slash_tolerance(client, pin):
                 order_id=str(booking.id),
             )
         )
-        tx = PaymentTransaction.objects.create(
+        PaymentTransaction.objects.create(
             booking=booking,
             customer=customer,
             amount_toman=booking.amount_online_toman,
@@ -643,7 +641,7 @@ def test_race_concurrent_callbacks_for_same_slot_produce_exactly_one_confirmed()
         )
     )
 
-    tx_a = PaymentTransaction.objects.create(
+    PaymentTransaction.objects.create(
         booking=booking_a,
         customer=user_a,
         amount_toman=booking_a.amount_online_toman,
@@ -652,7 +650,7 @@ def test_race_concurrent_callbacks_for_same_slot_produce_exactly_one_confirmed()
         provider_reference=init_a.authority,
         idempotency_key=str(uuid.uuid4()),
     )
-    tx_b = PaymentTransaction.objects.create(
+    PaymentTransaction.objects.create(
         booking=booking_b,
         customer=user_b,
         amount_toman=booking_b.amount_online_toman,

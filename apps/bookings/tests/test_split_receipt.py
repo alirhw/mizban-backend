@@ -22,8 +22,8 @@ Covers:
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import timedelta
-import json
 
 import pytest
 from django.test import Client
@@ -31,10 +31,9 @@ from django.utils import timezone
 from pydantic import ValidationError as PydanticValidationError
 
 from apps.billing.models import PaymentStatus, PaymentTransaction
-from apps.bookings.models import Booking, BookingAddon, BookingStatus
+from apps.bookings.models import Booking, BookingStatus
 from apps.bookings.schemas import SplitReceiptOut
 from apps.bookings.services import create_booking_lock, get_split_receipt
-from apps.bookings.tests.factories import BookingFactory
 from apps.panoramas.tests.factories import TablePinFactory
 from apps.venues.models import DesignAddon
 from apps.venues.tests.factories import DesignAddonFactory, UserFactory
@@ -72,7 +71,7 @@ def _make_confirmed_booking_with_addons(
     *,
     customer,
     pin,
-    addon_specs: list[tuple[str, int]] = (),
+    addon_specs: Sequence[tuple[str, int]] = (),
     status: str = BookingStatus.CONFIRMED,
     with_success_payment: bool = True,
 ):

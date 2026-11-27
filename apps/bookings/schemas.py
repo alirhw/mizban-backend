@@ -6,7 +6,6 @@ In/Out suffix, e.g. BookingInitiateIn / BookingInitiateOut.
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import List, Optional, Union
 
 from ninja import Field, Schema
 from pydantic import ConfigDict, field_validator
@@ -14,7 +13,7 @@ from pydantic import ConfigDict, field_validator
 from core.jalali import resolve_date
 
 
-def resolve_time(time_input: Union[time, str]) -> time:
+def resolve_time(time_input: time | str) -> time:
     """Parse time string in HH:MM or HH:MM:SS format into time object."""
     if isinstance(time_input, time):
         return time_input
@@ -35,8 +34,8 @@ class BookingInitiateIn(Schema):
     table_pin_id: int = Field(..., description="ID of the TablePin to reserve")
     slot_date: str = Field(..., description="Slot calendar date (YYYY-MM-DD or Jalali YYYY/MM/DD)")
     slot_start_time: str = Field(..., description="Slot start time (HH:MM)")
-    venue_id: Optional[int] = Field(None, description="Optional venue ID for boundary validation")
-    addon_ids: List[int] = Field(default_factory=list, description="Optional list of DesignAddon IDs")
+    venue_id: int | None = Field(None, description="Optional venue ID for boundary validation")
+    addon_ids: list[int] = Field(default_factory=list, description="Optional list of DesignAddon IDs")
 
     @field_validator("table_pin_id")
     @classmethod
@@ -78,8 +77,8 @@ class BookingInitiateOut(Schema):
     end_at: datetime
     slot_date: date
     slot_start_time: time
-    locked_at: Optional[datetime] = None
-    lock_expires_at: Optional[datetime] = None
+    locked_at: datetime | None = None
+    lock_expires_at: datetime | None = None
     amount_online_toman: int
     amount_in_person_toman: int
     start_jalali: str = ""
@@ -111,7 +110,7 @@ class BookingCancelOut(Schema):
     refunded_to_wallet_toman: int = Field(
         ..., description="Amount credited to wallet by this cancellation call (integer Toman)"
     )
-    wallet_balance_toman: Optional[int] = Field(
+    wallet_balance_toman: int | None = Field(
         default=None, description="Customer wallet balance after this operation if a refund occurred"
     )
 
@@ -148,10 +147,10 @@ class SplitReceiptOnlineSectionOut(Schema):
     label: str = Field(..., description="Section label indicating paid online / platform share")
     description: str = Field(..., description="Line item description for the table reservation fee")
     amount_online_toman: int = Field(..., description="Table reservation fee paid online (integer Toman)")
-    provider_name: Optional[str] = Field(
+    provider_name: str | None = Field(
         default=None, description="Gateway provider name from the successful PaymentTransaction, if present"
     )
-    card_pan_masked: Optional[str] = Field(
+    card_pan_masked: str | None = Field(
         default=None, description="Masked card PAN (e.g. 603799******1234) if stored on the successful payment"
     )
 
@@ -173,7 +172,7 @@ class SplitReceiptInPersonSectionOut(Schema):
     model_config = ConfigDict(extra="forbid")
 
     label: str = Field(..., description="Section label indicating payable in person at the venue")
-    items: List[SplitReceiptAddonLineOut] = Field(
+    items: list[SplitReceiptAddonLineOut] = Field(
         default_factory=list, description="Itemised design add-on snapshots"
     )
     total_in_person_toman: int = Field(

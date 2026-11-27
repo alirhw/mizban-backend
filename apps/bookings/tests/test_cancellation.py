@@ -18,16 +18,15 @@ Task T-023 (PH-05 / WS-BILLING-WALLET / BR-004 / ADR-006):
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import time, timedelta
-import json
-import pytest
+from datetime import timedelta
 
+import pytest
 from django.db import connection
 from django.test import Client
 from django.utils import timezone
 
 from apps.billing.models import PaymentStatus, PaymentTransaction
-from apps.bookings.models import Booking, BookingStatus
+from apps.bookings.models import BookingStatus
 from apps.bookings.services import (
     cancel_booking,
     create_booking_lock,
@@ -37,8 +36,7 @@ from apps.bookings.tests.factories import BookingFactory
 from apps.panoramas.tests.factories import TablePinFactory
 from apps.venues.tests.factories import UserFactory
 from apps.wallets.models import Wallet, WalletTransaction, WalletTransactionType
-from apps.wallets.services import get_wallet_balance, list_wallet_transactions
-from core.exceptions import BookingNotCancellableError, CancellationWindowClosedError
+from core.exceptions import CancellationWindowClosedError
 from core.testing import authenticate_client
 
 
@@ -92,7 +90,8 @@ def confirmed_booking(customer, pin):
 @pytest.mark.django_db
 def test_happy_path_confirmed_booking_cancelled_48h_ahead(client, customer, confirmed_booking):
     """CONFIRMED booking cancelled 48h ahead: status CANCELLED, wallet credited full online fee."""
-    authenticate_client(client, customer); headers = {}
+    authenticate_client(client, customer)
+    headers = {}
     url = f"/api/v1/bookings/{confirmed_booking.id}/cancel/"
 
     resp = client.post(url, **headers)
@@ -162,7 +161,8 @@ def test_boundary_cancellation_35h59m_ahead_rejected_with_window_error(client, c
         cancel_booking(booking=booking, actor=customer, now=now)
 
     # API call returns HTTP 400 with standard envelope
-    authenticate_client(client, customer); headers = {}
+    authenticate_client(client, customer)
+    headers = {}
     resp = client.post(f"/api/v1/bookings/{booking.id}/cancel/", **headers)
     assert resp.status_code == 400
     err = resp.json()
@@ -189,7 +189,8 @@ def test_in_person_addons_are_never_refunded(client, customer, pin):
         amount_in_person_toman=300_000,  # In-person add-on
     )
 
-    authenticate_client(client, customer); headers = {}
+    authenticate_client(client, customer)
+    headers = {}
     resp = client.post(f"/api/v1/bookings/{booking.id}/cancel/", **headers)
     assert resp.status_code == 200
 
@@ -206,7 +207,8 @@ def test_in_person_addons_are_never_refunded(client, customer, pin):
 @pytest.mark.django_db
 def test_double_cancellation_is_idempotent(client, customer, confirmed_booking):
     """Second cancellation call returns idempotently, refunded_to_wallet_toman=0, wallet credited once."""
-    authenticate_client(client, customer); headers = {}
+    authenticate_client(client, customer)
+    headers = {}
     url = f"/api/v1/bookings/{confirmed_booking.id}/cancel/"
 
     # 1. First call cancels and refunds
@@ -241,7 +243,8 @@ def test_pending_payment_cancellation_releases_hold_without_credit(client, custo
         amount_online_toman=50_000,
     )
 
-    authenticate_client(client, customer); headers = {}
+    authenticate_client(client, customer)
+    headers = {}
     resp = client.post(f"/api/v1/bookings/{booking.id}/cancel/", **headers)
     assert resp.status_code == 200
 
@@ -258,7 +261,7 @@ def test_pending_payment_cancellation_releases_hold_without_credit(client, custo
 
 @pytest.mark.django_db
 def test_cancelling_expired_booking_with_refund_required_payment_rejected_409(client, customer, pin):
-    """ADR-006 boundary: EXPIRED booking carrying refund_required payment is rejected (409) and creates NO wallet credit."""
+    """ADR-006 boundary: EXPIRED booking with refund_required payment is rejected (409) with no wallet credit."""
     booking = BookingFactory(
         customer=customer,
         table_pin=pin,
@@ -276,7 +279,8 @@ def test_cancelling_expired_booking_with_refund_required_payment_rejected_409(cl
         refund_required=True,
     )
 
-    authenticate_client(client, customer); headers = {}
+    authenticate_client(client, customer)
+    headers = {}
     resp = client.post(f"/api/v1/bookings/{booking.id}/cancel/", **headers)
     assert resp.status_code == 409
     err = resp.json()
@@ -297,7 +301,8 @@ def test_completed_booking_cancellation_rejected_409(client, customer, pin):
         status=BookingStatus.COMPLETED,
     )
 
-    authenticate_client(client, customer); headers = {}
+    authenticate_client(client, customer)
+    headers = {}
     resp = client.post(f"/api/v1/bookings/{booking.id}/cancel/", **headers)
     assert resp.status_code == 409
     assert resp.json()["error_code"] == "BOOKING_NOT_CANCELLABLE"
@@ -322,7 +327,8 @@ def test_unauthenticated_cancellation_returns_401(client, confirmed_booking):
 def test_foreign_customer_cancellation_returns_403(client, confirmed_booking):
     """Another customer attempting to cancel someone else's booking returns 403."""
     attacker = UserFactory(role="CUSTOMER")
-    authenticate_client(client, attacker); headers = {}
+    authenticate_client(client, attacker)
+    headers = {}
 
     resp = client.post(f"/api/v1/bookings/{confirmed_booking.id}/cancel/", **headers)
     assert resp.status_code == 403
@@ -336,7 +342,8 @@ def test_foreign_customer_cancellation_returns_403(client, confirmed_booking):
 @pytest.mark.django_db
 def test_unknown_booking_cancellation_returns_404(client, customer):
     """Non-existent booking returns 404 NOT_FOUND."""
-    authenticate_client(client, customer); headers = {}
+    authenticate_client(client, customer)
+    headers = {}
     resp = client.post("/api/v1/bookings/999999/cancel/", **headers)
     assert resp.status_code == 404
     assert resp.json()["error_code"] == "NOT_FOUND"
@@ -392,7 +399,8 @@ def test_cancellation_endpoint_trailing_slash_tolerance(client, customer, pin):
             start_at=target_dt,
             amount_online_toman=50_000,
         )
-        authenticate_client(client, customer); headers = {}
+        authenticate_client(client, customer)
+        headers = {}
         resp = client.post(f"/api/v1/bookings/{b.id}{path_suffix}", **headers)
         assert resp.status_code == 200
         assert resp.json()["status"] == BookingStatus.CANCELLED

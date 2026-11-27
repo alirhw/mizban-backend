@@ -12,9 +12,9 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import time, timedelta
 
+import pytest
 from django.db import connection
 from django.utils import timezone
-import pytest
 
 from apps.bookings.models import Booking, BookingStatus
 from apps.bookings.services import create_booking_lock

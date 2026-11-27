@@ -19,3 +19,4 @@ coverage>=7.6
 factory_boy>=3.3
 ruff>=0.8
 mypy>=1.13
+django-stubs==6.1.2

@@ -24,14 +24,12 @@ import io
 import logging
 import os
 import time
-from typing import Optional, Tuple
 import uuid
 
 from celery import shared_task
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
-from django.utils import timezone
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from apps.panoramas.models import PanoramaImage, PanoramaStatus
@@ -51,7 +49,7 @@ THUMB_QUALITY = 60
 ROADMAP_SIZE_TARGET_BYTES = 1536 * 1024
 
 
-def convert_equirectangular_image(content: bytes) -> Tuple[bytes, bytes, int, int]:
+def convert_equirectangular_image(content: bytes) -> tuple[bytes, bytes, int, int]:
     """Convert raw equirectangular image bytes into optimized WebP and LQIP thumbnail.
 
     Guarantees:
@@ -68,9 +66,9 @@ def convert_equirectangular_image(content: bytes) -> Tuple[bytes, bytes, int, in
         ValueError, Image.DecompressionBombError, UnidentifiedImageError on invalid input.
     """
     stream = io.BytesIO(content)
-    with Image.open(stream) as im:
+    with Image.open(stream) as opened:
         # 1. EXIF orientation normalization
-        im = ImageOps.exif_transpose(im)
+        im: Image.Image = ImageOps.exif_transpose(opened)
 
         # 2. Color mode normalization
         if im.mode != "RGB":
@@ -141,7 +139,7 @@ def verify_storage_output(
     expected_format: str = "WEBP",
     max_width: int = 4096,
     max_height: int = 2048,
-) -> Tuple[int, int, int]:
+) -> tuple[int, int, int]:
     """Verify that an output file exists in storage, is readable, and matches dimensions."""
     if not default_storage.exists(storage_path):
         raise FileNotFoundError(f"Output file does not exist at {storage_path}")
@@ -333,7 +331,12 @@ def process_panorama_image(self, image_id: str | uuid.UUID) -> dict:
 
         # Bounded retries: retry only for non-deterministic transient errors
         if not is_deterministic and self.request.retries < self.max_retries:
-            logger.info("Retrying processing for panorama %s (attempt %d/%d)", image_uuid, self.request.retries + 1, self.max_retries)
+            logger.info(
+                "Retrying processing for panorama %s (attempt %d/%d)",
+                image_uuid,
+                self.request.retries + 1,
+                self.max_retries,
+            )
             raise self.retry(exc=exc)
 
         return {

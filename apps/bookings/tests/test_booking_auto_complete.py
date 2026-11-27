@@ -1,20 +1,20 @@
 """PostgreSQL tests for booking auto-completion after slot end (Spec 009 / FR-22 / T-033-03)."""
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
-from io import StringIO
 import logging
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from io import StringIO
 from unittest.mock import patch
 
+import pytest
 from celery.exceptions import Retry
 from django.core.management import call_command
 from django.db import OperationalError, connection, transaction
 from django.test import Client
 from django.utils import timezone
-import pytest
 
 from apps.accounts.models import UserRole
 from apps.billing.models import PaymentStatus, PaymentTransaction

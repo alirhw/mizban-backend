@@ -1,10 +1,10 @@
 """Tests for owner manual BlockedSlot creation, listing, deletion, BR-001/FR-011, and concurrency (Task T-026)."""
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
 import json
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 import pytest
 from django.contrib.admin.sites import AdminSite

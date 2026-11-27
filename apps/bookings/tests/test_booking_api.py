@@ -18,22 +18,20 @@ Acceptance criteria:
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta, timezone
 import json
+from datetime import datetime, time, timedelta
 
+import pytest
 from django.core.cache import cache
 from django.test import Client
 from django.utils import timezone as dj_timezone
-import pytest
 
 from apps.accounts.models import UserRole
-from apps.bookings.models import Booking, BookingAddon, BookingStatus
-from core.testing import authenticate_client
+from apps.bookings.models import Booking, BookingStatus
 from apps.panoramas.tests.factories import TablePinFactory
-from apps.venues.models import SubscriptionStatus
-from apps.venues.tests.factories import DesignAddonFactory, UserFactory, VenueFactory
-from core.jalali import format_jalali, to_jalali
-from apps.venues.tests.factories import activate_test_subscription
+from apps.venues.tests.factories import DesignAddonFactory, UserFactory, VenueFactory, activate_test_subscription
+from core.jalali import format_jalali
+from core.testing import authenticate_client
 
 
 @pytest.fixture(autouse=True)

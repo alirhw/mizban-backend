@@ -41,23 +41,22 @@ Acceptance criteria (PH-04 / WS-MEDIA-360 / Task T-016):
 from __future__ import annotations
 
 import io
-from unittest.mock import MagicMock, patch
 import uuid
+from unittest.mock import patch
 
-from core.testing import authenticate_client
-
+import pytest
 from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 from PIL import Image
-import pytest
 
 from apps.accounts.models import UserRole
 from apps.panoramas import services
 from apps.panoramas.models import PanoramaImage, PanoramaStatus
 from apps.panoramas.tests.factories import SpaceFactory
 from apps.venues.tests.factories import UserFactory, VenueFactory
+from core.testing import authenticate_client
 
 
 @pytest.fixture(autouse=True)
@@ -151,6 +150,7 @@ class TestPanoramaUploadAPI:
         assert record.width == 200
         assert record.height == 100
         assert record.file_size_bytes == len(jpeg_bytes)
+        assert record.original_file.name is not None
         assert default_storage.exists(record.original_file.name)
 
     def test_upload_panorama_happy_path_png(self, client: Client, venue_owner, space):
@@ -172,6 +172,7 @@ class TestPanoramaUploadAPI:
         assert data["original_file"].endswith(".png")
 
         record = PanoramaImage.objects.get(id=data["id"])
+        assert record.original_file.name is not None
         assert default_storage.exists(record.original_file.name)
 
     def test_upload_panorama_happy_path_webp(self, client: Client, venue_owner, space):
@@ -193,6 +194,7 @@ class TestPanoramaUploadAPI:
         assert data["original_file"].endswith(".webp")
 
         record = PanoramaImage.objects.get(id=data["id"])
+        assert record.original_file.name is not None
         assert default_storage.exists(record.original_file.name)
 
     def test_upload_panorama_alias_endpoint(self, client: Client, venue_owner, space):
@@ -410,7 +412,9 @@ class TestPanoramaUploadAPI:
         assert storage_path.startswith(f"panoramas/{space.venue.id}/")
         assert default_storage.exists(storage_path)
 
-    def test_upload_dispatches_via_single_seam(self, client: Client, venue_owner, space, django_capture_on_commit_callbacks):
+    def test_upload_dispatches_via_single_seam(
+        self, client: Client, venue_owner, space, django_capture_on_commit_callbacks
+    ):
         """Successful upload calls dispatch_panorama_processing with created ID on commit."""
         with patch("apps.panoramas.services.dispatch_panorama_processing") as mock_dispatch:
             jpeg_bytes = make_jpeg_bytes()
@@ -430,7 +434,10 @@ class TestPanoramaUploadAPI:
 
     def test_upload_broker_failure_resilience(self, client: Client, venue_owner, space):
         """If Celery broker/dispatch fails, upload still succeeds and record stays UPLOADED."""
-        with patch("apps.panoramas.services.dispatch_panorama_processing", side_effect=Exception("Redis connection refused")):
+        with patch(
+            "apps.panoramas.services.dispatch_panorama_processing",
+            side_effect=Exception("Redis connection refused"),
+        ):
             jpeg_bytes = make_jpeg_bytes()
             upload_file = SimpleUploadedFile("test.jpg", jpeg_bytes, content_type="image/jpeg")
 
@@ -450,7 +457,10 @@ class TestPanoramaUploadAPI:
 
     def test_dispatch_seam_handles_broker_error_without_raising(self):
         """The dispatch_panorama_processing seam catches all broker exceptions and logs warning."""
-        with patch("apps.panoramas.tasks.process_panorama_image.delay", side_effect=RuntimeError("Broker connection timeout")):
+        with patch(
+            "apps.panoramas.tasks.process_panorama_image.delay",
+            side_effect=RuntimeError("Broker connection timeout"),
+        ):
             result = services.dispatch_panorama_processing(uuid.uuid4())
             assert result is False
 

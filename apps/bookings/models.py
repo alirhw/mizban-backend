@@ -11,12 +11,11 @@ Task T-011:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from django.conf import settings
 from django.db import models
-from django.utils import timezone
 
 from apps.bookings.managers import BookingQuerySet
 from core.exceptions import InvalidStatusTransitionError
@@ -243,7 +242,7 @@ class Booking(models.Model):
         # Conversely, if slot_date & slot_start_time are provided without start_at
         elif self.slot_date and self.slot_start_time:
             local_dt = datetime.combine(self.slot_date, self.slot_start_time, tzinfo=TEHRAN)
-            self.start_at = local_dt.astimezone(dt_timezone.utc)
+            self.start_at = local_dt.astimezone(UTC)
             if not getattr(self, "end_at", None):
                 self.end_at = self.start_at + timedelta(minutes=90)
 

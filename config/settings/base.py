@@ -7,8 +7,11 @@ Business timestamps are stored in UTC (USE_TZ=True); Jalali conversion
 happens only at presentation time, in core.jalali.
 """
 from pathlib import Path
+from typing import Any
 
 import environ
+
+from core.observability import init_sentry
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -157,8 +160,6 @@ SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = True
 
 # --- Observability (Architecture Spec section 25 / Task T-031) ---
-from core.observability import init_sentry
-
 ENVIRONMENT = env("ENVIRONMENT", default=env("DJANGO_ENV", default="development"))
 APP_RELEASE = env("APP_RELEASE", default="mizban-backend@0.1.0")
 SENTRY_DSN = env("SENTRY_DSN", default="")
@@ -171,7 +172,7 @@ init_sentry(
     traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
 )
 
-LOGGING = {
+LOGGING: dict[str, Any] = {
     "version": 1,
     "disable_existing_loggers": False,
     "filters": {

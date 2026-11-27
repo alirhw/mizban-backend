@@ -16,20 +16,19 @@ Endpoints tested:
 """
 from __future__ import annotations
 
-import math
+from typing import Any
+
+import pytest
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.test import Client
-import pytest
 
 from apps.accounts.models import UserRole
 from apps.bookings.tests.factories import BookingFactory
-from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
+from apps.panoramas.models import PanoramaStatus, TablePin
 from apps.panoramas.tests.factories import PanoramaImageFactory, SpaceFactory, TablePinFactory
-from apps.venues.models import SubscriptionStatus
-from apps.venues.tests.factories import UserFactory, VenueFactory
+from apps.venues.tests.factories import UserFactory, VenueFactory, activate_test_subscription
 from core.testing import authenticate_client
-from apps.venues.tests.factories import activate_test_subscription
 
 
 @pytest.fixture(autouse=True)
@@ -95,7 +94,8 @@ class TestTablePinValidation:
     def test_create_pin_pitch_bounds(self, client: Client, venue_owner, space):
         """Pitch must be between -90.0 and 90.0 degrees inclusive; out-of-bounds returns 422."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         # Pitch = 90.1 (too high) -> 422
         resp = client.post(
@@ -136,7 +136,8 @@ class TestTablePinValidation:
     def test_create_pin_yaw_bounds(self, client: Client, venue_owner, space):
         """Yaw must be between -180.0 and 180.0 degrees inclusive; out-of-bounds returns 422."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         # Yaw = 180.1 -> 422
         resp = client.post(
@@ -176,7 +177,8 @@ class TestTablePinValidation:
     def test_create_pin_rejects_nan_and_inf(self, client: Client, venue_owner, space):
         """Pydantic schema must reject NaN and Infinity."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         # Test NaN in JSON
         payload = '{"table_number": "T-NAN", "capacity": 2, "pitch": NaN, "yaw": 0.0}'
@@ -191,6 +193,7 @@ class TestTablePinValidation:
     def test_pydantic_schema_direct_validation(self):
         """Direct unit test on Pydantic schemas for NaN, Inf, and bounds."""
         from pydantic import ValidationError
+
         from apps.panoramas.schemas import TablePinCreateIn, TablePinUpdateIn
 
         # Valid instances
@@ -221,7 +224,8 @@ class TestTablePinValidation:
     def test_create_pin_capacity_validation(self, client: Client, venue_owner, space):
         """Capacity must be strictly positive (> 0); 0 or negative returns 422."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.post(
             url,
@@ -242,7 +246,8 @@ class TestTablePinValidation:
     def test_create_pin_blank_table_number(self, client: Client, venue_owner, space):
         """Table number cannot be blank or whitespace."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.post(
             url,
@@ -292,7 +297,8 @@ class TestTablePinPermissions:
         """Owner B cannot update, deactivate, or delete Owner A's pins -> HTTP 403."""
         pin = TablePinFactory(space=space, venue=space.venue, table_number="T1")
 
-        authenticate_client(client, other_owner); auth = {}
+        authenticate_client(client, other_owner)
+        auth: dict[str, Any] = {}
 
         # Update
         resp = client.put(
@@ -313,7 +319,8 @@ class TestTablePinPermissions:
 
     def test_nonexistent_space_or_pin_returns_404(self, client: Client, venue_owner):
         """Non-existent space or pin returns HTTP 404."""
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.post(
             "/api/v1/panoramas/spaces/999999/pins",
@@ -334,7 +341,8 @@ class TestTablePinCRUD:
     def test_create_pin_derives_venue_server_side(self, client: Client, venue_owner, space, ready_panorama):
         """Pin's venue is derived server-side from space.venue, never from client input."""
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.post(
             url,
@@ -373,7 +381,8 @@ class TestTablePinCRUD:
         TablePinFactory(venue=space.venue, space=space, table_number="Table 5")
 
         url = f"/api/v1/panoramas/spaces/{space.id}/pins"
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.post(
             url,
@@ -387,9 +396,10 @@ class TestTablePinCRUD:
     def test_owner_can_list_and_get_pins(self, client: Client, venue_owner, space):
         """Owner can retrieve pin details and list pins in their space."""
         pin1 = TablePinFactory(venue=space.venue, space=space, table_number="A1")
-        pin2 = TablePinFactory(venue=space.venue, space=space, table_number="A2")
+        TablePinFactory(venue=space.venue, space=space, table_number="A2")
 
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         # List
         resp = client.get(f"/api/v1/panoramas/spaces/{space.id}/pins", **auth)
@@ -407,7 +417,8 @@ class TestTablePinCRUD:
     def test_owner_can_update_pin(self, client: Client, venue_owner, space):
         """Owner can update coordinates, capacity, table_number, and description."""
         pin = TablePinFactory(venue=space.venue, space=space, table_number="OldNumber", capacity=2)
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         # PUT
         resp = client.put(
@@ -447,7 +458,8 @@ class TestTablePinCRUD:
     def test_deactivate_pin_endpoint(self, client: Client, venue_owner, space):
         """POST /api/v1/panoramas/pins/{pin_id}/deactivate sets is_active=False."""
         pin = TablePinFactory(venue=space.venue, space=space, is_active=True)
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.post(f"/api/v1/panoramas/pins/{pin.id}/deactivate", **auth)
         assert resp.status_code == 200
@@ -460,7 +472,8 @@ class TestTablePinCRUD:
         """Pin without bookings is hard-deleted with HTTP 204 No Content."""
         pin = TablePinFactory(venue=space.venue, space=space)
         pin_id = pin.id
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.delete(f"/api/v1/panoramas/pins/{pin_id}", **auth)
         assert resp.status_code == 204
@@ -475,7 +488,8 @@ class TestTablePinCRUD:
             customer=customer_user,
         )
 
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.delete(f"/api/v1/panoramas/pins/{pin.id}", **auth)
         assert resp.status_code == 409
@@ -562,7 +576,7 @@ class TestPublicPanoramaReadEndpoint:
         for i in range(10):
             TablePinFactory(venue=space.venue, space=space, table_number=f"T-P{i}", is_active=True)
 
-        # The query count must remain small and bounded (space/venue + has_active_subscription EXISTS + active_pano + pins)
+        # Query count must stay bounded (space/venue + active subscription EXISTS + active_pano + pins)
         with django_assert_num_queries(4):
             resp = client.get(f"/api/v1/spaces/{space.id}/panorama")
             assert resp.status_code == 200
@@ -634,7 +648,8 @@ class TestPublicPanoramaReadEndpoint:
         """Updating table_number to one that already exists in the venue returns 409."""
         TablePinFactory(venue=space.venue, space=space, table_number="Table Alpha")
         pin = TablePinFactory(venue=space.venue, space=space, table_number="Table Beta")
-        authenticate_client(client, venue_owner); auth = {}
+        authenticate_client(client, venue_owner)
+        auth: dict[str, Any] = {}
 
         resp = client.put(
             f"/api/v1/panoramas/pins/{pin.id}",

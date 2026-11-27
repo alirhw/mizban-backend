@@ -6,7 +6,6 @@ In/Out suffix, e.g. SlotOut.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from ninja import Field, Schema
 from pydantic import ConfigDict
@@ -20,7 +19,7 @@ class SlotOut(Schema):
     start: datetime
     end: datetime
     is_bookable: bool
-    disabled_reason: Optional[str] = None
+    disabled_reason: str | None = None
     start_jalali: str = ""
     end_jalali: str = ""
 

@@ -6,8 +6,7 @@ Jalali input at the boundary. Never store a Jalali value in the database.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone as dt_timezone
-from typing import Union
+from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 import jdatetime
@@ -42,7 +41,7 @@ def parse_jalali_datetime(value: str, fmt: str = JALALI_DATETIME_FORMAT) -> date
     """
     naive_tehran = jdatetime.datetime.strptime(value, fmt).togregorian()
     aware_tehran = naive_tehran.replace(tzinfo=TEHRAN)
-    return aware_tehran.astimezone(dt_timezone.utc)
+    return aware_tehran.astimezone(UTC)
 
 
 def jalali_slot_window(value: str, fmt: str = JALALI_DATE_FORMAT) -> tuple[datetime, datetime]:
@@ -51,12 +50,12 @@ def jalali_slot_window(value: str, fmt: str = JALALI_DATE_FORMAT) -> tuple[datet
     Useful for 'slots of this Jalali date' queries at the API boundary.
     """
     gdate = parse_jalali_date(value, fmt)
-    start = datetime.combine(gdate, time.min, tzinfo=TEHRAN).astimezone(dt_timezone.utc)
-    end = datetime.combine(gdate, time.max, tzinfo=TEHRAN).astimezone(dt_timezone.utc)
+    start = datetime.combine(gdate, time.min, tzinfo=TEHRAN).astimezone(UTC)
+    end = datetime.combine(gdate, time.max, tzinfo=TEHRAN).astimezone(UTC)
     return start, end
 
 
-def resolve_date(date_input: Union[date, datetime, str]) -> date:
+def resolve_date(date_input: date | datetime | str) -> date:
     """Resolve a date input which may be date, datetime, ISO string, or Jalali string.
 
     Supports:

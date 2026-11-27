@@ -16,10 +16,10 @@ Task T-022 (PH-05 / WS-BILLING-WALLET / TD-005 / BR-004):
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 import uuid
-import pytest
+from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 from django.contrib.admin.sites import AdminSite
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, connection
@@ -37,7 +37,6 @@ from apps.wallets.services import (
 )
 from apps.wallets.tests.factories import WalletFactory, WalletTransactionFactory
 from core.exceptions import InsufficientWalletBalanceError, InvalidWalletAmountError
-
 
 # ==============================================================================
 # 1. Wallet Lifecycle & Idempotency

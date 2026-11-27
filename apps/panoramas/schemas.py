@@ -1,9 +1,9 @@
 """Pydantic in/out schemas for the panoramas app (Tasks T-016 & T-018)."""
 from __future__ import annotations
 
-from datetime import datetime
 import math
-from typing import Any, List, Optional
+from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from ninja import Schema
@@ -19,8 +19,8 @@ class PanoramaUploadOut(Schema):
     status: str
     original_file: str
     file_size_bytes: int
-    width: Optional[int] = None
-    height: Optional[int] = None
+    width: int | None = None
+    height: int | None = None
     created_at: datetime
     message: str = "Panorama image uploaded successfully and queued for processing."
 
@@ -30,9 +30,9 @@ class TablePinCreateIn(Schema):
 
     table_number: str
     capacity: int = 2
-    pitch: Optional[float] = None
-    yaw: Optional[float] = None
-    panorama_image_id: Optional[UUID] = None
+    pitch: float | None = None
+    yaw: float | None = None
+    panorama_image_id: UUID | None = None
     description: str = ""
     reservation_fee_toman: int
     is_smoking: bool = False
@@ -40,7 +40,7 @@ class TablePinCreateIn(Schema):
 
     @field_validator("pitch")
     @classmethod
-    def validate_pitch(cls, v: Optional[float]) -> Optional[float]:
+    def validate_pitch(cls, v: float | None) -> float | None:
         if v is not None:
             if math.isnan(v) or math.isinf(v):
                 raise ValueError("Pitch cannot be NaN or infinite.")
@@ -50,7 +50,7 @@ class TablePinCreateIn(Schema):
 
     @field_validator("yaw")
     @classmethod
-    def validate_yaw(cls, v: Optional[float]) -> Optional[float]:
+    def validate_yaw(cls, v: float | None) -> float | None:
         if v is not None:
             if math.isnan(v) or math.isinf(v):
                 raise ValueError("Yaw cannot be NaN or infinite.")
@@ -84,19 +84,19 @@ class TablePinCreateIn(Schema):
 class TablePinUpdateIn(Schema):
     """Payload to update an existing table pin (Task T-018)."""
 
-    table_number: Optional[str] = None
-    capacity: Optional[int] = None
-    pitch: Optional[float] = None
-    yaw: Optional[float] = None
-    panorama_image_id: Optional[UUID] = None
-    description: Optional[str] = None
-    reservation_fee_toman: Optional[int] = None
-    is_smoking: Optional[bool] = None
-    is_active: Optional[bool] = None
+    table_number: str | None = None
+    capacity: int | None = None
+    pitch: float | None = None
+    yaw: float | None = None
+    panorama_image_id: UUID | None = None
+    description: str | None = None
+    reservation_fee_toman: int | None = None
+    is_smoking: bool | None = None
+    is_active: bool | None = None
 
     @field_validator("pitch")
     @classmethod
-    def validate_pitch(cls, v: Optional[float]) -> Optional[float]:
+    def validate_pitch(cls, v: float | None) -> float | None:
         if v is not None:
             if math.isnan(v) or math.isinf(v):
                 raise ValueError("Pitch cannot be NaN or infinite.")
@@ -106,7 +106,7 @@ class TablePinUpdateIn(Schema):
 
     @field_validator("yaw")
     @classmethod
-    def validate_yaw(cls, v: Optional[float]) -> Optional[float]:
+    def validate_yaw(cls, v: float | None) -> float | None:
         if v is not None:
             if math.isnan(v) or math.isinf(v):
                 raise ValueError("Yaw cannot be NaN or infinite.")
@@ -116,14 +116,14 @@ class TablePinUpdateIn(Schema):
 
     @field_validator("capacity")
     @classmethod
-    def validate_capacity(cls, v: Optional[int]) -> Optional[int]:
+    def validate_capacity(cls, v: int | None) -> int | None:
         if v is not None and v <= 0:
             raise ValueError("Capacity must be strictly positive (greater than 0).")
         return v
 
     @field_validator("table_number")
     @classmethod
-    def validate_table_number(cls, v: Optional[str]) -> Optional[str]:
+    def validate_table_number(cls, v: str | None) -> str | None:
         if v is not None:
             s = v.strip()
             if not s:
@@ -133,7 +133,7 @@ class TablePinUpdateIn(Schema):
 
     @field_validator("reservation_fee_toman")
     @classmethod
-    def validate_reservation_fee(cls, v: Optional[int]) -> Optional[int]:
+    def validate_reservation_fee(cls, v: int | None) -> int | None:
         if v is not None and v < 0:
             raise ValueError("Reservation fee must be non-negative (>= 0).")
         return v
@@ -144,12 +144,12 @@ class TablePinOut(Schema):
 
     id: int
     venue_id: int
-    space_id: Optional[int]
-    panorama_image_id: Optional[UUID]
+    space_id: int | None
+    panorama_image_id: UUID | None
     table_number: str
     capacity: int
-    pitch: Optional[float]
-    yaw: Optional[float]
+    pitch: float | None
+    yaw: float | None
     description: str
     reservation_fee_toman: int
     is_smoking: bool
@@ -164,8 +164,8 @@ class PublicTablePinOut(Schema):
     id: int
     table_number: str
     capacity: int
-    pitch: Optional[float]
-    yaw: Optional[float]
+    pitch: float | None
+    yaw: float | None
     description: str
     reservation_fee_toman: int
     is_smoking: bool
@@ -187,10 +187,10 @@ class PublicPanoramaOut(Schema):
     venue_name: str
     panorama_image_id: UUID
     image_url: str
-    thumbnail_url: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    pins: List[PublicTablePinOut]
+    thumbnail_url: str | None = None
+    width: int | None = None
+    height: int | None = None
+    pins: list[PublicTablePinOut]
 
 
 # ==============================================================================
@@ -230,14 +230,14 @@ class SpaceUpdateIn(Schema):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: Optional[str] = None
-    description: Optional[str] = None
-    display_order: Optional[int] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    display_order: int | None = None
+    is_active: bool | None = None
 
     @field_validator("name")
     @classmethod
-    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+    def validate_name(cls, v: str | None) -> str | None:
         if v is not None:
             s = v.strip()
             if not s:
@@ -249,7 +249,7 @@ class SpaceUpdateIn(Schema):
 
     @field_validator("display_order")
     @classmethod
-    def validate_display_order(cls, v: Optional[int]) -> Optional[int]:
+    def validate_display_order(cls, v: int | None) -> int | None:
         if v is not None and v < 0:
             raise ValueError("Display order must be an integer greater than or equal to 0.")
         return v
@@ -264,11 +264,11 @@ class SpacePublicOut(Schema):
     description: str
     display_order: int
     is_active: bool
-    active_panorama_id: Optional[UUID] = None
-    panorama_status: Optional[str] = None
+    active_panorama_id: UUID | None = None
+    panorama_status: str | None = None
 
     @staticmethod
-    def resolve_panorama_status(obj: Any) -> Optional[str]:
+    def resolve_panorama_status(obj: Any) -> str | None:
         if getattr(obj, "active_panorama_id", None) and getattr(obj, "active_panorama", None):
             return obj.active_panorama.status
         return None

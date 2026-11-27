@@ -1,8 +1,8 @@
 """Tests for SubscriptionPlan, VenueSubscription, manual activation, BR-005, and owner read API (Task T-025)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone as dt_timezone
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.contrib.admin.sites import AdminSite
@@ -15,7 +15,7 @@ from apps.accounts.models import UserRole
 from apps.panoramas.models import PanoramaStatus
 from apps.panoramas.tests.factories import PanoramaImageFactory, SpaceFactory, TablePinFactory
 from apps.venues.admin import VenueSubscriptionAddForm, VenueSubscriptionAdmin
-from apps.venues.models import SubscriptionPlan, Venue, VenueSubscription
+from apps.venues.models import SubscriptionPlan, VenueSubscription
 from apps.venues.services import activate_subscription
 from apps.venues.tests.factories import (
     OperatingHoursFactory,
@@ -80,7 +80,7 @@ def test_subscription_plan_db_constraints():
 def test_activate_subscription_never_subscribed_starts_at_now(owner_user, admin_user):
     venue = VenueFactory(owner=owner_user, is_approved=True)
     plan = SubscriptionPlanFactory(name="30-Day", duration_days=30, price_toman=300_000)
-    t0 = datetime(2026, 5, 1, 12, 0, 0, tzinfo=dt_timezone.utc)
+    t0 = datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC)
 
     sub = activate_subscription(venue, plan=plan, activated_by=admin_user, note="INV-101", now=t0)
 
@@ -99,7 +99,7 @@ def test_activate_subscription_stacks_when_active(owner_user, admin_user):
     plan_30 = SubscriptionPlanFactory(duration_days=30)
     plan_90 = SubscriptionPlanFactory(duration_days=90)
 
-    t0 = datetime(2026, 5, 1, 10, 0, 0, tzinfo=dt_timezone.utc)
+    t0 = datetime(2026, 5, 1, 10, 0, 0, tzinfo=UTC)
     sub1 = activate_subscription(venue, plan=plan_30, activated_by=admin_user, now=t0)
     assert sub1.expires_at == t0 + timedelta(days=30)
 
@@ -115,7 +115,7 @@ def test_activate_subscription_after_expiry_restarts_from_now(owner_user, admin_
     venue = VenueFactory(owner=owner_user, is_approved=True)
     plan_30 = SubscriptionPlanFactory(duration_days=30)
 
-    t0 = datetime(2026, 1, 1, 10, 0, 0, tzinfo=dt_timezone.utc)
+    t0 = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
     sub1 = activate_subscription(venue, plan=plan_30, activated_by=admin_user, now=t0)
 
     # 15 days after expiry -> restarts at t_after
@@ -129,7 +129,7 @@ def test_inactive_plan_cannot_be_activated_but_existing_subscription_survives(ow
     venue = VenueFactory(owner=owner_user, is_approved=True)
     plan = SubscriptionPlanFactory(duration_days=30, is_active=True)
 
-    t0 = datetime(2026, 5, 1, 12, 0, 0, tzinfo=dt_timezone.utc)
+    t0 = datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC)
     sub = activate_subscription(venue, plan=plan, activated_by=admin_user, now=t0)
 
     # Admin deactivates plan
@@ -167,7 +167,7 @@ def test_br005_expired_and_unapproved_venues_blocked_from_public_and_booking(cli
     pin = TablePinFactory(venue=venue, space=space, is_active=True, reservation_fee_toman=50_000)
 
     # Create an already-expired subscription
-    past_now = datetime(2020, 1, 1, 10, 0, 0, tzinfo=dt_timezone.utc)
+    past_now = datetime(2020, 1, 1, 10, 0, 0, tzinfo=UTC)
     plan = SubscriptionPlanFactory(duration_days=30)
     activate_subscription(venue, plan=plan, activated_by=admin_user, now=past_now)
 
@@ -355,8 +355,8 @@ def test_owner_venue_detail_derives_subscription_status_truthfully(client, owner
 
     # 3. Expired subscription -> INACTIVE
     VenueSubscription.objects.filter(venue=venue).update(
-        starts_at=datetime(2020, 1, 1, tzinfo=dt_timezone.utc),
-        expires_at=datetime(2020, 2, 1, tzinfo=dt_timezone.utc),
+        starts_at=datetime(2020, 1, 1, tzinfo=UTC),
+        expires_at=datetime(2020, 2, 1, tzinfo=UTC),
     )
     r2 = client.get(f"/api/v1/venues/owner/venues/{venue.id}")
     assert r2.status_code == 200
@@ -387,7 +387,7 @@ def test_owner_venue_list_derives_mixed_statuses_with_constant_queries(
         v_expired,
         plan=plan,
         activated_by=admin_user,
-        now=datetime(2020, 1, 1, tzinfo=dt_timezone.utc),
+        now=datetime(2020, 1, 1, tzinfo=UTC),
     )
     v_active_2 = VenueFactory(owner=owner_user, is_approved=False, name="Active Unapproved")
     activate_subscription(v_active_2, plan=plan, activated_by=admin_user)

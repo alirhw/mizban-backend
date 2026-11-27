@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import logging
 
-from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import ProtectedError
 from django.http import Http404
 from ninja.errors import HttpError, ValidationError

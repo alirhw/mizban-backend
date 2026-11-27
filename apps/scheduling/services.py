@@ -16,11 +16,12 @@ Contract for generate_slots:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional, Union
+from datetime import UTC, date, datetime, time, timedelta
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, transaction
 from django.http import Http404
 from django.utils import timezone as dj_timezone
@@ -42,7 +43,7 @@ class Slot:
     start: datetime
     end: datetime
     is_bookable: bool
-    disabled_reason: Optional[str] = None
+    disabled_reason: str | None = None
 
     @property
     def date(self) -> date:
@@ -56,8 +57,8 @@ class Slot:
 def generate_slots(
     open_time: time,
     close_time: time,
-    on_date: Union[date, datetime],
-    now: Optional[datetime] = None,
+    on_date: date | datetime,
+    now: datetime | None = None,
     tz: ZoneInfo = TEHRAN,
 ) -> list[Slot]:
     """Generate deterministic 90-minute slots with 30-minute buffers.
@@ -80,9 +81,9 @@ def generate_slots(
     if now is None:
         now = dj_timezone.now()
     elif dj_timezone.is_naive(now):
-        now = now.replace(tzinfo=timezone.utc)
+        now = now.replace(tzinfo=UTC)
     else:
-        now = now.astimezone(timezone.utc)
+        now = now.astimezone(UTC)
 
     # 1. Build operating window in local timezone
     open_local = datetime.combine(calendar_date, open_time, tzinfo=tz)
@@ -93,8 +94,8 @@ def generate_slots(
         close_local = datetime.combine(calendar_date, close_time, tzinfo=tz)
 
     # 2. Convert to aware UTC (ARCH-006)
-    open_utc = open_local.astimezone(timezone.utc)
-    close_utc = close_local.astimezone(timezone.utc)
+    open_utc = open_local.astimezone(UTC)
+    close_utc = close_local.astimezone(UTC)
 
     # 3. Deterministic slot iteration (BR-001 / BR-002)
     slots: list[Slot] = []
@@ -119,7 +120,7 @@ def generate_slots(
     return slots
 
 
-def resolve_date(date_input: Union[date, datetime, str]) -> date:
+def resolve_date(date_input: date | datetime | str) -> date:
     """Resolve a date input which may be date, datetime, ISO string, or Jalali string."""
     if isinstance(date_input, datetime):
         return date_input.date()
@@ -136,10 +137,10 @@ def resolve_date(date_input: Union[date, datetime, str]) -> date:
 
 
 def get_venue_slots_for_date(
-    venue: Union[Venue, int],
-    on_date: Union[date, datetime, str],
-    now: Optional[datetime] = None,
-    table_pin: Optional[Any] = None,
+    venue: Venue | int,
+    on_date: date | datetime | str,
+    now: datetime | None = None,
+    table_pin: Any | None = None,
 ) -> list[Slot]:
     """Retrieve generated slots for a given venue and date.
 
@@ -181,7 +182,7 @@ def get_venue_slots_for_date(
 BLOCKED_SLOT_LIST_LIMIT = 100
 
 
-def _find_matching_generated_slot(venue: Any, start_at_utc: datetime, now: datetime) -> Optional[Slot]:
+def _find_matching_generated_slot(venue: Any, start_at_utc: datetime, now: datetime) -> Slot | None:
     """Verify start_at_utc matches an exact slot generated for the venue's operating hours."""
     local_date = start_at_utc.astimezone(TEHRAN).date()
     for candidate_date in (local_date, local_date - timedelta(days=1)):
@@ -197,7 +198,7 @@ def create_blocked_slot(
     pin_id: int,
     start_at: datetime,
     reason: str = "",
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> Any:
     """Create a manual BlockedSlot for one TablePin and one generated slot window (FR-011 / T-026).
 
@@ -216,14 +217,14 @@ def create_blocked_slot(
 
     current_time = now or dj_timezone.now()
     if dj_timezone.is_naive(current_time):
-        current_time = current_time.replace(tzinfo=timezone.utc)
+        current_time = current_time.replace(tzinfo=UTC)
     else:
-        current_time = current_time.astimezone(timezone.utc)
+        current_time = current_time.astimezone(UTC)
 
     if dj_timezone.is_naive(start_at):
-        start_at_utc = start_at.replace(tzinfo=timezone.utc)
+        start_at_utc = start_at.replace(tzinfo=UTC)
     else:
-        start_at_utc = start_at.astimezone(timezone.utc)
+        start_at_utc = start_at.astimezone(UTC)
 
     pin = authorize_pin_owner(user, pin_id)
 
@@ -286,7 +287,7 @@ def list_blocked_slots(
     *,
     user: Any,
     pin_id: int,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
     limit: int = BLOCKED_SLOT_LIST_LIMIT,
 ) -> list:
     """List upcoming blocked slots for an owner's TablePin ordered by start_at."""

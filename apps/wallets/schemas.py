@@ -6,7 +6,6 @@ In/Out suffix, e.g. WalletMeOut / WalletLedgerEntryOut.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List
 
 from ninja import Schema
 from pydantic import ConfigDict
@@ -31,4 +30,4 @@ class WalletMeOut(Schema):
     model_config = ConfigDict(extra="forbid")
 
     balance_toman: int
-    entries: List[WalletLedgerEntryOut]
+    entries: list[WalletLedgerEntryOut]

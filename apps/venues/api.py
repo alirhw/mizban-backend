@@ -10,8 +10,6 @@ Never write raw ORM queries or perform mutations directly in views (ARCH-001).
 """
 from __future__ import annotations
 
-from typing import List, Optional
-
 from ninja import Router
 from ninja.responses import Status
 
@@ -36,7 +34,7 @@ router = Router(tags=["venues"])
 # ---------------------------------------------------------------------------
 
 
-@router.get("/owner/venues", response=List[VenueOwnerOut], auth=auth, summary="List owner venues")
+@router.get("/owner/venues", response=list[VenueOwnerOut], auth=auth, summary="List owner venues")
 def list_my_venues(request):
     """List all venues belonging to the authenticated owner."""
     return services.list_owner_venues(request.auth)
@@ -98,13 +96,13 @@ def get_my_venue_subscription(request, venue_id: int):
 
 @router.get(
     "/owner/venues/{venue_id}/bookings/",
-    response=List[OwnerBookingOut],
+    response=list[OwnerBookingOut],
     auth=auth,
     summary="List owner venue bookings (PH-06-02-PRE)",
 )
 @router.get(
     "/owner/venues/{venue_id}/bookings",
-    response=List[OwnerBookingOut],
+    response=list[OwnerBookingOut],
     auth=auth,
     summary="List owner venue bookings (trailing-slash alias)",
     include_in_schema=False,
@@ -163,11 +161,11 @@ def reject_venue_endpoint(request, venue_id: int):
 # ---------------------------------------------------------------------------
 
 
-@router.get("/", response=List[VenuePublicItemOut], summary="List public venues")
+@router.get("/", response=list[VenuePublicItemOut], summary="List public venues")
 def list_public(
     request,
-    city: Optional[str] = None,
-    venue_type: Optional[str] = None,
+    city: str | None = None,
+    venue_type: str | None = None,
 ):
     """List approved venues with active subscription (BR-005).
 

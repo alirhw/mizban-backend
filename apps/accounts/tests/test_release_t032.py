@@ -15,7 +15,7 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime, time, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 from django.conf import settings
@@ -55,7 +55,7 @@ def release_venue_fixture(db):
         address="خیابان انقلاب",
         is_approved=True,
     )
-    now_utc = datetime.now(dt_timezone.utc)
+    now_utc = datetime.now(UTC)
     plan = SubscriptionPlan.objects.create(name="Release Plan", duration_days=30, price_toman=1_000_000)
     VenueSubscription.objects.create(
         venue=venue,
@@ -88,7 +88,7 @@ def test_phase_c_callback_debug_redirect_and_adr006_late_recheck(release_venue_f
     customer_2 = release_venue_fixture["customer_2"]
     pin = release_venue_fixture["pin"]
 
-    slot_day = (datetime.now(dt_timezone.utc) + timedelta(days=3)).date()
+    slot_day = (datetime.now(UTC) + timedelta(days=3)).date()
     slot_time = time(12, 0)
 
     # 1. DEBUG GET callback with Accept: text/html redirects safely to stored callback_url
@@ -117,7 +117,7 @@ def test_phase_c_callback_debug_redirect_and_adr006_late_recheck(release_venue_f
     assert "booking_status=CONFIRMED" in resp["Location"]
 
     # 2. ADR-006 late callback on an already-claimed slot -> EXPIRED + refund_required=True
-    slot_day_2 = (datetime.now(dt_timezone.utc) + timedelta(days=4)).date()
+    slot_day_2 = (datetime.now(UTC) + timedelta(days=4)).date()
     booking_late = create_booking_lock(
         user=customer_1,
         table_pin=pin,
@@ -132,7 +132,7 @@ def test_phase_c_callback_debug_redirect_and_adr006_late_recheck(release_venue_f
     )
     # Expire booking_late's lock and let customer_2 claim & confirm the exact same slot
     Booking.objects.filter(pk=booking_late.id).update(
-        lock_expires_at=datetime.now(dt_timezone.utc) - timedelta(minutes=1)
+        lock_expires_at=datetime.now(UTC) - timedelta(minutes=1)
     )
     booking_winner = create_booking_lock(
         user=customer_2,
@@ -181,7 +181,7 @@ def test_phase_c_correlation_logs_carry_ids_without_pii(release_venue_fixture, c
         assert ver_resp.status_code == 200
 
         customer = User.objects.get(phone=probe_phone)
-        slot_day = (datetime.now(dt_timezone.utc) + timedelta(days=5)).date()
+        slot_day = (datetime.now(UTC) + timedelta(days=5)).date()
         booking = create_booking_lock(
             user=customer,
             table_pin=pin,

@@ -6,15 +6,15 @@ Task T-020 (PH-05 / WS-BILLING-WALLET / ARCH-005):
 - Sandbox adapter contract (success, failure, timeout, amount mismatch, idempotency).
 - Domain services: initiate_payment_for_booking and verify_payment_transaction.
 """
-from datetime import timedelta
 import uuid
-import pytest
+from datetime import timedelta
 
+import pytest
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from apps.billing.models import PaymentStatus, PaymentTransaction, VALID_PAYMENT_TRANSITIONS
+from apps.billing.models import VALID_PAYMENT_TRANSITIONS, PaymentStatus, PaymentTransaction
 from apps.billing.services.gateway import (
     PaymentInitiateRequest,
     PaymentVerifyRequest,
@@ -160,13 +160,23 @@ class TestPaymentTransactionStateMachine:
 
         # SUCCESS is terminal
         tx_success = PaymentTransactionFactory(status=PaymentStatus.SUCCESS)
-        for invalid_target in [PaymentStatus.INITIATED, PaymentStatus.PENDING, PaymentStatus.FAILED, PaymentStatus.TIMEOUT]:
+        for invalid_target in [
+            PaymentStatus.INITIATED,
+            PaymentStatus.PENDING,
+            PaymentStatus.FAILED,
+            PaymentStatus.TIMEOUT,
+        ]:
             with pytest.raises(InvalidStatusTransitionError):
                 tx_success.transition_to(invalid_target)
 
         # FAILED is terminal
         tx_failed = PaymentTransactionFactory(status=PaymentStatus.FAILED)
-        for invalid_target in [PaymentStatus.INITIATED, PaymentStatus.PENDING, PaymentStatus.SUCCESS, PaymentStatus.TIMEOUT]:
+        for invalid_target in [
+            PaymentStatus.INITIATED,
+            PaymentStatus.PENDING,
+            PaymentStatus.SUCCESS,
+            PaymentStatus.TIMEOUT,
+        ]:
             with pytest.raises(InvalidStatusTransitionError):
                 tx_failed.transition_to(invalid_target)
 

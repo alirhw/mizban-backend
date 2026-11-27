@@ -4,8 +4,6 @@ Replaces test_auth_bridge.py after deleting the MinimalAuth phone-header / Beare
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 from django.test import Client, override_settings
 

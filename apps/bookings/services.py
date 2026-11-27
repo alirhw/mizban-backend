@@ -9,10 +9,11 @@ Task T-012:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
 import logging
-from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
+from typing import TYPE_CHECKING, Any
 
 from django.core.exceptions import PermissionDenied
 from django.db import models, transaction
@@ -50,7 +51,7 @@ class BookingCancelResult:
     booking_id: int
     status: str
     refunded_to_wallet_toman: int
-    wallet_balance_toman: Optional[int] = None
+    wallet_balance_toman: int | None = None
 
 
 @dataclass(frozen=True)
@@ -60,8 +61,8 @@ class SplitReceiptOnlineSection:
     label: str
     description: str
     amount_online_toman: int
-    provider_name: Optional[str] = None
-    card_pan_masked: Optional[str] = None
+    provider_name: str | None = None
+    card_pan_masked: str | None = None
 
 
 @dataclass(frozen=True)
@@ -108,11 +109,11 @@ class SplitReceiptResult:
 
 
 def is_table_slot_occupied(
-    table_pin: Union[TablePin, int],
-    start_at: Optional[datetime] = None,
-    slot_date: Optional[date] = None,
-    slot_start_time: Optional[time] = None,
-    now: Optional[datetime] = None,
+    table_pin: TablePin | int,
+    start_at: datetime | None = None,
+    slot_date: date | None = None,
+    slot_start_time: time | None = None,
+    now: datetime | None = None,
 ) -> bool:
     """Check if a table pin is occupied by an active booking or lock.
 
@@ -133,7 +134,7 @@ def is_table_slot_occupied(
         slot_start = start_at
     elif slot_date is not None and slot_start_time is not None:
         qs = qs.filter(slot_date=slot_date, slot_start_time=slot_start_time)
-        slot_start = datetime.combine(slot_date, slot_start_time, tzinfo=TEHRAN).astimezone(timezone.utc)
+        slot_start = datetime.combine(slot_date, slot_start_time, tzinfo=TEHRAN).astimezone(UTC)
     else:
         raise ValueError("Must provide either start_at or both slot_date and slot_start_time.")
 
@@ -154,9 +155,9 @@ def is_table_slot_occupied(
 
 
 def filter_available_slots_for_table(
-    table_pin: Union[TablePin, int],
+    table_pin: TablePin | int,
     slots: list,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> list:
     """Filter generated calendar slots against active bookings and locks."""
     if now is None:
@@ -172,11 +173,11 @@ def filter_available_slots_for_table(
 def create_booking_lock(
     *,
     user: Any,
-    table_pin: Union[TablePin, int],
+    table_pin: TablePin | int,
     slot_date: date,
     slot_start_time: time,
     addon_ids: Iterable[int] = (),
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> Booking:
     """Acquire a 10-minute temporary reservation lock for a table pin and slot (TD-004).
 
@@ -193,13 +194,13 @@ def create_booking_lock(
     if now is None:
         now = dj_timezone.now()
     elif dj_timezone.is_naive(now):
-        now = now.replace(tzinfo=timezone.utc)
+        now = now.replace(tzinfo=UTC)
     else:
-        now = now.astimezone(timezone.utc)
+        now = now.astimezone(UTC)
 
     # 1. Determine slot start/end in aware UTC (ARCH-006)
     local_start = datetime.combine(slot_date, slot_start_time, tzinfo=TEHRAN)
-    start_at_utc = local_start.astimezone(timezone.utc)
+    start_at_utc = local_start.astimezone(UTC)
     end_at_utc = start_at_utc + SLOT_DURATION
 
     # 2. BR-002: Lead time validation (>= 24 hours from now)
@@ -295,11 +296,11 @@ def initiate_booking(
     *,
     user: Any,
     table_pin_id: int,
-    slot_date: Union[date, str],
-    slot_start_time: Union[time, str],
-    venue_id: Optional[int] = None,
+    slot_date: date | str,
+    slot_start_time: time | str,
+    venue_id: int | None = None,
     addon_ids: Iterable[int] = (),
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> Booking:
     """Initiate a booking lock from an API request (Task T-013).
 
@@ -330,9 +331,9 @@ def initiate_booking(
     if now is None:
         now = dj_timezone.now()
     elif dj_timezone.is_naive(now):
-        now = now.replace(tzinfo=timezone.utc)
+        now = now.replace(tzinfo=UTC)
     else:
-        now = now.astimezone(timezone.utc)
+        now = now.astimezone(UTC)
 
     # 1. Role enforcement: CUSTOMER only
     if not user or getattr(user, "role", None) != UserRole.CUSTOMER:
@@ -379,7 +380,7 @@ def cancel_booking(
     booking: int | Booking,
     *,
     actor: Any,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> BookingCancelResult:
     """Cancel a reservation booking and refund online platform fee to in-app wallet (BR-004 / UF-003).
 
@@ -401,7 +402,8 @@ def cancel_booking(
         - No second credit.
     (e) Any other status (INITIATED, EXPIRED, COMPLETED):
         - Raise BookingNotCancellableError (HTTP 409).
-        - Specifically includes EXPIRED bookings carrying refund_required payment (ADR-006: bank card only, never wallet).
+        - Specifically includes EXPIRED bookings carrying refund_required payment
+          (ADR-006: bank card only, never wallet).
 
     Guarantees:
     - Atomicity: executed inside transaction.atomic() with select_for_update() row lock on the Booking.
@@ -523,7 +525,7 @@ def cancel_booking(
 def compute_booking_cancel_eligibility(
     booking: Booking,
     *,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> tuple[bool, int]:
     """Derive (is_cancellable, cancel_refund_toman) from the T-023 cancel_booking decision tree."""
     from django.conf import settings
@@ -547,7 +549,7 @@ def list_customer_bookings(
     *,
     limit: int = 50,
     offset: int = 0,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """List authenticated customer's own bookings, newest first (PH-06-03-PRE)."""
     from apps.accounts.models import UserRole
@@ -728,7 +730,7 @@ def _normalize_utc_now(now: datetime | None = None) -> datetime:
         now = dj_timezone.now()
     if dj_timezone.is_naive(now):
         raise ValueError("now must be timezone-aware (ARCH-006).")
-    return now.astimezone(timezone.utc)
+    return now.astimezone(UTC)
 
 
 def _completable_bookings_queryset(now: datetime) -> models.QuerySet[Booking]:

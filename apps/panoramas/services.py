@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Any, Optional, Tuple
 import uuid
+from typing import Any
 
-from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import UploadedFile
@@ -28,11 +29,8 @@ from PIL import Image, UnidentifiedImageError
 from apps.accounts.models import UserRole
 from apps.panoramas.models import PanoramaImage, PanoramaStatus, Space, TablePin
 from apps.panoramas.schemas import (
-    PublicPanoramaOut,
     PublicTablePinOut,
     SpaceCreateIn,
-    SpaceOut,
-    SpacePublicOut,
     SpaceUpdateIn,
     TablePinCreateIn,
     TablePinUpdateIn,
@@ -58,7 +56,7 @@ ALLOWED_MIME_EXTENSIONS = {
 }
 
 
-def detect_image_type_from_magic_bytes(header: bytes) -> Tuple[str, str]:
+def detect_image_type_from_magic_bytes(header: bytes) -> tuple[str, str]:
     """Detect image MIME type and canonical extension from raw magic bytes.
 
     Never trusts client MIME type or extension (path-traversal and spoofing prevention).
@@ -90,7 +88,7 @@ def detect_image_type_from_magic_bytes(header: bytes) -> Tuple[str, str]:
     )
 
 
-def validate_image_with_pillow(content: bytes) -> Tuple[int, int]:
+def validate_image_with_pillow(content: bytes) -> tuple[int, int]:
     """Validate image integrity and dimension safety using Pillow.
 
     Enforces:
@@ -110,7 +108,7 @@ def validate_image_with_pillow(content: bytes) -> Tuple[int, int]:
         raise ImageDecompressionBombError(
             "Uploaded image exceeds safe pixel limits (decompression bomb detected)."
         ) from exc
-    except (UnidentifiedImageError, SyntaxError, ValueError, OSError, IOError) as exc:
+    except (UnidentifiedImageError, SyntaxError, ValueError, OSError) as exc:
         logger.warning("Rejected corrupt/invalid image upload: %s", exc)
         raise InvalidImageError("File content is corrupted or not a valid image.") from exc
 
@@ -207,7 +205,7 @@ def upload_panorama_for_space(
     space = authorize_space_owner(user, space_id)
 
     # 2. Enforce 20 MB size limit
-    if file.size > MAX_PANORAMA_FILE_SIZE:
+    if file.size is not None and file.size > MAX_PANORAMA_FILE_SIZE:
         raise FileTooLargeError(
             f"File size ({file.size} bytes) exceeds maximum allowed limit of 20MB."
         )
@@ -228,7 +226,7 @@ def upload_panorama_for_space(
     storage_path = f"panoramas/{space.venue_id}/{image_uuid}{ext}"
 
     # 5. Store file and create database record with failure cleanup
-    saved_path: Optional[str] = None
+    saved_path: str | None = None
     try:
         saved_path = default_storage.save(storage_path, ContentFile(content))
 
@@ -609,12 +607,13 @@ def deactivate_space(user: Any, space_id: int) -> Space:
     return space
 
 
-def delete_space(user: Any, space_id: int) -> Tuple[Optional[Space], bool]:
+def delete_space(user: Any, space_id: int) -> tuple[Space | None, bool]:
     """Delete or deactivate a space following T-015 / ADR-005 deletion policy (Task T-018b).
 
     Policy:
     1. If pins with bookings exist in the space -> fails safely with TablePinProtectedError (409).
-    2. If pins or panorama exist (no bookings) -> deactivates the space instead of deleting (space.deactivate(), is_active=False).
+    2. If pins or panorama exist (no bookings) -> deactivates the space instead of deleting
+       (space.deactivate(), is_active=False).
     3. If no pins and no panorama -> hard-deletes the space (space.delete()), removed from DB.
 
     Returns:

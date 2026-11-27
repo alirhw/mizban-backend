@@ -6,8 +6,6 @@ via schemas.py, delegate to services.py, map domain errors.
 """
 from __future__ import annotations
 
-from typing import List, Optional
-
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 from ninja.responses import Status
@@ -21,12 +19,12 @@ from apps.venues.models import Venue
 router = Router(tags=["scheduling"])
 
 
-@router.get("/venues/{venue_id}/slots", response=List[SlotOut], summary="Get venue slots for a date")
+@router.get("/venues/{venue_id}/slots", response=list[SlotOut], summary="Get venue slots for a date")
 def get_slots(
     request,
     venue_id: int,
     date: str = Query(..., description="Target date (YYYY-MM-DD or Jalali YYYY/MM/DD)"),
-    table_pin_id: Optional[int] = Query(
+    table_pin_id: int | None = Query(
         None, description="Optional table pin ID to filter available slots for that table"
     ),
 ):
@@ -68,13 +66,13 @@ def create_blocked_slot_endpoint(request, pin_id: int, payload: BlockedSlotCreat
 
 @router.get(
     "/pins/{pin_id}/blocked-slots/",
-    response=List[BlockedSlotOut],
+    response=list[BlockedSlotOut],
     auth=auth,
     summary="List upcoming blocked slots for a table pin (FR-011)",
 )
 @router.get(
     "/pins/{pin_id}/blocked-slots",
-    response=List[BlockedSlotOut],
+    response=list[BlockedSlotOut],
     auth=auth,
     summary="List upcoming blocked slots (trailing-slash alias)",
     include_in_schema=False,

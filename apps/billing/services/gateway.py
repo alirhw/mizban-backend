@@ -8,15 +8,15 @@ Task T-020 (PH-05 / WS-BILLING-WALLET / ARCH-005):
 """
 from __future__ import annotations
 
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlencode
-import uuid
 
 from django.conf import settings
 
-from core.exceptions import PaymentGatewayError, PaymentGatewayTimeoutError
+from core.exceptions import PaymentGatewayTimeoutError
 
 
 @dataclass(frozen=True)
@@ -194,7 +194,10 @@ class SandboxGatewayAdapter(PaymentGatewayAdapter):
                     status="FAILED",
                     amount_toman=record["amount_toman"],
                     raw_status="-3",
-                    error_message=f"Amount mismatch: requested {request.amount_toman}, expected {record['amount_toman']}",
+                    error_message=(
+                        f"Amount mismatch: requested {request.amount_toman}, "
+                        f"expected {record['amount_toman']}"
+                    ),
                 )
 
             if record["verified"]:
@@ -269,7 +272,7 @@ def register_gateway(name: str, adapter_cls: type[PaymentGatewayAdapter]) -> Non
 
 def get_gateway(provider_name: str | None = None) -> PaymentGatewayAdapter:
     """Factory function returning the singleton adapter instance for the specified provider."""
-    name = (provider_name or getattr(settings, "PAYMENT_GATEWAY_PROVIDER", "sandbox")).lower()
+    name = (provider_name or str(getattr(settings, "PAYMENT_GATEWAY_PROVIDER", "sandbox") or "sandbox")).lower()
     if name not in _GATEWAY_INSTANCES:
         adapter_cls = _GATEWAY_REGISTRY.get(name)
         if not adapter_cls:
@@ -283,6 +286,7 @@ def get_gateway(provider_name: str | None = None) -> PaymentGatewayAdapter:
 def reset_sandbox_gateway() -> SandboxGatewayAdapter:
     """Reset sandbox adapter singleton to default mode and clear in-memory state."""
     adapter = get_gateway("sandbox")
-    if isinstance(adapter, SandboxGatewayAdapter):
-        adapter.reset()
-    return adapter  # type: ignore[return-value]
+    if not isinstance(adapter, SandboxGatewayAdapter):
+        raise TypeError(f"Expected SandboxGatewayAdapter for 'sandbox', got {type(adapter).__name__}")
+    adapter.reset()
+    return adapter

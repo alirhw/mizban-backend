@@ -5,6 +5,8 @@ for customers/venue owners; login is OTP via SMS (logic lands in
 services.py in a later task). This model must exist BEFORE the first
 migration of any dependent app, because every domain model points at it.
 """
+from typing import ClassVar
+
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
@@ -18,7 +20,7 @@ class UserRole(models.TextChoices):
     ADMIN = "ADMIN", "Admin"
 
 
-class UserManager(BaseUserManager):
+class UserManager(BaseUserManager["User"]):
     """Creates users keyed by canonical phone number (single normalisation
     boundary - see core.utils.normalize_phone)."""
 
@@ -64,7 +66,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     USERNAME_FIELD = "phone"
-    REQUIRED_FIELDS: list[str] = []
+    REQUIRED_FIELDS: ClassVar[list[str]] = []
 
     class Meta:
         verbose_name = "user"

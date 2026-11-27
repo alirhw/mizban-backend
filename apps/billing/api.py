@@ -78,7 +78,13 @@ def _extract_callback_params(request: HttpRequest) -> dict[str, Any]:
             val = params[ref_key]
             if isinstance(val, (dict, list)):
                 raise ValidationError(
-                    [{"loc": [ref_key], "msg": f"Field '{ref_key}' must be a scalar string or number.", "type": "type_error"}]
+                    [
+                        {
+                            "loc": [ref_key],
+                            "msg": f"Field '{ref_key}' must be a scalar string or number.",
+                            "type": "type_error",
+                        }
+                    ]
                 )
 
     return params
@@ -117,11 +123,8 @@ def _resolve_safe_dev_redirect_url(
                 if candidate:
                     stored_url = candidate
 
-    target = stored_url or (
-        params.get("callback_url").strip()
-        if isinstance(params.get("callback_url"), str)
-        else ""
-    )
+    raw_callback_url = params.get("callback_url")
+    target = stored_url or (raw_callback_url.strip() if isinstance(raw_callback_url, str) else "")
     if not target:
         return None
 
@@ -182,14 +185,15 @@ def initiate_payment(request: HttpRequest, payload: PaymentInitiateIn):
     - Session cookie + CSRF (ActiveSessionAuth), CUSTOMER role only.
     - Derives amount_toman strictly server-side from booking.amount_online_toman.
     """
-    if getattr(request.auth, "role", None) != UserRole.CUSTOMER:
+    auth_user = getattr(request, "auth", None)
+    if getattr(auth_user, "role", None) != UserRole.CUSTOMER:
         raise PermissionDenied("Only customers can initiate booking payments.")
 
     if not Booking.objects.filter(pk=payload.booking_id).exists():
         raise Http404("Booking not found.")
 
     tx, redirect_url = initiate_payment_for_booking(
-        user=request.auth,
+        user=auth_user,
         booking_id=payload.booking_id,
         idempotency_key=payload.idempotency_key,
         callback_url=payload.callback_url,

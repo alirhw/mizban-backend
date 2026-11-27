@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, time, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 from django.contrib.admin.sites import AdminSite
@@ -56,7 +56,7 @@ def security_fixture(db):
         address="خیابان ولیعصر",
         is_approved=True,
     )
-    now_utc = datetime.now(dt_timezone.utc)
+    now_utc = datetime.now(UTC)
     plan = SubscriptionPlan.objects.create(name="Monthly", duration_days=30, price_toman=1_000_000)
     VenueSubscription.objects.create(
         venue=venue_a,
@@ -80,7 +80,7 @@ def security_fixture(db):
         reservation_fee_toman=50_000,
     )
 
-    slot_start = datetime.now(dt_timezone.utc) + timedelta(days=3)
+    slot_start = datetime.now(UTC) + timedelta(days=3)
     slot_end = slot_start + timedelta(minutes=90)
     booking_a = Booking.objects.create(
         customer=customer_a,

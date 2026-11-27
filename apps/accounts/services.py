@@ -20,11 +20,13 @@ import re
 import secrets
 from typing import Any
 
+import redis as redis_lib
 from django.conf import settings
-from django.contrib.auth import get_user_model, login as django_login, logout as django_logout
+from django.contrib.auth import get_user_model
+from django.contrib.auth import login as django_login
+from django.contrib.auth import logout as django_logout
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
-import redis as redis_lib
 
 from apps.accounts.models import UserRole
 from apps.accounts.sms import get_sms_sender

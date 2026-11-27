@@ -10,8 +10,8 @@ Task T-015:
 """
 from __future__ import annotations
 
-from datetime import timedelta
 import uuid
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator

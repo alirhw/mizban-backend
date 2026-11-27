@@ -14,16 +14,14 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from django.core.cache import cache
 from django.test import Client, override_settings
-import pytest
 
 from apps.accounts.models import UserRole
 from apps.venues.models import SubscriptionStatus, Venue
-from core.testing import authenticate_client
 from apps.venues.services import (
     VENUE_CACHE_TTL,
-    get_venue_cache_key,
     get_venue_slug_cache_key,
 )
 from apps.venues.tests.factories import (
@@ -33,6 +31,7 @@ from apps.venues.tests.factories import (
     VenueFactory,
     activate_test_subscription,
 )
+from core.testing import authenticate_client
 
 
 class ApiHelper:
