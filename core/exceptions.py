@@ -185,6 +185,14 @@ class TablePinProtectedError(DomainError):
     default_message = "Cannot delete table pin with existing booking history. Deactivate it instead."
 
 
+class AddonInUseError(DomainError):
+    """Design add-on is referenced by existing bookings and cannot be deleted."""
+
+    error_code = "ADDON_IN_USE"
+    status_code = 409
+    default_message = "Cannot delete design add-on with existing booking history. Deactivate it instead."
+
+
 class TableNumberAlreadyExistsError(DomainError):
     """Table number already exists within the venue."""
 

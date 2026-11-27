@@ -16,15 +16,17 @@ from typing import Any
 
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Exists, OuterRef
+from django.db.models.deletion import ProtectedError
 from django.http import Http404
 from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.accounts.models import UserRole
-from apps.venues.models import SubscriptionPlan, Venue, VenueSubscription
-from core.exceptions import InactiveSubscriptionPlanError
+from apps.venues.models import DesignAddon, SubscriptionPlan, Venue, VenueSubscription
+from core.exceptions import AddonInUseError, InactiveSubscriptionPlanError
 from core.jalali import format_jalali
 
 logger = logging.getLogger(__name__)
@@ -471,3 +473,93 @@ def list_owner_venue_bookings(
         }
         for booking in bookings
     ]
+
+
+def _validate_addon_fields(title: str, fee: int) -> str:
+    """Validate and normalize design add-on title and fee (FR-32 / T-035)."""
+    cleaned = title.strip() if isinstance(title, str) else ""
+    if not cleaned:
+        raise DjangoValidationError({"title": "Design add-on title cannot be blank."})
+    if len(cleaned) > 200:
+        raise DjangoValidationError({"title": "Design add-on title must be at most 200 characters."})
+    if isinstance(fee, bool) or fee < 0:
+        raise DjangoValidationError({"fee": "Design add-on fee must be a non-negative integer."})
+    return cleaned
+
+
+def list_owner_addons(user: Any, venue_id: int) -> list[DesignAddon]:
+    """List all design add-ons (including inactive) for an owner's venue."""
+    venue = get_owner_venue(user, venue_id)
+    return list(venue.design_addons.all())
+
+
+def get_owner_addon(user: Any, venue_id: int, addon_id: int) -> DesignAddon:
+    """Return a single design add-on belonging to the owner's venue (404 if absent or other venue)."""
+    venue = get_owner_venue(user, venue_id)
+    addon = venue.design_addons.filter(id=addon_id).first()
+    if addon is None:
+        raise Http404("Design add-on not found.")
+    return addon
+
+
+def create_owner_addon(
+    user: Any,
+    venue_id: int,
+    *,
+    title: str,
+    fee: int,
+    is_active: bool = True,
+) -> DesignAddon:
+    """Create a design add-on for an owner's venue and invalidate venue cache on commit."""
+    venue = get_owner_venue(user, venue_id)
+    cleaned_title = _validate_addon_fields(title, fee)
+    with transaction.atomic():
+        addon = DesignAddon.objects.create(
+            venue=venue,
+            title=cleaned_title,
+            fee=fee,
+            is_active=is_active,
+        )
+        vid, vslug = venue.id, venue.slug
+        transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))
+    return addon
+
+
+def update_owner_addon(
+    user: Any,
+    venue_id: int,
+    addon_id: int,
+    *,
+    title: str,
+    fee: int,
+    is_active: bool,
+) -> DesignAddon:
+    """Replace fields of an owner's venue design add-on and invalidate cache on commit."""
+    venue = get_owner_venue(user, venue_id)
+    addon = venue.design_addons.filter(id=addon_id).first()
+    if addon is None:
+        raise Http404("Design add-on not found.")
+    cleaned_title = _validate_addon_fields(title, fee)
+    with transaction.atomic():
+        addon.title = cleaned_title
+        addon.fee = fee
+        addon.is_active = is_active
+        addon.save(update_fields=["title", "fee", "is_active", "updated_at"])
+        vid, vslug = venue.id, venue.slug
+        transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))
+    return addon
+
+
+def delete_owner_addon(user: Any, venue_id: int, addon_id: int) -> None:
+    """Delete an owner's venue design add-on; raise AddonInUseError if referenced by bookings."""
+    venue = get_owner_venue(user, venue_id)
+    addon = venue.design_addons.filter(id=addon_id).first()
+    if addon is None:
+        raise Http404("Design add-on not found.")
+    with transaction.atomic():
+        try:
+            addon.delete()
+        except ProtectedError as exc:
+            raise AddonInUseError() from exc
+        vid, vslug = venue.id, venue.slug
+        transaction.on_commit(lambda: invalidate_venue_cache(vid, vslug))

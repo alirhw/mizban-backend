@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime, time
 
 from ninja import Schema
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field, field_validator
 
 
 class OperatingHoursOut(Schema):
@@ -24,6 +24,35 @@ class DesignAddonOut(Schema):
     id: int
     title: str
     fee: int
+    is_active: bool
+
+
+class _DesignAddonInBase(Schema):
+    """Shared validation for design add-on create and update payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+    fee: int = Field(ge=0)
+
+    @field_validator("title")
+    @classmethod
+    def _validate_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Design add-on title cannot be blank.")
+        return cleaned
+
+
+class DesignAddonCreateIn(_DesignAddonInBase):
+    """Owner payload for creating a design add-on (FR-32 / T-035)."""
+
+    is_active: bool = True
+
+
+class DesignAddonUpdateIn(_DesignAddonInBase):
+    """Owner payload for replacing a design add-on (FR-32 / T-035)."""
+
     is_active: bool
 
 

@@ -16,6 +16,9 @@ from ninja.responses import Status
 from apps.accounts.auth import auth
 from apps.venues import services
 from apps.venues.schemas import (
+    DesignAddonCreateIn,
+    DesignAddonOut,
+    DesignAddonUpdateIn,
     OwnerBookingOut,
     VenueApprovalOut,
     VenueCreateIn,
@@ -115,6 +118,76 @@ def list_my_venue_bookings(request, venue_id: int, limit: int = 50, offset: int 
         limit=limit,
         offset=offset,
     )
+
+
+@router.get(
+    "/owner/venues/{venue_id}/addons/",
+    response=list[DesignAddonOut],
+    auth=auth,
+    summary="List owner venue design add-ons (FR-32)",
+)
+def list_my_venue_addons(request, venue_id: int):
+    """List all design add-ons (including inactive) for the authenticated owner's venue."""
+    return services.list_owner_addons(request.auth, venue_id)
+
+
+@router.post(
+    "/owner/venues/{venue_id}/addons/",
+    response={201: DesignAddonOut},
+    auth=auth,
+    summary="Create owner venue design add-on (FR-32)",
+)
+def create_my_venue_addon(request, venue_id: int, payload: DesignAddonCreateIn):
+    """Create a design add-on for the authenticated owner's venue."""
+    addon = services.create_owner_addon(
+        request.auth,
+        venue_id,
+        title=payload.title,
+        fee=payload.fee,
+        is_active=payload.is_active,
+    )
+    return Status(201, addon)
+
+
+@router.get(
+    "/owner/venues/{venue_id}/addons/{addon_id}/",
+    response=DesignAddonOut,
+    auth=auth,
+    summary="Get owner venue design add-on (FR-32)",
+)
+def get_my_venue_addon(request, venue_id: int, addon_id: int):
+    """Get a single design add-on belonging to the authenticated owner's venue."""
+    return services.get_owner_addon(request.auth, venue_id, addon_id)
+
+
+@router.put(
+    "/owner/venues/{venue_id}/addons/{addon_id}/",
+    response=DesignAddonOut,
+    auth=auth,
+    summary="Update owner venue design add-on (FR-32)",
+)
+def update_my_venue_addon(request, venue_id: int, addon_id: int, payload: DesignAddonUpdateIn):
+    """Replace fields of a design add-on belonging to the authenticated owner's venue."""
+    return services.update_owner_addon(
+        request.auth,
+        venue_id,
+        addon_id,
+        title=payload.title,
+        fee=payload.fee,
+        is_active=payload.is_active,
+    )
+
+
+@router.delete(
+    "/owner/venues/{venue_id}/addons/{addon_id}/",
+    response={204: None},
+    auth=auth,
+    summary="Delete owner venue design add-on (FR-32)",
+)
+def delete_my_venue_addon(request, venue_id: int, addon_id: int):
+    """Delete a design add-on belonging to the authenticated owner's venue."""
+    services.delete_owner_addon(request.auth, venue_id, addon_id)
+    return Status(204, None)
 
 
 # ---------------------------------------------------------------------------

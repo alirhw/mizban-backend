@@ -426,6 +426,234 @@
         ]
       }
     },
+    "/api/v1/venues/owner/venues/{venue_id}/addons/": {
+      "get": {
+        "operationId": "apps_venues_api_list_my_venue_addons",
+        "summary": "List owner venue design add-ons (FR-32)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DesignAddonOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "List all design add-ons (including inactive) for the authenticated owner's venue.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "apps_venues_api_create_my_venue_addon",
+        "summary": "Create owner venue design add-on (FR-32)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignAddonOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Create a design add-on for the authenticated owner's venue.",
+        "tags": [
+          "venues"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignAddonCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/venues/owner/venues/{venue_id}/addons/{addon_id}/": {
+      "get": {
+        "operationId": "apps_venues_api_get_my_venue_addon",
+        "summary": "Get owner venue design add-on (FR-32)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "addon_id",
+            "schema": {
+              "title": "Addon Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignAddonOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Get a single design add-on belonging to the authenticated owner's venue.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "apps_venues_api_update_my_venue_addon",
+        "summary": "Update owner venue design add-on (FR-32)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "addon_id",
+            "schema": {
+              "title": "Addon Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignAddonOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Replace fields of a design add-on belonging to the authenticated owner's venue.",
+        "tags": [
+          "venues"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignAddonUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "apps_venues_api_delete_my_venue_addon",
+        "summary": "Delete owner venue design add-on (FR-32)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "addon_id",
+            "schema": {
+              "title": "Addon Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "Delete a design add-on belonging to the authenticated owner's venue.",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/venues/admin/venues/{venue_id}/approve": {
       "post": {
         "operationId": "apps_venues_api_approve_venue_endpoint",
@@ -2400,6 +2628,62 @@
           "created_at"
         ],
         "title": "OwnerBookingOut",
+        "type": "object"
+      },
+      "DesignAddonCreateIn": {
+        "additionalProperties": false,
+        "description": "Owner payload for creating a design add-on (FR-32 / T-035).",
+        "properties": {
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "fee": {
+            "minimum": 0,
+            "title": "Fee",
+            "type": "integer"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "title",
+          "fee"
+        ],
+        "title": "DesignAddonCreateIn",
+        "type": "object"
+      },
+      "DesignAddonUpdateIn": {
+        "additionalProperties": false,
+        "description": "Owner payload for replacing a design add-on (FR-32 / T-035).",
+        "properties": {
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "fee": {
+            "minimum": 0,
+            "title": "Fee",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "title",
+          "fee",
+          "is_active"
+        ],
+        "title": "DesignAddonUpdateIn",
         "type": "object"
       },
       "VenueApprovalOut": {
