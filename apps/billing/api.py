@@ -25,11 +25,14 @@ from apps.billing.schemas import (
     PaymentCallbackOut,
     PaymentInitiateIn,
     PaymentInitiateOut,
+    PaymentTransactionOut,
+    WalletPayIn,
 )
 from apps.billing.services.gateway import get_gateway
 from apps.billing.services.payment import (
     handle_payment_callback,
     initiate_payment_for_booking,
+    pay_booking_with_wallet,
 )
 from apps.bookings.models import Booking
 
@@ -250,3 +253,29 @@ def payment_callback(request: HttpRequest):
             return HttpResponseRedirect(_append_callback_query(safe_callback_url, result))
 
     return result
+
+
+@router.post(
+    "/wallet-pay/",
+    response={200: PaymentTransactionOut},
+    auth=auth,
+    summary="Pay for a pending booking using the customer's in-app wallet",
+)
+@router.post(
+    "/wallet-pay",
+    response={200: PaymentTransactionOut},
+    auth=auth,
+    summary="Pay for a pending booking using in-app wallet (no trailing slash)",
+    include_in_schema=False,
+)
+def wallet_pay(request: HttpRequest, payload: WalletPayIn) -> PaymentTransaction:
+    """Expose pay_booking_with_wallet over HTTP (Task T-034-02 / FR-17)."""
+    auth_user = getattr(request, "auth", None)
+    if getattr(auth_user, "role", None) != UserRole.CUSTOMER:
+        raise PermissionDenied("Only customers can pay for bookings with their wallet.")
+
+    return pay_booking_with_wallet(
+        user=auth_user,
+        booking_id=payload.booking_id,
+        idempotency_key=payload.idempotency_key,
+    )

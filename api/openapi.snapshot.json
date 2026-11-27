@@ -1783,6 +1783,44 @@
         ]
       }
     },
+    "/api/v1/billing/wallet-pay/": {
+      "post": {
+        "operationId": "apps_billing_api_wallet_pay",
+        "summary": "Pay for a pending booking using the customer's in-app wallet",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentTransactionOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Expose pay_booking_with_wallet over HTTP (Task T-034-02 / FR-17).",
+        "tags": [
+          "billing"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalletPayIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/wallets/me/": {
       "get": {
         "operationId": "apps_wallets_api_get_my_wallet_endpoint",
@@ -3925,6 +3963,112 @@
           "refund_required"
         ],
         "title": "PaymentCallbackOut",
+        "type": "object"
+      },
+      "PaymentTransactionOut": {
+        "additionalProperties": false,
+        "description": "Public detail schema for a payment transaction.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "amount_toman": {
+            "title": "Amount Toman",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "provider_name": {
+            "title": "Provider Name",
+            "type": "string"
+          },
+          "provider_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Reference"
+          },
+          "tracking_code": {
+            "title": "Tracking Code",
+            "type": "string"
+          },
+          "card_pan_masked": {
+            "title": "Card Pan Masked",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "id",
+          "booking_id",
+          "amount_toman",
+          "currency",
+          "status",
+          "provider_name",
+          "provider_reference",
+          "tracking_code",
+          "card_pan_masked",
+          "created_at",
+          "verified_at"
+        ],
+        "title": "PaymentTransactionOut",
+        "type": "object"
+      },
+      "WalletPayIn": {
+        "additionalProperties": false,
+        "description": "Payload to pay for a pending booking using the customer's in-app wallet.",
+        "properties": {
+          "booking_id": {
+            "description": "ID of the pending booking to pay for.",
+            "exclusiveMinimum": 0,
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "description": "Client-generated unique idempotency token.",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "booking_id",
+          "idempotency_key"
+        ],
+        "title": "WalletPayIn",
         "type": "object"
       },
       "WalletLedgerEntryOut": {

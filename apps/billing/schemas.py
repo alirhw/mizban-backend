@@ -79,3 +79,17 @@ class PaymentCallbackOut(Schema):
     tracking_code: str = Field(default="", description="Gateway tracking/reference code if settled.")
     message: str = Field(default="", description="Descriptive status message.")
 
+
+class WalletPayIn(Schema):
+    """Payload to pay for a pending booking using the customer's in-app wallet."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    booking_id: int = Field(..., gt=0, description="ID of the pending booking to pay for.")
+    idempotency_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Client-generated unique idempotency token.",
+    )
+

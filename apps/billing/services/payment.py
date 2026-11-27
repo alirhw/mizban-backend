@@ -27,6 +27,7 @@ from django.db import models, transaction
 from django.http import Http404
 from django.utils import timezone
 
+from apps.accounts.models import UserRole
 from apps.billing.models import PaymentStatus, PaymentTransaction
 from apps.billing.services.gateway import (
     PaymentInitiateRequest,
@@ -34,8 +35,10 @@ from apps.billing.services.gateway import (
     get_gateway,
 )
 from apps.bookings.models import Booking, BookingStatus
+from apps.wallets.services import debit_wallet, get_or_create_wallet_for_user
 from core.exceptions import (
     InvalidStatusTransitionError,
+    InvalidWalletAmountError,
     PaymentAlreadyProcessedError,
     PaymentAmountMismatchError,
     PaymentGatewayError,
@@ -485,4 +488,96 @@ def handle_payment_callback(
             tracking_code=tx_locked.tracking_code,
             message="Payment verified and booking confirmed successfully.",
         )
+
+
+def pay_booking_with_wallet(
+    *,
+    user: Any,
+    booking_id: int,
+    idempotency_key: str,
+) -> PaymentTransaction:
+    """Pay for a pending booking's table fee using the customer's in-app wallet (FR-17).
+
+    Guarantees:
+    - Customer role required.
+    - Idempotent: repeated calls with the same idempotency_key return the existing transaction.
+    - Single transaction.atomic() locking Booking row first, then Wallet row via debit_wallet.
+    - Charges table reservation fee only (booking.amount_online_toman, BR-003 / ARCH-005).
+    - InsufficientWalletBalanceError rolls back the entire transaction with zero side effects.
+    """
+    if not user or getattr(user, "role", None) != UserRole.CUSTOMER:
+        raise PermissionDenied("Only customers can pay for bookings with their wallet.")
+
+    existing_tx = PaymentTransaction.objects.filter(idempotency_key=idempotency_key).first()
+    if existing_tx:
+        if existing_tx.customer_id != user.id:
+            raise PermissionDenied("You do not have permission to access this payment transaction.")
+        logger.info(
+            "Wallet payment idempotency hit: booking_id=%s tx_id=%s status=%s",
+            existing_tx.booking_id,
+            existing_tx.id,
+            existing_tx.status,
+        )
+        return existing_tx
+
+    with transaction.atomic():
+        booking = Booking.objects.select_for_update().filter(pk=booking_id).first()
+        if not booking:
+            raise Http404("Booking not found.")
+
+        if booking.customer_id != user.id:
+            raise PermissionDenied("You do not have permission to pay for this booking.")
+
+        existing_in_tx = PaymentTransaction.objects.filter(idempotency_key=idempotency_key).first()
+        if existing_in_tx:
+            if existing_in_tx.customer_id != user.id:
+                raise PermissionDenied("You do not have permission to access this payment transaction.")
+            return existing_in_tx
+
+        if booking.status != BookingStatus.PENDING_PAYMENT:
+            raise InvalidStatusTransitionError(
+                f"Booking is in state {booking.status} and cannot be paid with wallet."
+            )
+
+        now = timezone.now()
+        if booking.lock_expires_at is None or booking.lock_expires_at <= now:
+            raise InvalidStatusTransitionError("Booking reservation lock has expired.")
+
+        amount_toman = booking.amount_online_toman
+        if amount_toman <= 0:
+            raise InvalidWalletAmountError("Booking online table fee must be greater than zero.")
+
+        wallet = get_or_create_wallet_for_user(user)
+        debit_wallet(
+            wallet,
+            amount_toman,
+            reason=f"booking-pay:{booking.id}",
+            idempotency_key=f"booking-pay:{booking.id}",
+            booking=booking,
+        )
+
+        tx = PaymentTransaction.objects.create(
+            booking=booking,
+            customer=booking.customer,
+            amount_toman=amount_toman,
+            currency="TOMAN",
+            status=PaymentStatus.INITIATED,
+            provider_name="wallet",
+            provider_reference=None,
+            tracking_code="",
+            card_pan_masked="",
+            idempotency_key=idempotency_key,
+        )
+        tx.transition_to(PaymentStatus.PENDING)
+        tx.transition_to(PaymentStatus.SUCCESS, verified_at=now)
+
+        booking.transition_to(BookingStatus.CONFIRMED)
+
+        logger.info(
+            "Wallet payment completed: booking_id=%s tx_id=%s amount_toman=%s",
+            booking.id,
+            tx.id,
+            amount_toman,
+        )
+        return tx
 
