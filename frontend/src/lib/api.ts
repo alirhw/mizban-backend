@@ -43,6 +43,9 @@ export interface SpaceOut {
 
 export interface VenueOwnerOut extends VenuePublicDetailOut {
   is_approved: boolean;
+  review_status: string;
+  rejection_reason: string;
+  submitted_for_review_at: string | null;
   subscription_status: string;
   is_publicly_visible: boolean;
   created_at: string;

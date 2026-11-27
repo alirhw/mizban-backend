@@ -1,4 +1,4 @@
-# Skill: Iranian Payment Gateway (BR-003 / ARCH-005)
+# Skill: Iranian Payment Gateway (BR-04 / ARCH-005)
 
 ## What it teaches
 How Miz Ban takes money through an Iranian (Shaparak) gateway — Zarinpal-
@@ -18,7 +18,7 @@ receipt rule: online money is the table fee only.
    client), commit the transaction, THEN call `request_payment` —
    **no network call inside `transaction.atomic()`** — store the
    authority, return the redirect URL.
-3. The charge is ONLY the table reservation fee (platform share, BR-003).
+3. The charge is ONLY the table reservation fee (platform share, BR-04).
    Design add-on totals are computed for the receipt as "payable in
    person" and must never enter the gateway amount; the adapter call
    site asserts this split.
@@ -57,7 +57,7 @@ tx.authority = authority; tx.save(update_fields=["authority"])
 - Confirming on the callback's "OK" parameter without server-side verify.
 - Verifying with an amount taken from the request/session instead of the
   stored transaction row.
-- Charging table fee + add-ons together "temporarily" (breaks BR-003 and
+- Charging table fee + add-ons together "temporarily" (breaks BR-04 and
   creates a settlement duty to venues that the product explicitly avoids).
 - Gateway call inside the booking transaction (locks held during bank
   latency — banned by the doc's transaction rules).

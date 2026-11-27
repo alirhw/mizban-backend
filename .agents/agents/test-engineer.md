@@ -33,9 +33,9 @@ fail is treated as no test.
      other gets 409 `SLOT_ALREADY_RESERVED`. **PostgreSQL only** — SQLite
      cannot prove `select_for_update` behaviour.
    - `apps/scheduling/tests/test_slot_rules.py` — 90+30 generation
-     (including cross-midnight hours) and the ≥24h rule (BR-001/BR-002).
+     (including cross-midnight hours) and the ≥24h rule (BR-01/BR-02/BR-03).
    - Boundary tests: cancel at 36h00m (allowed) vs 35h59m (rejected,
-     BR-004); wallet debit beyond balance (rejected); lock expiry frees
+     BR-05); wallet debit beyond balance (rejected); lock expiry frees
      the table (TD-004).
 3. Audit other agents' tests: would this test fail if the rule were
    deleted? If not, send it back. Never accept a weakened or skipped test

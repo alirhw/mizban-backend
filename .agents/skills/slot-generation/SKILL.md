@@ -1,4 +1,4 @@
-# Skill: Slot Generation (BR-001 / BR-002)
+# Skill: Slot Generation (BR-01 / BR-02 / BR-03)
 
 ## What it teaches
 How Miz Ban turns a venue's working hours into bookable slots:
@@ -19,7 +19,7 @@ storage with Jalali only at presentation.
 4. All computation in aware UTC (`django.utils.timezone`). The date the
    user picked is a Jalali/local date at the API boundary; convert once,
    immediately, via `core/jalali.py`, and keep everything downstream UTC.
-5. Bookability filter (BR-002): a slot is bookable only if
+5. Bookability filter (BR-03): a slot is bookable only if
    `slot_start_datetime - now >= 24 hours`. Slots inside the window are
    returned as disabled-with-reason, not silently dropped (UX rule).
 6. Slot status (free / locked / booked / blocked) is computed at query
@@ -37,11 +37,11 @@ def generate_slots(open_dt, close_dt):
     slots, start = [], open_dt
     while start + timedelta(minutes=90) <= close_dt:
         slots.append(Slot(start=start, end=start + timedelta(minutes=90)))
-        start += timedelta(minutes=120)   # 90 slot + 30 buffer (BR-001)
+        start += timedelta(minutes=120)   # 90 slot + 30 buffer (BR-01/BR-02)
     return slots
 
 def is_bookable(slot_start, now):
-    return slot_start - now >= timedelta(hours=24)   # BR-002
+    return slot_start - now >= timedelta(hours=24)   # BR-03
 ```
 
 ## Common mistakes

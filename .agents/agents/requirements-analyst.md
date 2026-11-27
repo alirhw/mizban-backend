@@ -28,7 +28,7 @@ requirement (FR-xxx / BR-xxx style) with acceptance criteria a test can check.
 1. Read the request and the related FR/BR entries in the product doc.
 2. Interview: list every ambiguity that changes behaviour or money. For
    Miz Ban always pin down: who acts (customer / venue owner / admin), time
-   rules (which BR applies), money movement (online vs in-person, BR-003),
+   rules (which BR applies), money movement (online vs in-person, BR-04),
    and what the user sees on failure.
 3. Draft the spec from `specs/000-template/spec.md`. Requirements numbered,
    one behaviour each, testable.
@@ -47,7 +47,7 @@ requirement (FR-xxx / BR-xxx style) with acceptance criteria a test can check.
 - Inventing a rule the product doc doesn't have (e.g. "partial refunds") —
   if it is not in BR-01..BR-17 or the request, it becomes an open question.
 - Vague criteria ("fast", "user-friendly") instead of numbers.
-- Forgetting failure/edge cases: expired lock, subscription lapsed (BR-006),
-  slot inside the 24h window (BR-002), cancel inside 36h (BR-004).
+- Forgetting failure/edge cases: expired lock, subscription lapsed (BR-08),
+  slot inside the 24h window (BR-03), cancel inside 36h (BR-05).
 - Specifying implementation ("use Redis for X") — you specify behaviour;
   the Architect decides implementation.

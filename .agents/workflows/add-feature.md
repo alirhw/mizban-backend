@@ -10,7 +10,7 @@ Miz Ban mapping included — the same flow the 32-task plan followed, now extend
   EARS requirements, Gherkin acceptance criteria with real numbers,
   NFR targets, explicit out-of-scope.
 - **Miz Ban checks:** which actors (customer / venue owner / admin);
-  which BR-01..BR-17 are touched; money movement split (BR-003).
+  which BR-01..BR-17 are touched; money movement split (BR-04).
 - **G1:** human approves the spec. No design before this.
 
 ## Stage 2 — UX Design → part of Gate G2

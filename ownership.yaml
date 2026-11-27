@@ -25,8 +25,14 @@ agents:
     deny: ["apps/wallets/migrations/**", "apps/billing/migrations/**"]
   backend-api-engineer:              # shared plumbing only, no domain rules
     write: ["core/**", "config/api.py"]
+  frontend-engineer:                 # Next.js client, in-repo since PH-06
+    write: ["frontend/**"]
+  ux-designer:                       # design.md + flow files in the spec folder
+    write: ["specs/**"]
+  styling-accessibility-engineer:    # tokens + base components + styles
+    write: ["frontend/**"]
   test-engineer:
-    write: ["apps/**/tests/**"]
+    write: ["apps/**/tests/**", "frontend/**"]  # backend tests + frontend vitest suite
   code-reviewer:
     write: []                        # comments and verdicts only, never edits
   security-engineer:
@@ -42,4 +48,5 @@ protected:
   - "config/settings/production.py"  # fail-fast secrets/flags; human eyes only
   - "apps/bookings/migrations/**"    # money/concurrency schema: human review
   - "apps/wallets/migrations/**"     # ledger schema: human review
+  - "apps/billing/migrations/**"     # billing schema: human review
   - "api/openapi.snapshot.json"      # contract drift only via a reviewed change

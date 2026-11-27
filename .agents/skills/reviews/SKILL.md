@@ -5,14 +5,24 @@ How a customer reviews a café and the exact table they sat at — after the
 visit, exactly once per booking — and how those reviews are shown publicly
 without ever leaking the customer's phone number.
 
+## Decided (T-037/T-038, 2026-11-27) — these replace the proposals below; do not re-open them
+- The feature is IMPLEMENTED: `apps/reviews/` (`api.py`, `schemas.py`,
+  `services.py`) exists with submit + public reads + admin moderation.
+- Rating: integer 1–5 (`StrictInt`), enforced in the schema AND the
+  service (CheckConstraint `review_rating_between_1_and_5`).
+- Text: required, max 1000 characters.
+- Public display name: first name only, fallback `"Customer"`.
+- Moderation (T-038): admin hides/shows by flipping `is_visible`; never
+  delete. `is_visible` has `db_index=True` (T-043).
+
 ## Steps
-1. Model: `Review` in `apps/reviews/models.py` (the app skeleton already
-   exists — `api.py`, `schemas.py`, `services.py` are empty, waiting for
-   this feature). Fields: `booking` (FK, the single source of truth for
-   who / which venue / which table), `rating` (integer), `text`,
-   `is_visible` (default True), `created_at`. Derive venue and table pin
-   from `booking.venue` / `booking.table_pin` in queries — do NOT store
-   duplicate venue/table FKs that can drift from the booking.
+1. Model: `Review` in `apps/reviews/models.py` (implemented in T-037/T-038
+   — see the Decided note above). Fields: `booking` (FK, the single
+   source of truth for who / which venue / which table), `rating`
+   (integer), `text`, `is_visible` (default True), `created_at`. Derive
+   venue and table pin from `booking.venue` / `booking.table_pin` in
+   queries — do NOT store duplicate venue/table FKs that can drift from
+   the booking.
 2. One review per booking (BR-09): `UniqueConstraint` on `booking`. A
    second submit for the same booking is a domain error, never a second
    row — the DB constraint is the last line, the service checks first.
@@ -21,14 +31,13 @@ without ever leaking the customer's phone number.
    (aware UTC), AND `booking.customer` must be the requesting user. This
    is why T-033 (auto-complete) is a prerequisite — a booking that was
    never completed can never be reviewed.
-4. Rating: an integer on a scale pinned at G1 (proposal: 1–5, confirm at
-   G1 — the SRS says "one rating" without fixing the scale, so do NOT
-   present 1–5 as an SRS fact). Validate the range in the Ninja schema
-   AND the service. Never a float, never a free-text rating.
+4. Rating: an integer on the decided scale 1–5 (T-037; the SRS says "one
+   rating" without fixing the scale, so do NOT present 1–5 as an SRS
+   fact). Validate the range in the Ninja schema AND the service. Never
+   a float, never a free-text rating.
 5. Text: required alongside the rating (FR-24: "one rating and a text"),
-   bounded in length — the exact max is pinned at G1/G2 (proposal: 1000
-   characters). Strip nothing silently; reject over-long text with a
-   domain error.
+   bounded in length — max 1000 characters (decided T-037). Strip
+   nothing silently; reject over-long text with a domain error.
 6. Visibility (FR-41): the admin hides/shows a review by flipping
    `is_visible` only — a review row is NEVER deleted. Public reads
    (venue page FR-25, table-pin window FR-09) return `is_visible=True`
@@ -36,10 +45,10 @@ without ever leaking the customer's phone number.
    reviews only, derived at read time — never stored as a field that can
    drift from the reviews.
 7. Privacy (BR-13 / NFR-28): the public review out-schema exposes NO
-   phone number. Whether a display name appears at all, and which one,
-   is pinned at G1 (proposal: first name only). The customer's phone is
-   visible only to the venue owner of a confirmed booking — never in
-   any public review response.
+   phone number. Display name: first name only (decided T-037),
+   fallback `"Customer"`. The customer's phone is visible only to the
+   venue owner of a confirmed booking — never in any public review
+   response.
 8. No edit, no delete by the customer in v1 — unless the G1 spec says
    otherwise. If the spec adds editing later, that is a new task, not a
    silent extra in this one.

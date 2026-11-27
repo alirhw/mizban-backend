@@ -20,9 +20,11 @@ a client-only panorama viewer, and zero business rules invented on the client.
 ## Outputs (in `frontend/` in this repo)
 - Next.js routes/components for discovery, venue page, viewer, checkout,
   customer panel, venue-owner panel
-- A mock server generated from the OpenAPI contract, so frontend work never
-  waits for backend endpoints
-- Component tests
+- Component tests (vitest; lib tests under `frontend/src/lib/__tests__/`)
+
+> No mock server is maintained in this repo — every backend endpoint the
+> frontend needs already exists, so frontend work builds against the real
+> contract (the frozen OpenAPI snapshot).
 
 ## Tools & paths
 - Backend code: read-only for you. Never edit backend code to "make the UI
@@ -32,8 +34,14 @@ a client-only panorama viewer, and zero business rules invented on the client.
   `frontend/src/lib/` per the frontend's AGENTS.md.
 
 ## Workflow
-1. Generate types/client from the OpenAPI contract; never hand-write a
-   response shape.
+1. Types and the API client are hand-written in `frontend/src/lib/api.ts`,
+   mirroring the frozen OpenAPI contract (`api/openapi.snapshot.json`) —
+   there is NO codegen step in this repo. When the contract changes,
+   update `lib/api.ts` by hand from the snapshot in the same task; never
+   invent a response shape, and never edit the snapshot by hand.
+   (Decision 2026-11-27: codegen deferred — the hand-written client
+   covers the whole API and its vitest suite is green. Revisit only if
+   the API surface grows enough to justify it.)
 2. Build screens state-by-state from the design's state list (loading,
    empty, error, no-permission) — not happy-path-first.
 3. The viewer: load Pannellum client-only (`next/dynamic`, `ssr: false`);
@@ -43,7 +51,7 @@ a client-only panorama viewer, and zero business rules invented on the client.
    expiry honestly (countdown from the server-provided `lock_expires_at`,
    in Jalali/local presentation only — ARCH-006).
 5. Money display: amounts arrive as integer Toman from the API; format for
-   display, never recalculate totals on the client (BR-003 split receipt is
+   display, never recalculate totals on the client (BR-04 split receipt is
    rendered from API fields).
 6. Every backend `error_code` maps to the UX-approved Persian message.
 
@@ -54,8 +62,9 @@ a client-only panorama viewer, and zero business rules invented on the client.
 ## Common mistakes
 - Computing slot availability or prices on the client (server is the only
   authority — ARCH-004; a stale client cache double-books).
-- Hand-editing generated API types after a contract change instead of
-  regenerating.
+- Editing `lib/api.ts` without updating it from the changed snapshot (a
+  drifted client is a bug); never edit the snapshot by hand to match the
+  client.
 - Making the panorama SSR (Pannellum needs `window`/WebGL — client-only).
 - Treating a 409 `SLOT_ALREADY_RESERVED` as a bug instead of a designed
   state with its own screen.

@@ -48,7 +48,7 @@ transaction.
    advertising blacklist); OTP codes via the Auth Engineer's flow; timeout
    5s, Celery retry ×3 with exponential backoff; never log codes or full
    phone lists.
-5. Split receipt (BR-003/ARCH-005): the gateway is only ever charged the
+5. Split receipt (BR-04/ARCH-005): the gateway is only ever charged the
    table fee; add-on totals are computed for the receipt as
    "payable in person" — your adapter must refuse a charge that includes
    add-on amounts.
@@ -64,7 +64,7 @@ transaction.
 - Trusting the callback's "success" flag without server-side verify, or
   verifying an amount different from the stored transaction.
 - Charging the design add-ons online "to keep it simple" — that breaks
-  the platform's financial model (BR-003) and creates settlement duties.
+  the platform's financial model (BR-04) and creates settlement duties.
 - Calling the gateway inside `transaction.atomic()` (locks held during a
   slow bank call — explicitly banned by the doc's transaction rules).
 - Non-idempotent verify (double callback → double confirmation or a

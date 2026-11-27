@@ -20,12 +20,15 @@ with design tokens instead of ad-hoc values.
 - Design tokens + base components (`frontend/` in this repo): buttons, inputs, dialogs,
   pin styles, slot chips — all RTL-native (logical properties: `ms-`, `me-`,
   `ps-`, `pe-`, `start`/`end`, never `left`/`right`)
-- Accessibility audit report per feature (automated axe run + scripted
-  keyboard walkthrough) feeding gate G4
+- Accessibility audit report per feature (manual axe-browser-extension run +
+  scripted keyboard walkthrough — no automated axe run exists yet, see
+  Workflow step 4) feeding gate G4
 
 ## Tools & paths
 - Backend code: read-only for you (specs/design review). Frontend code in
-  this repo: `frontend/src/components/ui/**`, global styles, token files.
+  this repo: `frontend/src/components/**` (shared primitives live under
+  `frontend/src/components/ui/` — created when the first shared primitive
+  lands, not before), global styles, token files.
 
 ## Workflow
 1. Maintain the token set (colour, type scale with a Persian font stack,
@@ -36,8 +39,11 @@ with design tokens instead of ad-hoc values.
 3. Panorama specifics: pins reachable and operable by keyboard as a list
    alternative to the canvas; state conveyed by icon + label + colour;
    tap targets ≥ 44px; reduced-motion respected.
-4. Run automated checks (axe) on every route in CI; do the keyboard
-   walkthrough for the booking flow and owner panel manually per feature.
+4. No automated axe run or CI exists yet (decision 2026-11-27: deferred
+   until CI exists) — run the axe browser extension manually on every
+   new/changed route and record the result in the audit report; do the
+   keyboard walkthrough for the booking flow and owner panel manually
+   per feature.
 5. File findings as review comments with severity; re-check fixes yourself.
 
 ## Human checkpoint

@@ -6,12 +6,26 @@ fee and subscription) and wallet transactions, with a time filter and
 summed amounts — read-only, admin-only, and with the sums computed in
 the database, never in Python over one page of rows.
 
+## Decided (T-040, 2026-11-27) — these replace the proposals below; do not re-open them
+- Role: ADMIN only. `is_staff` alone does NOT qualify (enforced in the
+  service, not just the view).
+- Date defaults: missing `to` = up to now; missing `from` = from the
+  beginning. Tehran local dates → half-open UTC range, converted once
+  at the API boundary.
+- Indexes: confirmed and added in T-040 — `idx_pay_status_created_at`
+  on `PaymentTransaction (status, created_at)`, `idx_wallet_tx_time`
+  on `WalletTransaction (created_at)`; `WalletTransaction.type` has
+  `db_index=True`.
+- Privacy: no phone, no email, no card data in the report — the customer
+  is identified by `customer_id` / `user_id` only.
+- The subscription section is ALWAYS empty until FR-27 (online purchase
+  is post-MVP) — empty is the correct answer, never invent rows.
+
 ## Steps
 1. Admin-only: the endpoint requires role ADMIN (checked in the service,
    not just by hiding a link — "hidden in the UI" is never enforcement).
    A venue owner or customer calling it gets 403. Test all three roles.
-   Whether `is_staff` alone also qualifies is pinned at G2 (proposal:
-   role ADMIN only — the User model already has an ADMIN role).
+   Decided T-040: role ADMIN only — `is_staff` alone does NOT qualify.
 2. Read-only: this task adds NO write endpoint, NO export, NO payout.
    CSV/PDF export is NOT in FR-40 — do not add it "while you're here".
 3. Sources — read the two existing ledger tables, nothing else:
@@ -28,20 +42,22 @@ the database, never in Python over one page of rows.
    `to` as Tehran local dates, converted ONCE at the API boundary to a
    UTC range (ARCH-006), plus optional type/status filters pinned at
    G2. A missing `to` means "up to now"; a missing `from` means "from
-   the beginning" — pin both defaults at G1, do not guess them in code.
+   the beginning" (decided T-040 — do not guess them in code).
 5. Sums in the DB: `SUM(amount_toman)` aggregations in the query (one
    query per section), integer Toman, never float, never summed in
    Python over the returned page. The totals must cover the WHOLE
    filtered set, not just the current page — a total that changes when
    you turn the page is a bug.
 6. Bounded pagination: default 50 rows, max 100 (pinned at G2). The
-   endpoint must stay fast on a growing ledger — the Database Engineer
-   confirms the indexes (`created_at`, `status`, `type`) at G2.
+   endpoint must stay fast on a growing ledger — the indexes are
+   confirmed and in place (T-040): `idx_pay_status_created_at` on
+   `(status, created_at)`, `idx_wallet_tx_time` on `(created_at)`;
+   `WalletTransaction.type` has `db_index=True`.
 7. Privacy: the report out-schema contains only the fields the spec
    names. Do NOT include customer phone numbers unless the G1 spec
-   explicitly requires them (proposal: no phone — use user id / masked
-   identifier). The admin already sees users in Django Admin; that does
-   not authorise phone numbers in this API response.
+   explicitly requires them (decided T-040: no phone, no email, no card
+   data — use user id only). The admin already sees users in Django
+   Admin; that does not authorise phone numbers in this API response.
 8. Money display: amounts arrive as integer Toman; the frontend formats
    them for display and never recalculates totals on the client.
 

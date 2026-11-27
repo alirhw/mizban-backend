@@ -3,7 +3,8 @@
 Project: **Miz Ban** - a two-sided marketplace where customers reserve a specific
 cafe/restaurant table by exploring 360-degree panorama photos (Pannellum pins),
 and venue owners manage spaces, tables and subscriptions. Backend: Django 5.2 +
-Django Ninja modular monolith. Frontend (Next.js) is a separate later phase.
+Django Ninja modular monolith. Frontend (Next.js 16, App Router, TypeScript,
+Tailwind 4, Pannellum 2.5.7) lives in this repo under `frontend/`.
 
 ## Commands
 - Run everything (Docker): `docker compose up --build`
@@ -15,8 +16,8 @@ Django Ninja modular monolith. Frontend (Next.js) is a separate later phase.
 - API docs: http://127.0.0.1:8000/api/v1/docs - Health: http://127.0.0.1:8000/api/v1/healthz
 
 ## Architecture in three lines
-- Modular monolith: 8 domain apps under `apps/` (accounts, venues, panoramas,
-  scheduling, bookings, billing, wallets, reviews); imports flow one way, toward
+- Modular monolith: 9 domain apps under `apps/` (accounts, venues, panoramas,
+  scheduling, bookings, billing, wallets, reviews, notifications); imports flow one way, toward
   the foundations - `accounts` imports nothing from other apps, `core/` imports nothing.
 - Business logic lives in each app's `services.py`; Ninja views only authenticate,
   validate schemas and call services (never raw ORM writes, never the gateway).
@@ -36,16 +37,27 @@ Django Ninja modular monolith. Frontend (Next.js) is a separate later phase.
 6. ARCH-006: No Jalali or localised time is ever stored. All timestamps are UTC
    (`timezone.now()`); Jalali exists only at presentation, via `core/jalali.py`.
 
-## Business rules (Product Definition section 6)
-- BR-001: A slot is exactly 90 minutes, followed by exactly 30 minutes of cleaning
-  buffer before the next slot on the same table.
-- BR-002: A slot can only be booked if it starts at least 24 hours from now.
-- BR-003: Online payment = table fee only (100% platform). Design items are listed
+## Business rules (Phase 1 SRS, Chapter 4 — canonical numbering BR-01..BR-17)
+- BR-01: A slot is exactly 90 minutes.
+- BR-02: Exactly 30 minutes of cleaning buffer follow every slot before the
+  next slot on the same table (full cycle 120 minutes).
+- BR-03: A slot can only be booked if it starts at least 24 hours from now.
+- BR-04: Online payment = table fee only (100% platform). Design items are listed
   on the receipt and paid to the cafe in person.
-- BR-004: Cancellation only up to 36 hours before the slot; the refund goes ONLY to
-  the in-app wallet and can never be withdrawn as cash.
-- BR-005: A venue is publicly visible/bookable only when admin-approved AND its
-  subscription is active. (BR-006: existing bookings survive subscription expiry.)
+- BR-05: Cancellation only up to 36 hours before the slot; the refund is 100%
+  of the table fee.
+- BR-06: The refund goes ONLY to the in-app wallet; it can never be withdrawn
+  as cash, and is spendable on later bookings.
+- BR-07: A venue is publicly visible/bookable only when admin-approved AND its
+  subscription is active.
+- BR-08: When a subscription ends, the profile is hidden from search, but
+  existing confirmed bookings stay valid and visible in the panels.
+> Numbering note: early specs and agent files used a legacy scheme
+> (BR-001..BR-006) that combined rules the SRS splits apart. Mapping:
+> legacy BR-001 = SRS BR-01 + BR-02; BR-002 = BR-03; BR-003 = BR-04;
+> BR-004 = BR-05 + BR-06; BR-005 = BR-07; BR-006 = BR-08. The SRS
+> numbering (BR-01..BR-17) is canonical — use it in all new writing.
+> Old spec files keep their legacy numbers; do not rewrite them.
 - Money is always integer Toman. Never floats for money, anywhere.
 - Wallets: one-sided audited ledger; balance can never go negative
   (DB CheckConstraint + `select_for_update()`, TD-005).
@@ -54,7 +66,7 @@ Django Ninja modular monolith. Frontend (Next.js) is a separate later phase.
 - Never log OTP codes, phone numbers in bulk, tokens or any secret. Never read `.env`.
 - Tests are written fail-first and must be able to fail; never weaken, skip or delete
   a test to make CI green. Concurrency tests only count against PostgreSQL.
-- A migration touching `apps/bookings` or `apps/wallets` needs human review before
+- A migration touching `apps/bookings`, `apps/wallets`, or `apps/billing` needs human review before
   it is applied anywhere shared.
 - One task = at most ~400 changed lines. If the work is bigger, split it.
 - Domain errors are raised as `core.exceptions` DomainError subclasses and surface
@@ -68,7 +80,7 @@ defined under `.agents/`:
   Each states its mission, inputs/outputs, owned paths and workflow.
 - `.agents/skills/` - the standing procedures (booking-lock, slot-generation,
   wallet-ledger, otp-sms, panorama-pipeline, payment-gateway-ir, gate-packet,
-  task-execution). Load the relevant skill before doing that kind of work.
+  task-execution, reviews, notifications, admin-reporting). Load the relevant skill before doing that kind of work.
 - `.agents/workflows/` - `run-task.md` (the Orchestrator's loop for one Task ID)
   and `add-feature.md` (the 8-stage flow for a new feature).
 - `.agents/kickoff-prompts.md` - ready-to-paste conversation starters.

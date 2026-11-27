@@ -24,7 +24,7 @@ dependency.
    row with `select_for_update()`, checks the status is still
    PENDING_PAYMENT and the verify arrived before `lock_expires_at`,
    then sets CONFIRMED — all in one transaction.
-6. Cancellation (≥36h before slot start, BR-004) runs in one transaction:
+6. Cancellation (≥36h before slot start, BR-05) runs in one transaction:
    lock the booking row, set CANCELLED, credit the wallet via the wallet
    service (see wallet-ledger skill).
 

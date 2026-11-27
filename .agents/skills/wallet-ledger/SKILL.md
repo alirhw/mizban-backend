@@ -1,4 +1,4 @@
-# Skill: Wallet Ledger (TD-005 / BR-004)
+# Skill: Wallet Ledger (TD-005 / BR-05 / BR-06)
 
 ## What it teaches
 How the in-app wallet stays auditable and can never go negative or be
@@ -25,10 +25,10 @@ CheckConstraint.
    UF-003 double-credit edge case).
 5. Cancellation refund flow: the bookings service (its own transaction
    spanning booking + wallet per the design) locks the booking, verifies
-   the ≥36h window (BR-004), sets CANCELLED, then calls `wallets.credit`
+   the ≥36h window (BR-05), sets CANCELLED, then calls `wallets.credit`
    with the booking reference. Refund = 100% of the table fee paid online.
 6. Wallet money is closed-loop: usable for future bookings, never
-   withdrawable to a bank account (BR-004). There is no payout code path —
+   withdrawable to a bank account (BR-06). There is no payout code path —
    do not build one.
 7. Paying with wallet at checkout: debit via the same service in the
    booking transaction; insufficient balance → domain error, no partial
@@ -59,4 +59,4 @@ def credit(*, wallet, amount_toman: int, reference: str, tx_type: str):
 - Letting the DB constraint be the only guard: services check first and
   raise a domain error; the constraint is the last line, not the UX.
 - Floats anywhere near money (rounding drift in Toman is still money).
-- Building a "withdraw to card" path — explicitly out of scope (BR-004).
+- Building a "withdraw to card" path — explicitly out of scope (BR-06).

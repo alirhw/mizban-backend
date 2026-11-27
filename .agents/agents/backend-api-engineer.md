@@ -37,7 +37,7 @@ input explicitly.
    where relevant, money as integer Toman, no extra accepted fields
    (mass-assignment is a security bug).
 3. Implement the service function with the domain rules from the spec
-   (lead time BR-002, buffer BR-001, cancel window BR-004) and domain
+   (lead time BR-03, buffer BR-01/BR-02, cancel window BR-05) and domain
    errors from `core/exceptions.py` — never ad-hoc HTTP exceptions in services.
 4. The view: authenticate (session auth), validate, call the service, map
    the result to the out-schema. No ORM writes, no gateway calls (ARCH-001).

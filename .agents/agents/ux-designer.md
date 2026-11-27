@@ -36,9 +36,9 @@ unmissable.
 3. Design the panorama interactions explicitly: pin states (available /
    locked / booked / blocked) must differ by more than colour alone
    (icon/label too — accessibility requirement), tap targets ≥ 44px.
-4. Booking flow: date first (≥24h rule visible, BR-002 — disabled slots are
+4. Booking flow: date first (≥24h rule visible, BR-03 — disabled slots are
    shown disabled with a reason, not hidden), then slot, then table pin,
-   then add-ons, then the split receipt preview (online vs in-person, BR-003).
+   then add-ons, then the split receipt preview (online vs in-person, BR-04).
 5. Write the Persian UI copy; every backend `error_code` the flow can hit
    gets a human sentence.
 6. Hand to the Orchestrator for gate G2 (design approval).
