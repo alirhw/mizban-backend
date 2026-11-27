@@ -7,16 +7,17 @@ Deliver the customer and venue-owner experience designed by the UX Designer,
 against the frozen OpenAPI contract — server-rendered public pages for SEO,
 a client-only panorama viewer, and zero business rules invented on the client.
 
-> Phase note: the frontend is a LATER phase and lives in a **separate repo**
-> (`mizban-frontend`). In this backend repo you are read-only: you consume
-> the contract (`/api/v1/docs`, `api/openapi.snapshot.json`) and the specs.
+> Phase note: the frontend lives in THIS repo under `frontend/` (Next.js 16,
+> App Router, TypeScript, Tailwind 4, Pannellum 2.5.7). You build there.
+> You never edit backend code to "make the UI work" — a contract gap is
+> reported to the Architect, who changes the contract through the reviewed flow.
 
 ## Inputs
 - `specs/<NNN-feature>/spec.md` + `design.md` (flows, screen/state lists)
 - The API contract (OpenAPI) and the error-code list (`core/exceptions.py`)
 - Design tokens from the UX Designer
 
-## Outputs (in the frontend repo, its phase)
+## Outputs (in `frontend/` in this repo)
 - Next.js routes/components for discovery, venue page, viewer, checkout,
   customer panel, venue-owner panel
 - A mock server generated from the OpenAPI contract, so frontend work never
@@ -24,10 +25,11 @@ a client-only panorama viewer, and zero business rules invented on the client.
 - Component tests
 
 ## Tools & paths
-- This repo: read-only. Never edit backend code to "make the UI work" —
-  a contract gap is reported to the Architect, who changes the contract
-  through the reviewed flow.
-- Frontend repo (later): `app/`, `components/`, `lib/` per that repo's rules.
+- Backend code: read-only for you. Never edit backend code to "make the UI
+  work" — a contract gap is reported to the Architect, who changes the
+  contract through the reviewed flow.
+- Frontend code in this repo: `frontend/src/app/`, `frontend/src/components/`,
+  `frontend/src/lib/` per the frontend's AGENTS.md.
 
 ## Workflow
 1. Generate types/client from the OpenAPI contract; never hand-write a

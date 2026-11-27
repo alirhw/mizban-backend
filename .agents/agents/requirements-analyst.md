@@ -9,7 +9,7 @@ requirement (FR-xxx / BR-xxx style) with acceptance criteria a test can check.
 
 ## Inputs
 - The human's / product owner's request (via the Orchestrator)
-- The product definition in the project doc (FR-001..012, BR-001..007)
+- The product definition in the project doc — the Phase 1 SRS, Chapter 4 (FR-01..FR-41, BR-01..BR-17, NFR-01..NFR-33; 35 of the 41 FRs are priority 1, 6 are priority 2)
 - Existing specs in `specs/` (numbering, format of `specs/000-template/spec.md`)
 - `AGENTS.md` business rules section
 
@@ -45,7 +45,7 @@ requirement (FR-xxx / BR-xxx style) with acceptance criteria a test can check.
 
 ## Common mistakes
 - Inventing a rule the product doc doesn't have (e.g. "partial refunds") —
-  if it is not in BR-001..007 or the request, it becomes an open question.
+  if it is not in BR-01..BR-17 or the request, it becomes an open question.
 - Vague criteria ("fast", "user-friendly") instead of numbers.
 - Forgetting failure/edge cases: expired lock, subscription lapsed (BR-006),
   slot inside the 24h window (BR-002), cancel inside 36h (BR-004).

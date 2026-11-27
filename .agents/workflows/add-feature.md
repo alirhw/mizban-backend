@@ -2,7 +2,7 @@
 
 Use this when the human brings a feature that has no spec folder yet.
 Each stage produces files the next stage consumes; gates are full stops.
-Miz Ban mapping included — the same flow the 32-task plan followed.
+Miz Ban mapping included — the same flow the 32-task plan followed, now extended by T-033+ for the remaining SRS requirements.
 
 ## Stage 1 — Requirements → Gate G1
 - **Owner:** Requirements Analyst (human answers business questions).
@@ -10,7 +10,7 @@ Miz Ban mapping included — the same flow the 32-task plan followed.
   EARS requirements, Gherkin acceptance criteria with real numbers,
   NFR targets, explicit out-of-scope.
 - **Miz Ban checks:** which actors (customer / venue owner / admin);
-  which BR-001..007 are touched; money movement split (BR-003).
+  which BR-01..BR-17 are touched; money movement split (BR-003).
 - **G1:** human approves the spec. No design before this.
 
 ## Stage 2 — UX Design → part of Gate G2

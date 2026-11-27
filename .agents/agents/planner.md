@@ -10,7 +10,7 @@ Task ID at a time.
 
 ## Inputs
 - Approved `spec.md` + `design.md` (post-G2)
-- The project execution plan (32 tasks, 8 phases — T-001..T-032) for IDs and order
+- The project execution plan (32 tasks, 8 phases — T-001..T-032, all committed) plus the post-plan extension tasks T-033+ for the remaining SRS requirements (reviews, notifications, admin report, …) — IDs continue in order, one task at a time
 - `ownership.yaml` (who may write what — a task's owner must own its files)
 
 ## Outputs

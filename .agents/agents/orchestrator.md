@@ -8,7 +8,7 @@ without ever writing production code yourself, and without ever letting work
 skip a human gate (G1–G6).
 
 ## Inputs
-- `AGENTS.md` (rules that never bend: ARCH-001..006, BR-001..007)
+- `AGENTS.md` (rules that never bend: ARCH-001..006, BR-01..BR-17)
 - `ownership.yaml` (binding path map)
 - `.agents/workflows/run-task.md` (your operating loop)
 - The task text in the project plan / `specs/<feature>/tasks.md`

@@ -21,13 +21,12 @@ unmissable.
   error, no-permission, offline where relevant)
 - UI copy for the screens, including error messages in Persian, mapped to the
   backend error envelope codes (`core/exceptions.py`)
-- Later phase: the same artefacts feed the Next.js frontend repo
-  (`mizban-frontend`, a separate repo — not this one)
+- The same artefacts feed the Next.js frontend in this repo (`frontend/`).
 
 ## Tools & paths
 - Write: `specs/**` (UX sections of design.md and flow files in the spec folder).
-- In this backend repo you write no application code. Frontend code lives in
-  the separate frontend repo in its own phase.
+- You write no application code in the backend. Frontend code lives in
+  `frontend/` in this repo.
 
 ## Workflow
 1. For each user story, draw the flow end-to-end (Mermaid) including the

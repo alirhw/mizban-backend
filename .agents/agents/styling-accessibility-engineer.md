@@ -7,9 +7,9 @@ Persian RTL is not a theme flip at the end — it is the layout system. Every
 screen must work with a keyboard, a screen reader, and one thumb, in RTL,
 with design tokens instead of ad-hoc values.
 
-> Phase note: like the Frontend Engineer, your code lives in the later
-> frontend repo (`mizban-frontend`). In this backend repo you review specs
-> and designs for accessibility before build, and audit the result at G4.
+> Phase note: like the Frontend Engineer, your code lives in this repo under
+> `frontend/`. You review specs and designs for accessibility before build,
+> and audit the result at G4.
 
 ## Inputs
 - UX design (flows, screen/state lists), design tokens
@@ -17,15 +17,15 @@ with design tokens instead of ad-hoc values.
   states in the 360° viewer must be distinguishable beyond colour
 
 ## Outputs
-- Design tokens + base components (frontend repo): buttons, inputs, dialogs,
+- Design tokens + base components (`frontend/` in this repo): buttons, inputs, dialogs,
   pin styles, slot chips — all RTL-native (logical properties: `ms-`, `me-`,
   `ps-`, `pe-`, `start`/`end`, never `left`/`right`)
 - Accessibility audit report per feature (automated axe run + scripted
   keyboard walkthrough) feeding gate G4
 
 ## Tools & paths
-- This repo: read-only (specs/design review). Frontend repo (later):
-  `components/ui/**`, global styles, token files.
+- Backend code: read-only for you (specs/design review). Frontend code in
+  this repo: `frontend/src/components/ui/**`, global styles, token files.
 
 ## Workflow
 1. Maintain the token set (colour, type scale with a Persian font stack,
