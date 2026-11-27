@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from django.core.cache import cache
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import Http404
 from django.test import Client
 from django.utils import timezone
 
@@ -14,7 +17,13 @@ from apps.bookings.models import BookingAddon
 from apps.bookings.services import create_booking_lock
 from apps.panoramas.tests.factories import TablePinFactory
 from apps.venues.models import DesignAddon
-from apps.venues.services import get_venue_slug_cache_key
+from apps.venues.services import (
+    MAX_BIGINT,
+    _validate_addon_fields,
+    delete_owner_addon,
+    get_owner_addon,
+    get_venue_slug_cache_key,
+)
 from apps.venues.tests.factories import (
     DesignAddonFactory,
     UserFactory,
@@ -483,3 +492,143 @@ def test_extra_fields_rejected_on_create_and_update(api, owner_user):
         user=owner_user,
     )
     assert update_resp.status_code == 422
+
+
+@pytest.mark.django_db
+def test_addon_fee_bigint_bounds_on_create_and_update(api: ApiHelper, owner_user: Any) -> None:
+    """Fee at 2**63 - 1 succeeds on create and update; 2**63 returns 422 on both."""
+    venue: Any = VenueFactory(owner=owner_user)
+    max_fee = 2**63 - 1
+    overflow_fee = 2**63
+
+    create_ok = api.post(
+        _addons_url(venue.id),
+        data={"title": "Max Bigint Addon", "fee": max_fee},
+        user=owner_user,
+    )
+    assert create_ok.status_code == 201
+    addon_id = create_ok.json()["id"]
+    assert create_ok.json()["fee"] == max_fee
+
+    create_overflow = api.post(
+        _addons_url(venue.id),
+        data={"title": "Overflow Addon", "fee": overflow_fee},
+        user=owner_user,
+    )
+    assert create_overflow.status_code == 422
+
+    update_ok = api.put(
+        _addon_detail_url(venue.id, addon_id),
+        data={"title": "Max Bigint Updated", "fee": max_fee, "is_active": True},
+        user=owner_user,
+    )
+    assert update_ok.status_code == 200
+    assert update_ok.json()["fee"] == max_fee
+
+    update_overflow = api.put(
+        _addon_detail_url(venue.id, addon_id),
+        data={"title": "Overflow Updated", "fee": overflow_fee, "is_active": True},
+        user=owner_user,
+    )
+    assert update_overflow.status_code == 422
+
+
+@pytest.mark.django_db
+def test_addon_fee_boolean_rejected_and_one_accepted(api: ApiHelper, owner_user: Any) -> None:
+    """Raw JSON boolean fee (true/false) returns 422; integer 1 succeeds."""
+    venue: Any = VenueFactory(owner=owner_user)
+
+    for bool_val in (True, False):
+        resp = api.post(
+            _addons_url(venue.id),
+            data={"title": "Bool Fee Addon", "fee": bool_val},
+            user=owner_user,
+        )
+        assert resp.status_code == 422
+
+    ok_resp = api.post(
+        _addons_url(venue.id),
+        data={"title": "One Toman Addon", "fee": 1},
+        user=owner_user,
+    )
+    assert ok_resp.status_code == 201
+    assert ok_resp.json()["fee"] == 1
+
+
+@pytest.mark.django_db
+def test_addon_title_over_200_chars_rejected(api: ApiHelper, owner_user: Any) -> None:
+    """Add-on title exceeding 200 characters returns 422 on create and update."""
+    venue: Any = VenueFactory(owner=owner_user)
+    addon: Any = DesignAddonFactory(venue=venue, title="Valid Title", fee=50_000)
+
+    create_resp = api.post(
+        _addons_url(venue.id),
+        data={"title": "x" * 201, "fee": 50_000},
+        user=owner_user,
+    )
+    assert create_resp.status_code == 422
+
+    update_resp = api.put(
+        _addon_detail_url(venue.id, addon.id),
+        data={"title": "y" * 201, "fee": 50_000, "is_active": True},
+        user=owner_user,
+    )
+    assert update_resp.status_code == 422
+
+
+@pytest.mark.django_db(transaction=True)
+def test_delete_addon_invalidates_prewarmed_public_cache(api: ApiHelper, owner_user: Any) -> None:
+    """Deleting an add-on invalidates the pre-warmed public venue detail cache."""
+    venue: Any = VenueFactory(owner=owner_user, is_approved=True, slug="addon-delete-cache-cafe")
+    activate_test_subscription(venue)
+    addon: Any = DesignAddonFactory(venue=venue, title="Cache Delete Addon", fee=100_000, is_active=True)
+
+    cache_key = get_venue_slug_cache_key(venue.slug)
+    warm_resp = api.get(f"/api/v1/venues/{venue.slug}")
+    assert warm_resp.status_code == 200
+    assert len(warm_resp.json()["design_addons"]) == 1
+    assert cache.get(cache_key) is not None
+
+    del_resp = api.delete(_addon_detail_url(venue.id, addon.id), user=owner_user)
+    assert del_resp.status_code == 204
+    assert cache.get(cache_key) is None
+
+    fresh_resp = api.get(f"/api/v1/venues/{venue.slug}")
+    assert fresh_resp.status_code == 200
+    assert fresh_resp.json()["design_addons"] == []
+
+
+@pytest.mark.django_db
+def test_unauthenticated_returns_401_on_all_owner_addon_endpoints(
+    api: ApiHelper, owner_user: Any
+) -> None:
+    """Unauthenticated requests to all owner add-on endpoints return 401."""
+    venue: Any = VenueFactory(owner=owner_user)
+    addon: Any = DesignAddonFactory(venue=venue, title="Auth Test Addon", fee=10_000)
+
+    assert api.get(_addons_url(venue.id)).status_code == 401
+    assert api.post(_addons_url(venue.id), data={"title": "Anon", "fee": 1000}).status_code == 401
+    assert api.get(_addon_detail_url(venue.id, addon.id)).status_code == 401
+    assert (
+        api.put(
+            _addon_detail_url(venue.id, addon.id),
+            data={"title": "Anon", "fee": 1000, "is_active": True},
+        ).status_code
+        == 401
+    )
+    assert api.delete(_addon_detail_url(venue.id, addon.id)).status_code == 401
+
+
+@pytest.mark.django_db
+def test_addon_service_guards_direct_404_and_max_bigint(owner_user: Any) -> None:
+    """Direct service guard coverage for get_owner_addon/delete_owner_addon 404 and MAX_BIGINT."""
+    venue: Any = VenueFactory(owner=owner_user)
+
+    with pytest.raises(Http404):
+        get_owner_addon(owner_user, venue.id, 9_999_999)
+
+    with pytest.raises(Http404):
+        delete_owner_addon(owner_user, venue.id, 9_999_999)
+
+    with pytest.raises(DjangoValidationError):
+        _validate_addon_fields("Too Expensive", MAX_BIGINT + 1)

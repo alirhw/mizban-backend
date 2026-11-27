@@ -20,7 +20,7 @@ class WalletAdmin(admin.ModelAdmin):
     """Read-only admin view for customer Wallets."""
 
     list_display = ("id", "user", "balance_toman", "created_at", "updated_at")
-    search_fields = ("user__phone_number", "user__email", "user__first_name", "user__last_name")
+    search_fields = ("user__phone",)
     readonly_fields = ("user", "balance_toman", "created_at", "updated_at")
 
     def has_add_permission(self, request: HttpRequest) -> bool:
@@ -48,8 +48,7 @@ class WalletTransactionAdmin(admin.ModelAdmin):
     search_fields = (
         "idempotency_key",
         "reason",
-        "wallet__user__phone_number",
-        "wallet__user__email",
+        "wallet__user__phone",
     )
     readonly_fields = (
         "wallet",

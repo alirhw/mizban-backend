@@ -21,6 +21,7 @@ import time as pytime
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, time, timedelta
+from typing import Any
 
 import pytest
 from django.db import connection
@@ -134,7 +135,7 @@ def _run_contention_attempt(
     )
 
 
-def test_spike_service_multiway_contention_20_rounds():
+def test_spike_service_multiway_contention_20_rounds() -> None:
     """T-014 Experiment Part 1: 20 rounds of 5-way contention on the booking service.
 
     For each round:
@@ -149,10 +150,10 @@ def test_spike_service_multiway_contention_20_rounds():
     all_winner_durations: list[float] = []
     all_conflict_durations: list[float] = []
 
-    owner = UserFactory(role=UserRole.VENUE_OWNER)
-    venue = VenueFactory(owner=owner, is_approved=True)
+    owner: Any = UserFactory(role=UserRole.VENUE_OWNER)
+    venue: Any = VenueFactory(owner=owner, is_approved=True)
     activate_test_subscription(venue)
-    pin = TablePinFactory(venue=venue)
+    pin: Any = TablePinFactory(venue=venue)
 
     base_date = (dj_timezone.now() + timedelta(days=2)).date()
 
@@ -163,7 +164,7 @@ def test_spike_service_multiway_contention_20_rounds():
         slot_time = time(hour, 0)
 
         # Create distinct users for each competing worker
-        users = [UserFactory(role=UserRole.CUSTOMER) for _ in range(CONCURRENCY)]
+        users: list[Any] = [UserFactory(role=UserRole.CUSTOMER) for _ in range(CONCURRENCY)]
         barrier = threading.Barrier(CONCURRENCY)
 
         with ThreadPoolExecutor(max_workers=CONCURRENCY) as executor:
@@ -249,7 +250,7 @@ def test_spike_service_multiway_contention_20_rounds():
     print("=" * 80 + "\n")
 
 
-def test_spike_high_contention_10_way_10_rounds():
+def test_spike_high_contention_10_way_10_rounds() -> None:
     """T-014 Experiment Part 2: 10 rounds of high 10-way contention.
 
     Tests deeper lock queues (1 winner, 9 waiting transactions per round).
@@ -260,17 +261,17 @@ def test_spike_high_contention_10_way_10_rounds():
     round_stats_list: list[RoundStats] = []
     all_durations: list[float] = []
 
-    owner = UserFactory(role=UserRole.VENUE_OWNER)
-    venue = VenueFactory(owner=owner, is_approved=True)
+    owner: Any = UserFactory(role=UserRole.VENUE_OWNER)
+    venue: Any = VenueFactory(owner=owner, is_approved=True)
     activate_test_subscription(venue)
-    pin = TablePinFactory(venue=venue)
+    pin: Any = TablePinFactory(venue=venue)
     base_date = (dj_timezone.now() + timedelta(days=3)).date()
 
     for r in range(ROUNDS):
         slot_date = base_date + timedelta(days=r)
         slot_time = time(11, 0)
 
-        users = [UserFactory(role=UserRole.CUSTOMER) for _ in range(CONCURRENCY)]
+        users: list[Any] = [UserFactory(role=UserRole.CUSTOMER) for _ in range(CONCURRENCY)]
         barrier = threading.Barrier(CONCURRENCY)
 
         with ThreadPoolExecutor(max_workers=CONCURRENCY) as executor:
@@ -382,7 +383,7 @@ def _run_api_contention_attempt(
     }
 
 
-def test_spike_api_multiway_contention_10_rounds(settings):
+def test_spike_api_multiway_contention_10_rounds(settings: Any) -> None:
     """T-014 Experiment Part 3: 10 rounds of 5-way contention via Ninja HTTP API.
 
     Verifies the full web stack:
@@ -396,17 +397,17 @@ def test_spike_api_multiway_contention_10_rounds(settings):
     ROUNDS = 10
     all_api_durations: list[float] = []
 
-    owner = UserFactory(role=UserRole.VENUE_OWNER)
-    venue = VenueFactory(owner=owner, is_approved=True)
+    owner: Any = UserFactory(role=UserRole.VENUE_OWNER)
+    venue: Any = VenueFactory(owner=owner, is_approved=True)
     activate_test_subscription(venue)
-    pin = TablePinFactory(venue=venue)
+    pin: Any = TablePinFactory(venue=venue)
     base_date = (dj_timezone.now() + timedelta(days=4)).date()
 
     for r in range(ROUNDS):
         slot_date_str = (base_date + timedelta(days=r)).isoformat()
         slot_time_str = "14:00"
 
-        users = [UserFactory(role=UserRole.CUSTOMER) for _ in range(CONCURRENCY)]
+        users: list[Any] = [UserFactory(role=UserRole.CUSTOMER) for _ in range(CONCURRENCY)]
         barrier = threading.Barrier(CONCURRENCY)
 
         with ThreadPoolExecutor(max_workers=CONCURRENCY) as executor:

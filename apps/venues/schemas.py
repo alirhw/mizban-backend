@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime, time
 
 from ninja import Schema
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, StrictInt, field_validator
 
 
 class OperatingHoursOut(Schema):
@@ -33,7 +33,7 @@ class _DesignAddonInBase(Schema):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=1, max_length=200)
-    fee: int = Field(ge=0)
+    fee: StrictInt = Field(ge=0, le=9_223_372_036_854_775_807)
 
     @field_validator("title")
     @classmethod
@@ -98,6 +98,8 @@ class VenueOwnerOut(Schema):
 
 
 class VenueCreateIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     city: str
     venue_type: str
@@ -112,6 +114,9 @@ class VenueUpdateIn(Schema):
     Explicit fields only: is_approved and subscription_status cannot be
     modified by owners (mass assignment prevention).
     """
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     city: str | None = None
     venue_type: str | None = None

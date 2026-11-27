@@ -13,6 +13,7 @@ Acceptance criteria from spec & task:
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 from django.core.cache import cache
@@ -273,9 +274,8 @@ def test_owner_cannot_self_approve_venue_via_update(api, owner_user):
         data={"name": "Updated Name", "is_approved": True},
         user=owner_user,
     )
-    assert response.status_code == 200
+    assert response.status_code == 422
     venue.refresh_from_db()
-    assert venue.name == "Updated Name"
     assert venue.is_approved is False
 
 
@@ -405,4 +405,29 @@ def test_owner_api_rejects_debug_auth_bridge_when_debug_false(client, owner_user
             HTTP_AUTHORIZATION=f"Bearer {owner_user.phone}",
         )
         assert resp.status_code == 401
+
+
+@pytest.mark.django_db
+def test_venue_create_and_update_reject_extra_fields(api: Any, owner_user: Any) -> None:
+    """Extra fields in VenueCreateIn and VenueUpdateIn are rejected with 422 (extra='forbid')."""
+    create_resp = api.post(
+        "/api/v1/venues/owner/venues",
+        data={
+            "name": "Strict Venue",
+            "city": "Tehran",
+            "venue_type": "CAFE",
+            "address": "Valiasr St",
+            "unexpected_field": "forbid_me",
+        },
+        user=owner_user,
+    )
+    assert create_resp.status_code == 422
+
+    venue: Any = VenueFactory(owner=owner_user)
+    update_resp = api.put(
+        f"/api/v1/venues/owner/venues/{venue.id}",
+        data={"name": "Updated Name", "unexpected_field": "forbid_me"},
+        user=owner_user,
+    )
+    assert update_resp.status_code == 422
 

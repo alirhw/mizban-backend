@@ -659,3 +659,29 @@ class TestPublicPanoramaReadEndpoint:
         )
         assert resp.status_code == 409
         assert resp.json()["error_code"] == "TABLE_NUMBER_ALREADY_EXISTS"
+
+    def test_create_and_update_pin_reject_extra_fields(
+        self, client: Client, venue_owner: Any, space: Any
+    ) -> None:
+        """Extra fields in TablePinCreateIn and TablePinUpdateIn return 422 (extra='forbid')."""
+        authenticate_client(client, venue_owner)
+
+        create_resp = client.post(
+            f"/api/v1/panoramas/spaces/{space.id}/pins",
+            {
+                "table_number": "T-EXTRA",
+                "capacity": 2,
+                "reservation_fee_toman": 50_000,
+                "unexpected_field": "forbid_me",
+            },
+            content_type="application/json",
+        )
+        assert create_resp.status_code == 422
+
+        pin = TablePinFactory(venue=space.venue, space=space, table_number="T-STRICT")
+        update_resp = client.put(
+            f"/api/v1/panoramas/pins/{pin.id}",
+            {"capacity": 4, "unexpected_field": "forbid_me"},
+            content_type="application/json",
+        )
+        assert update_resp.status_code == 422

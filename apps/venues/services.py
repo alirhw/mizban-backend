@@ -42,6 +42,7 @@ from core.jalali import format_jalali
 logger = logging.getLogger(__name__)
 
 VENUE_CACHE_TTL = 3600  # 1 hour
+MAX_BIGINT = 9_223_372_036_854_775_807
 
 
 def get_venue_cache_key(venue_id: int) -> str:
@@ -551,6 +552,10 @@ def _validate_addon_fields(title: str, fee: int) -> str:
         raise DjangoValidationError({"title": "Design add-on title must be at most 200 characters."})
     if isinstance(fee, bool) or fee < 0:
         raise DjangoValidationError({"fee": "Design add-on fee must be a non-negative integer."})
+    if fee > MAX_BIGINT:
+        raise DjangoValidationError(
+            {"fee": f"Design add-on fee must be at most {MAX_BIGINT}."}
+        )
     return cleaned
 
 

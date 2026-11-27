@@ -323,7 +323,7 @@ def test_wallet_pay_invalid_booking_statuses_rejected(invalid_status: str):
     assert booking.status == invalid_status
 
 
-def test_wallet_pay_nonexistent_booking_returns_404():
+def test_wallet_pay_nonexistent_booking_returns_404() -> None:
     customer: Any = UserFactory(role=UserRole.CUSTOMER)
     wallet = _funded_wallet(customer, 200_000)
 
@@ -341,7 +341,7 @@ def test_wallet_pay_nonexistent_booking_returns_404():
     assert PaymentTransaction.objects.filter(customer=customer).count() == 0
 
 
-def test_wallet_pay_none_lock_expires_at_rejected():
+def test_wallet_pay_none_lock_expires_at_rejected() -> None:
     customer: Any = UserFactory(role=UserRole.CUSTOMER)
     wallet = _funded_wallet(customer, 200_000)
     booking = _pending_booking(customer=customer, amount_online_toman=70_000)
@@ -368,7 +368,7 @@ def test_wallet_pay_none_lock_expires_at_rejected():
     assert booking.status == BookingStatus.PENDING_PAYMENT
 
 
-def test_wallet_pay_zero_amount_online_rejected():
+def test_wallet_pay_zero_amount_online_rejected() -> None:
     customer: Any = UserFactory(role=UserRole.CUSTOMER)
     wallet = _funded_wallet(customer, 200_000)
     booking = _pending_booking(customer=customer, amount_online_toman=0)

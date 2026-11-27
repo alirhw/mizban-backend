@@ -2440,6 +2440,7 @@
         "type": "object"
       },
       "VenueCreateIn": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "title": "Name",
@@ -2484,6 +2485,7 @@
         "type": "object"
       },
       "VenueUpdateIn": {
+        "additionalProperties": false,
         "description": "Update schema for venue owners.\n\nExplicit fields only: is_approved and subscription_status cannot be\nmodified by owners (mass assignment prevention).",
         "properties": {
           "name": {
@@ -2712,6 +2714,7 @@
             "type": "string"
           },
           "fee": {
+            "maximum": 9223372036854775807,
             "minimum": 0,
             "title": "Fee",
             "type": "integer"
@@ -2740,6 +2743,7 @@
             "type": "string"
           },
           "fee": {
+            "maximum": 9223372036854775807,
             "minimum": 0,
             "title": "Fee",
             "type": "integer"
@@ -3204,6 +3208,7 @@
         "type": "object"
       },
       "TablePinCreateIn": {
+        "additionalProperties": false,
         "description": "Payload to drop/create a new table pin in a space (Task T-018).",
         "properties": {
           "table_number": {
@@ -3277,6 +3282,7 @@
         "type": "object"
       },
       "TablePinUpdateIn": {
+        "additionalProperties": false,
         "description": "Payload to update an existing table pin (Task T-018).",
         "properties": {
           "table_number": {

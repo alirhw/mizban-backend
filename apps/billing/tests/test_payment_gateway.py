@@ -8,6 +8,7 @@ Task T-020 (PH-05 / WS-BILLING-WALLET / ARCH-005):
 """
 import uuid
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from django.core.exceptions import PermissionDenied
@@ -632,4 +633,38 @@ class TestVerifyPaymentService:
         with pytest.raises(ValueError) as exc:
             get_gateway("non_existent_provider")
         assert "unknown payment gateway provider" in str(exc.value).lower()
+
+    def test_initiate_payment_passes_customer_phone_in_gateway_request(self) -> None:
+        """initiate_payment_for_booking forwards customer.phone in PaymentInitiateRequest."""
+        now = timezone.now()
+        customer = UserFactory(role="CUSTOMER", phone="09125556677")
+        booking = BookingFactory(
+            customer=customer,
+            status=BookingStatus.PENDING_PAYMENT,
+            amount_online_toman=75_000,
+            locked_at=now,
+            lock_expires_at=now + timedelta(minutes=10),
+        )
+
+        recorded_requests: list[PaymentInitiateRequest] = []
+
+        class RecordingGatewayAdapter(SandboxGatewayAdapter):
+            def initiate(self, request: PaymentInitiateRequest) -> Any:
+                recorded_requests.append(request)
+                return super().initiate(request)
+
+        from apps.billing.services.gateway import register_gateway
+
+        register_gateway("recording_test", RecordingGatewayAdapter)
+        initiate_payment_for_booking(
+            user=customer,
+            booking_id=booking.id,
+            idempotency_key=str(uuid.uuid4()),
+            callback_url="http://127.0.0.1:3000/cb",
+            gateway_name="recording_test",
+        )
+
+        assert len(recorded_requests) == 1
+        assert recorded_requests[0].customer_phone == customer.phone
+        assert recorded_requests[0].customer_phone != ""
 

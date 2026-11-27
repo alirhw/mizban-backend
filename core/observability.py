@@ -4,7 +4,7 @@ Provides:
 - Request ID propagation via contextvars + RequestIdMiddleware (X-Request-ID).
 - PII scrubbing for Python logs and Sentry events (phone numbers, OTPs, secrets, card PANs).
 - Production JSON log formatter (timestamp, level, logger, message, request_id).
-- Fail-open Sentry SDK initialisation (disabled when SENTRY_DSN is unset; send_default_pii=False).
+- Fail-open Sentry SDK initialisation (disabled when SENTRY_DSN is unset; data_collection with PII disabled).
 """
 from __future__ import annotations
 
@@ -188,8 +188,20 @@ def init_sentry(
         "environment": environment,
         "release": release,
         "traces_sample_rate": clamped_rate,
-        "send_default_pii": False,
+        "data_collection": {
+            "user_info": False,
+            "cookies": {"mode": "allowlist", "terms": []},
+            "http_headers": {
+                "request": {"mode": "allowlist", "terms": []},
+            },
+            "url_query_params": {"mode": "allowlist", "terms": []},
+            "graphql": {"document": False, "variables": False},
+            "gen_ai": {"inputs": False, "outputs": False},
+            "database_query_data": False,
+            "queues": False,
+        },
         "before_send": scrub_sentry_event,
+        "before_send_transaction": scrub_sentry_event,
     }
     if transport is not None:
         kwargs["transport"] = transport

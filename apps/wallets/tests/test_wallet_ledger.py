@@ -368,6 +368,39 @@ def test_admin_permissions_are_strictly_read_only():
     assert tx_admin.has_delete_permission(request) is False
 
 
+@pytest.mark.django_db
+def test_admin_search_by_user_phone_returns_matching_wallet_and_transaction() -> None:
+    """WalletAdmin and WalletTransactionAdmin search by user.phone without FieldError."""
+    from typing import Any
+
+    target_user: Any = UserFactory(role="CUSTOMER", phone="09123334455")
+    other_user: Any = UserFactory(role="CUSTOMER", phone="09129998877")
+
+    target_wallet = get_or_create_wallet_for_user(target_user)
+    other_wallet = get_or_create_wallet_for_user(other_user)
+
+    target_tx = credit_wallet(
+        target_wallet, 50_000, reason="Target credit", idempotency_key="search-target"
+    )
+    credit_wallet(other_wallet, 50_000, reason="Other credit", idempotency_key="search-other")
+
+    site = AdminSite()
+    rf = RequestFactory()
+    request = rf.get("/admin/")
+
+    wallet_admin = WalletAdmin(Wallet, site)
+    wallet_qs, _ = wallet_admin.get_search_results(
+        request, Wallet.objects.all(), target_user.phone
+    )
+    assert list(wallet_qs) == [target_wallet]
+
+    tx_admin = WalletTransactionAdmin(WalletTransaction, site)
+    tx_qs, _ = tx_admin.get_search_results(
+        request, WalletTransaction.objects.all(), target_user.phone
+    )
+    assert list(tx_qs) == [target_tx]
+
+
 # ==============================================================================
 # 9. Concurrency & Race Condition Test (PostgreSQL Only)
 # ==============================================================================

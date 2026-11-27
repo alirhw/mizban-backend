@@ -141,7 +141,7 @@ def initiate_payment_for_booking(
         callback_url=callback_url,
         description=f"Table reservation at {booking.venue.name} (Booking #{booking.id})",
         order_id=str(tx.id),
-        customer_phone=getattr(booking.customer, "phone_number", ""),
+        customer_phone=getattr(booking.customer, "phone", ""),
         customer_email=getattr(booking.customer, "email", ""),
         metadata={"booking_id": booking.id, "transaction_id": tx.id},
     )

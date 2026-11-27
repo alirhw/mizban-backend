@@ -28,6 +28,8 @@ class PanoramaUploadOut(Schema):
 class TablePinCreateIn(Schema):
     """Payload to drop/create a new table pin in a space (Task T-018)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     table_number: str
     capacity: int = 2
     pitch: float | None = None
@@ -83,6 +85,8 @@ class TablePinCreateIn(Schema):
 
 class TablePinUpdateIn(Schema):
     """Payload to update an existing table pin (Task T-018)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     table_number: str | None = None
     capacity: int | None = None

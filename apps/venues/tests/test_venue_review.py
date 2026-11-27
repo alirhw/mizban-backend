@@ -3,15 +3,22 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from django.core.cache import cache
 from django.core.management import call_command
+from django.http import Http404
 from django.test import Client
 from django.utils import timezone
 
 from apps.accounts.models import UserRole
 from apps.venues.models import VenueReviewStatus
+from apps.venues.services import (
+    approve_venue,
+    get_venue_slug_cache_key,
+    reject_venue,
+)
 from apps.venues.tests.factories import UserFactory, VenueFactory, activate_test_subscription
 from core.testing import authenticate_client
 
@@ -411,3 +418,72 @@ def test_owner_and_admin_endpoints_expose_review_fields(api, admin_user, owner_u
 def test_no_pending_migrations():
     """Case 14: Django makemigrations --check --dry-run reports no pending model changes."""
     call_command("makemigrations", "--check", "--dry-run")
+
+
+@pytest.mark.django_db
+def test_reject_venue_extra_field_returns_422(api: ApiHelper, admin_user: Any, owner_user: Any) -> None:
+    """Extra field in VenueRejectIn is rejected with 422 (extra='forbid')."""
+    venue: Any = VenueFactory(owner=owner_user, review_status=VenueReviewStatus.PENDING_REVIEW)
+
+    resp = api.post(
+        f"/api/v1/venues/admin/venues/{venue.id}/reject",
+        data={"reason": "Missing photos", "extra_field": "forbid_me"},
+        user=admin_user,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.django_db
+def test_unauthenticated_returns_401_on_review_endpoints(api: ApiHelper, owner_user: Any) -> None:
+    """Unauthenticated requests to /submit, /approve, and /reject return 401."""
+    venue: Any = VenueFactory(owner=owner_user, review_status=VenueReviewStatus.DRAFT)
+
+    assert api.post(f"/api/v1/venues/owner/venues/{venue.id}/submit").status_code == 401
+    assert api.post(f"/api/v1/venues/admin/venues/{venue.id}/approve").status_code == 401
+    assert (
+        api.post(
+            f"/api/v1/venues/admin/venues/{venue.id}/reject",
+            data={"reason": "Unauthorized"},
+        ).status_code
+        == 401
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_submit_and_reject_invalidate_prewarmed_public_cache(
+    api: ApiHelper, admin_user: Any, owner_user: Any
+) -> None:
+    """Both /submit and /reject invalidate a pre-warmed public venue detail cache."""
+    venue: Any = VenueFactory(
+        owner=owner_user,
+        slug="review-cache-cafe",
+        review_status=VenueReviewStatus.REJECTED,
+        is_approved=False,
+    )
+    cache_key = get_venue_slug_cache_key(venue.slug)
+
+    cache.set(cache_key, {"name": "Prewarmed Submit"}, timeout=300)
+    assert cache.get(cache_key) is not None
+    submit_resp = api.post(f"/api/v1/venues/owner/venues/{venue.id}/submit", user=owner_user)
+    assert submit_resp.status_code == 200
+    assert cache.get(cache_key) is None
+
+    cache.set(cache_key, {"name": "Prewarmed Reject"}, timeout=300)
+    assert cache.get(cache_key) is not None
+    reject_resp = api.post(
+        f"/api/v1/venues/admin/venues/{venue.id}/reject",
+        data={"reason": "Still incomplete"},
+        user=admin_user,
+    )
+    assert reject_resp.status_code == 200
+    assert cache.get(cache_key) is None
+
+
+@pytest.mark.django_db
+def test_approve_and_reject_venue_nonexistent_raise_404(admin_user: Any) -> None:
+    """Direct service guard coverage: approve_venue and reject_venue raise Http404 for missing venue."""
+    with pytest.raises(Http404):
+        approve_venue(admin_user, 9_999_999)
+
+    with pytest.raises(Http404):
+        reject_venue(admin_user, 9_999_999, reason="Does not exist")

@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
+from typing import Any
 
+import environ
 import pytest
 import sentry_sdk
 from django.conf import settings
@@ -24,8 +27,8 @@ def test_sentry_disabled_when_dsn_unset():
     assert init_sentry(dsn="   ", environment="test", release="mizban-backend@0.1.0") is False
 
 
-def test_sentry_init_with_test_dsn_captures_event_with_tags_and_no_pii():
-    captured_envelopes: list[object] = []
+def test_sentry_init_with_test_dsn_captures_event_with_tags_and_no_pii() -> None:
+    captured_envelopes: list[Any] = []
 
     class CapturingTransport(sentry_sdk.Transport):
         def capture_envelope(self, envelope):
@@ -43,7 +46,8 @@ def test_sentry_init_with_test_dsn_captures_event_with_tags_and_no_pii():
         assert ok is True
 
         client = sentry_sdk.get_client()
-        assert client.options["send_default_pii"] is False
+        assert client.options["data_collection"]["user_info"] is False
+        assert client.should_send_default_pii() is False
         assert client.options["environment"] == "staging"
         assert client.options["release"] == "mizban-backend@0.1.0"
         assert client.options["traces_sample_rate"] == 0.1
@@ -151,3 +155,15 @@ def test_operational_alerts_documented_in_spec():
         "wallet ledger",
     ):
         assert required_rule.lower() in content.lower(), f"Missing alert rule in spec: {required_rule}"
+
+
+def test_csrf_trusted_origins_honoured_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CSRF_TRUSTED_ORIGINS is parsed as a list from env and defaults to [] when unset."""
+    monkeypatch.setenv("CSRF_TRUSTED_ORIGINS", "https://mizban.ir,https://admin.mizban.ir")
+    env_set = environ.Env(CSRF_TRUSTED_ORIGINS=(list, []))
+    assert env_set("CSRF_TRUSTED_ORIGINS") == ["https://mizban.ir", "https://admin.mizban.ir"]
+
+    monkeypatch.delenv("CSRF_TRUSTED_ORIGINS", raising=False)
+    env_unset = environ.Env(CSRF_TRUSTED_ORIGINS=(list, []))
+    assert env_unset("CSRF_TRUSTED_ORIGINS") == []
+    assert os.environ.get("CSRF_TRUSTED_ORIGINS") is None
