@@ -2124,6 +2124,203 @@
           }
         ]
       }
+    },
+    "/api/v1/reviews/": {
+      "post": {
+        "operationId": "apps_reviews_api_create_review",
+        "summary": "Submit a review (FR-24)",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMineOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Submit a rating and review text for a completed booking.",
+        "tags": [
+          "reviews"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reviews/venues/{venue_id}/": {
+      "get": {
+        "operationId": "apps_reviews_api_list_venue_reviews",
+        "summary": "List public venue reviews (FR-25)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "title": "Venue Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewListOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Return visible reviews and aggregate rating for a venue.",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/reviews/tables/{table_pin_id}/": {
+      "get": {
+        "operationId": "apps_reviews_api_list_table_reviews",
+        "summary": "List public table reviews (FR-25)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_pin_id",
+            "schema": {
+              "title": "Table Pin Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewListOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Return visible reviews and aggregate rating for a table pin.",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/reviews/my/": {
+      "get": {
+        "operationId": "apps_reviews_api_list_my_reviews",
+        "summary": "List my submitted reviews",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewMineOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Return all reviews submitted by the authenticated customer.",
+        "tags": [
+          "reviews"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4521,6 +4718,162 @@
           "entries"
         ],
         "title": "WalletMeOut",
+        "type": "object"
+      },
+      "ReviewMineOut": {
+        "additionalProperties": false,
+        "description": "Customer's own review payload including booking reference and visibility.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "reviewer_name": {
+            "title": "Reviewer Name",
+            "type": "string"
+          },
+          "table_number": {
+            "title": "Table Number",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "is_visible": {
+            "title": "Is Visible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "rating",
+          "text",
+          "reviewer_name",
+          "table_number",
+          "created_at",
+          "booking_id",
+          "is_visible"
+        ],
+        "title": "ReviewMineOut",
+        "type": "object"
+      },
+      "ReviewCreateIn": {
+        "additionalProperties": false,
+        "description": "Customer payload for submitting a review for a completed booking.",
+        "properties": {
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "rating": {
+            "maximum": 5,
+            "minimum": 1,
+            "title": "Rating",
+            "type": "integer"
+          },
+          "text": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "booking_id",
+          "rating",
+          "text"
+        ],
+        "title": "ReviewCreateIn",
+        "type": "object"
+      },
+      "ReviewListOut": {
+        "additionalProperties": false,
+        "description": "Paginated public review list with aggregate rating summary.",
+        "properties": {
+          "average_rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Rating"
+          },
+          "review_count": {
+            "title": "Review Count",
+            "type": "integer"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewPublicOut"
+            },
+            "title": "Reviews",
+            "type": "array"
+          }
+        },
+        "required": [
+          "average_rating",
+          "review_count",
+          "reviews"
+        ],
+        "title": "ReviewListOut",
+        "type": "object"
+      },
+      "ReviewPublicOut": {
+        "additionalProperties": false,
+        "description": "Publicly visible review payload (never exposes PII).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "reviewer_name": {
+            "title": "Reviewer Name",
+            "type": "string"
+          },
+          "table_number": {
+            "title": "Table Number",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "rating",
+          "text",
+          "reviewer_name",
+          "table_number",
+          "created_at"
+        ],
+        "title": "ReviewPublicOut",
         "type": "object"
       }
     },

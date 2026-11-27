@@ -209,6 +209,30 @@ class VenueNotSubmittableError(DomainError):
     default_message = "Venue cannot be submitted for review in its current status."
 
 
+class ReviewNotAllowedError(DomainError):
+    """User is not allowed to submit a review for this booking."""
+
+    error_code = "REVIEW_NOT_ALLOWED"
+    status_code = 403
+    default_message = "You are not allowed to review this booking."
+
+
+class ReviewNotEligibleError(DomainError):
+    """Booking is not eligible for review in its current state or before slot end."""
+
+    error_code = "REVIEW_NOT_ELIGIBLE"
+    status_code = 409
+    default_message = "Only completed bookings after slot end can be reviewed."
+
+
+class ReviewAlreadyExistsError(DomainError):
+    """A review has already been submitted for this booking."""
+
+    error_code = "REVIEW_ALREADY_EXISTS"
+    status_code = 409
+    default_message = "A review has already been submitted for this booking."
+
+
 class PaymentGatewayError(DomainError):
     """Payment gateway rejected operation or experienced communication failure (ARCH-005)."""
 
