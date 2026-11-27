@@ -56,3 +56,39 @@
 | **Booking-Lock Contention Errors** | Repeated `SlotAlreadyLockedError` / `lock_timeout` / DB 5s timeout spikes | Medium | Backend / SRE Owner (to be configured by owner) |
 | **OTP Rate-Limit Abuse** | Sustained `OTP request rate limit exceeded` (`OTP_RATE_LIMITED` 429) per-phone or per-IP spike | Medium | Security / Backend Owner (to be configured by owner) |
 | **Wallet Ledger Invariant Violations** | Any `balance < 0` check constraint error or append-only ledger breach attempt | Critical | Payments / Security Owner (to be configured by owner) |
+
+## 5. MVP Release, Host Recommendation & Checklists (T-032)
+
+### 5.1 Environment Inventory
+- **Dev Setup:** Local Windows laptop running Kiri (`postgres:16-alpine` on `5433`, `redis:8` on `6379`), Django 5.2.19 (`.venv` Python 3.14.6), Next.js 16.4.6 (`frontend/`).
+- **Existing Docker:** `Dockerfile` (`python:3.14-slim`, `libmagic1`, `gunicorn`), `docker-compose.yml` (dev Postgres 16 + Redis 8 + optional `web`/`worker`). Added `frontend/Dockerfile`, `.dockerignore`, `frontend/.dockerignore`, and `docker-compose.prod.yml`.
+- **Production Settings (`config/settings/production.py`):** `DEBUG = False`, fail-closed `SECRET_KEY`/`ALLOWED_HOSTS`, `SECURE_HSTS_SECONDS = 31_536_000`, `SESSION_COOKIE_HTTPONLY = True`, `SECURE_SSL_REDIRECT`/`SESSION_COOKIE_SECURE`/`CSRF_COOKIE_SECURE` default `True`, JSON console logging.
+- **Domain & Secrets Status:** **No domain** registered yet; `SENTRY_DSN` pending owner project; payment gateway is **sandbox-only**; SMS is **console/fake adapter**.
+
+### 5.2 Host Options & Recommendation (Awaiting Owner Approval)
+
+| Option | Estimated Cost | Ops Effort | Trade-offs |
+| :--- | :--- | :--- | :--- |
+| **1. Iranian Cloud VPS (ArvanCloud / ParsPack) + Docker Compose + Nginx + Certbot (Recommended)** | ~400k–900k IRR/mo (2 vCPU / 4 GB RAM) | Medium (1-time setup) | Full control over PostgreSQL 16 `select_for_update()`, Redis 8, Celery + media disk, zero egress/sanctions friction for Iranian users & future ZarinPal/SMS.ir. |
+| **2. Liara (Managed PaaS in Iran)** | ~700k–1.5M IRR/mo (App + DB + Redis + Disk) | Low | Fast push-to-deploy, managed Postgres/Redis, but higher monthly cost per service and less control over Celery/media volumes. |
+| **3. Foreign VPS / PaaS (Hetzner / Railway / Fly.io)** | €5–€15/mo | Medium | Cheap & reliable globally, but higher latency from Iran and potential payment/SMS IP-whitelist issues with Iranian gateways. |
+
+**Recommendation:** **Option 1 (Iranian Cloud VPS + Docker Compose `docker-compose.prod.yml` + Nginx TLS)** — lowest friction for Iranian latency, PostgreSQL row-locks, local media storage, and post-MVP ZarinPal/SMS.ir integration. **Not deployed yet — awaiting explicit owner host approval.**
+
+### 5.3 Migration, Backup & Rollback Checklist
+- **Fresh-DB Migration:** Run `docker compose -f docker-compose.prod.yml exec web python manage.py migrate --noinput` (never load `seed_dev_panorama` or `seed_dev_real_cafe` in production).
+- **Backup:** Before every release/migration, snapshot PostgreSQL (`pg_dump -Fc -U "$POSTGRES_USER" "$POSTGRES_DB" > backup_$(date +%F_%H%M).dump`) and back up `media_data` volume.
+- **Rollback:** Stop `web`/`worker`/`frontend`, restore previous image tag + DB dump (`pg_restore --clean --if-exists`), restart containers, and re-run smoke checks.
+
+### 5.4 Production Smoke-Test Checklist
+1. `GET /api/v1/healthz` returns `200 {"status": "ok", "db": true, "redis": true}`.
+2. `GET /` (Next.js) returns `200` and renders public approved/active venues (empty list on fresh DB).
+3. Login via OTP (`console`/`fake` adapter in staging) sets `HttpOnly` session cookie + CSRF token.
+4. Customer initiates booking lock → sandbox payment → callback confirms `CONFIRMED` + split receipt.
+5. Customer opens `/my-bookings`, cancels ≥ 36h ahead → `CANCELLED` + 100% online fee credited to wallet.
+6. Owner opens `/owner` and views masked-phone booking list (`customer_phone_masked`) and blocked slots.
+
+### 5.5 MVP Release Notes & Post-MVP Launch Blockers
+- **What this MVP IS:** A deployable, end-to-end demonstrable platform (360° panorama table selection, 90+30 min slots, 10-min DB lock, split receipt, 36h cancellation to non-withdrawable wallet, owner panel, structured JSON logs, Sentry PII scrubbing).
+- **What this MVP IS NOT:** Not a public launch collecting real money — uses **sandbox payment**, **console/fake SMS**, **manual admin venue subscriptions**, and **no reviews**.
+- **Post-MVP Launch Blockers:** (1) Real Iranian payment gateway adapter + bank-card refund flow, (2) SMS.ir OTP adapter, (3) online subscription purchase, (4) reviews app, (5) live `SENTRY_DSN` + alert destinations + domain/TLS, (6) T-030 open-item follow-ups.

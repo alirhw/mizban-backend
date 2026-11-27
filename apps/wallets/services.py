@@ -107,11 +107,12 @@ def credit_wallet(
             payment_transaction=payment_transaction,
         )
         logger.info(
-            "Wallet id=%s credited +%s Toman (new balance=%s, tx id=%s, reason=%s)",
+            "Wallet id=%s credited +%s Toman (new balance=%s, tx id=%s, booking_id=%s, reason=%s)",
             locked_wallet.pk,
             amount_toman,
             locked_wallet.balance_toman,
             tx.pk,
+            getattr(booking, "pk", None),
             reason,
         )
         return tx

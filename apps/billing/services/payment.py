@@ -165,6 +165,12 @@ def initiate_payment_for_booking(
         provider_reference=result.authority,
         redirect_url=result.redirect_url,
     )
+    logger.info(
+        "Payment initiated: booking_id=%s tx_id=%s authority=%s",
+        booking.id,
+        tx.id,
+        result.authority,
+    )
     return tx, result.redirect_url
 
 
@@ -465,6 +471,12 @@ def handle_payment_callback(
         if booking.status == BookingStatus.INITIATED:
             booking.transition_to(BookingStatus.PENDING_PAYMENT)
         booking.transition_to(BookingStatus.CONFIRMED)
+        logger.info(
+            "Payment callback confirmed booking_id=%s tx_id=%s authority=%s",
+            booking.id,
+            tx_locked.id,
+            tx_locked.provider_reference,
+        )
         return PaymentCallbackResult(
             booking_id=booking.id,
             booking_status=BookingStatus.CONFIRMED,

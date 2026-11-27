@@ -1,0 +1,96 @@
+# Production-mode Docker Compose stack (Task T-032 / host-independent)
+# Usage:
+#   docker compose -f docker-compose.prod.yml up --build -d
+#   docker compose -f docker-compose.prod.yml exec web python manage.py migrate --noinput
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_DB: ${POSTGRES_DB:-mizban}
+      POSTGRES_USER: ${POSTGRES_USER:-mizban}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-db-password}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mizban} -d ${POSTGRES_DB:-mizban}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build: .
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      APP_RELEASE: ${APP_RELEASE:-mizban-backend@0.1.0}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required in production}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:?ALLOWED_HOSTS is required in production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-mizban}:${POSTGRES_PASSWORD:-change-me-db-password}@db:5432/${POSTGRES_DB:-mizban}
+      REDIS_URL: redis://redis:6379/0
+      CACHE_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      PAYMENT_GATEWAY_PROVIDER: ${PAYMENT_GATEWAY_PROVIDER:-sandbox}
+      PAYMENT_GATEWAY_CALLBACK_BASE_URL: ${PAYMENT_GATEWAY_CALLBACK_BASE_URL:-http://127.0.0.1:3000}
+      SMS_SENDER: ${SMS_SENDER:-console}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-True}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-True}
+      CSRF_COOKIE_SECURE: ${CSRF_COOKIE_SECURE:-True}
+    volumes:
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: celery -A config worker --loglevel=info
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      APP_RELEASE: ${APP_RELEASE:-mizban-backend@0.1.0}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required in production}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:?ALLOWED_HOSTS is required in production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-mizban}:${POSTGRES_PASSWORD:-change-me-db-password}@db:5432/${POSTGRES_DB:-mizban}
+      REDIS_URL: redis://redis:6379/0
+      CACHE_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+    volumes:
+      - media_data:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    environment:
+      NODE_ENV: production
+      BACKEND_INTERNAL_URL: http://web:8000
+      API_INTERNAL_URL: http://web:8000/api/v1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - web
+
+volumes:
+  pgdata_prod:
+  media_data:
+  static_data:
