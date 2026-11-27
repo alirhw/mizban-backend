@@ -668,3 +668,86 @@ class TestVerifyPaymentService:
         assert recorded_requests[0].customer_phone == customer.phone
         assert recorded_requests[0].customer_phone != ""
 
+
+@pytest.mark.django_db
+class TestPaymentDomainServices:
+    def test_confirm_notification_trigger_issues_no_extra_venue_owner_queries(self) -> None:
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.billing.services.payment import pay_booking_with_wallet
+        from apps.wallets.services import credit_wallet, get_or_create_wallet_for_user
+
+        now = timezone.now()
+        owner: Any = UserFactory(role="VENUE_OWNER")
+        customer: Any = UserFactory(role="CUSTOMER")
+        wallet = get_or_create_wallet_for_user(customer)
+        credit_wallet(
+            wallet,
+            100_000,
+            reason="seed",
+            idempotency_key=f"seed-{uuid.uuid4().hex}",
+        )
+        booking: Any = BookingFactory(
+            customer=customer,
+            status=BookingStatus.PENDING_PAYMENT,
+            amount_online_toman=50_000,
+            locked_at=now,
+            lock_expires_at=now + timedelta(minutes=10),
+        )
+        booking.venue.owner = owner
+        booking.venue.save(update_fields=["owner"])
+
+        with CaptureQueriesContext(connection) as ctx:
+            pay_booking_with_wallet(
+                user=customer,
+                booking_id=booking.id,
+                idempotency_key=f"wpay-{uuid.uuid4().hex}",
+            )
+
+        venue_selects = [
+            q["sql"]
+            for q in ctx.captured_queries
+            if 'FROM "venues_venue"' in q["sql"]
+        ]
+        user_selects = [
+            q["sql"]
+            for q in ctx.captured_queries
+            if 'FROM "accounts_user"' in q["sql"]
+        ]
+        assert len(venue_selects) == 0
+        assert len(user_selects) <= 1
+
+    def test_initiate_payment_gateway_payload_has_empty_customer_email(self) -> None:
+        from apps.billing.services.gateway import register_gateway
+
+        now = timezone.now()
+        customer: Any = UserFactory(role="CUSTOMER", phone="09125557788")
+        customer.email = "should-not-be-read@example.com"
+        booking: Any = BookingFactory(
+            customer=customer,
+            status=BookingStatus.PENDING_PAYMENT,
+            amount_online_toman=75_000,
+            locked_at=now,
+            lock_expires_at=now + timedelta(minutes=10),
+        )
+
+        recorded_requests: list[PaymentInitiateRequest] = []
+
+        class EmailCaptureGatewayAdapter(SandboxGatewayAdapter):
+            def initiate(self, request: PaymentInitiateRequest) -> Any:
+                recorded_requests.append(request)
+                return super().initiate(request)
+
+        register_gateway("email_capture_test", EmailCaptureGatewayAdapter)
+        initiate_payment_for_booking(
+            user=customer,
+            booking_id=booking.id,
+            idempotency_key=str(uuid.uuid4()),
+            callback_url="http://127.0.0.1:3000/cb",
+            gateway_name="email_capture_test",
+        )
+
+        assert len(recorded_requests) == 1
+        assert recorded_requests[0].customer_email == ""
+

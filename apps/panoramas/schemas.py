@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from ninja import Schema
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict, Field, StrictInt, field_validator
 
 
 class PanoramaUploadOut(Schema):
@@ -31,12 +31,12 @@ class TablePinCreateIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
     table_number: str
-    capacity: int = 2
+    capacity: StrictInt = Field(default=2, ge=0)
     pitch: float | None = None
     yaw: float | None = None
     panorama_image_id: UUID | None = None
     description: str = ""
-    reservation_fee_toman: int
+    reservation_fee_toman: StrictInt = Field(ge=0, le=9_223_372_036_854_775_807)
     is_smoking: bool = False
     is_active: bool = True
 
@@ -89,12 +89,16 @@ class TablePinUpdateIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
     table_number: str | None = None
-    capacity: int | None = None
+    capacity: StrictInt | None = Field(default=None, ge=0)
     pitch: float | None = None
     yaw: float | None = None
     panorama_image_id: UUID | None = None
     description: str | None = None
-    reservation_fee_toman: int | None = None
+    reservation_fee_toman: StrictInt | None = Field(
+        default=None,
+        ge=0,
+        le=9_223_372_036_854_775_807,
+    )
     is_smoking: bool | None = None
     is_active: bool | None = None
 

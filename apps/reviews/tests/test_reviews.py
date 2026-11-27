@@ -855,3 +855,18 @@ def test_admin_moderation_pagination_clamping_is_staff_and_403_on_list_and_show(
     clamped = client.get("/api/v1/reviews/admin/?limit=200&offset=-5")
     assert clamped.status_code == 200
     assert [item["id"] for item in clamped.json()] == [r3.id, r2.id, r1.id]
+
+
+@pytest.mark.django_db
+def test_review_is_visible_index_migration_and_no_pending_migrations() -> None:
+    """Verify Review.is_visible db_index, migration 0002 existence, and no pending migrations."""
+    from pathlib import Path
+
+    from django.core.management import call_command
+
+    assert getattr(Review._meta.get_field("is_visible"), "db_index", False) is True
+    migration_path = (
+        Path(__file__).resolve().parents[1] / "migrations" / "0002_alter_review_is_visible.py"
+    )
+    assert migration_path.exists()
+    call_command("makemigrations", "--check", "--dry-run")

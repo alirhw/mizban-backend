@@ -3819,6 +3819,7 @@
           },
           "capacity": {
             "default": 2,
+            "minimum": 0,
             "title": "Capacity",
             "type": "integer"
           },
@@ -3862,6 +3863,8 @@
             "type": "string"
           },
           "reservation_fee_toman": {
+            "maximum": 9223372036854775807,
+            "minimum": 0,
             "title": "Reservation Fee Toman",
             "type": "integer"
           },
@@ -3901,6 +3904,7 @@
           "capacity": {
             "anyOf": [
               {
+                "minimum": 0,
                 "type": "integer"
               },
               {
@@ -3957,6 +3961,8 @@
           "reservation_fee_toman": {
             "anyOf": [
               {
+                "maximum": 9223372036854775807,
+                "minimum": 0,
                 "type": "integer"
               },
               {

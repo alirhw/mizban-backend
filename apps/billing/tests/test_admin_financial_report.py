@@ -407,3 +407,11 @@ def test_admin_financial_report_unknown_payment_status_returns_422() -> None:
     resp = client.get(REPORT_URL, {"payment_status": "BOGUS"})
 
     assert resp.status_code == 422
+
+
+def test_admin_financial_report_invalid_calendar_date_triggers_value_error_422() -> None:
+    client, _ = _admin_client()
+
+    resp = client.get(REPORT_URL, {"from_date": "2026-02-31"})
+
+    assert resp.status_code == 422

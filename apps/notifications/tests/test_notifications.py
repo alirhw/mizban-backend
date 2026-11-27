@@ -494,3 +494,159 @@ def test_set_null_fallback_rendering_and_atomic_rollback() -> None:
             )
             raise RuntimeError("force rollback")
     assert Notification.objects.count() == count_before
+
+
+def test_handle_payment_callback_creates_booking_confirmed_notification() -> None:
+    """Gateway callback confirmation creates BOOKING_CONFIRMED notification for venue owner."""
+    from apps.billing.services.gateway import reset_sandbox_gateway
+    from apps.billing.services.payment import handle_payment_callback, initiate_payment_for_booking
+
+    reset_sandbox_gateway()
+    owner = _user(role=UserRole.VENUE_OWNER)
+    customer = _user(role=UserRole.CUSTOMER)
+    booking = _pending_booking(customer=customer, owner=owner, amount_online_toman=50_000)
+
+    tx, _ = initiate_payment_for_booking(
+        user=customer,
+        booking_id=booking.id,
+        idempotency_key=f"cb-init-{uuid.uuid4().hex}",
+        callback_url="http://127.0.0.1:3000/cb",
+    )
+    handle_payment_callback(
+        callback_params={"authority": tx.provider_reference, "status": "OK"}
+    )
+
+    assert (
+        Notification.objects.filter(
+            recipient=owner,
+            type=NotificationType.BOOKING_CONFIRMED,
+            booking=booking,
+        ).count()
+        == 1
+    )
+
+
+def test_idempotent_cancel_booking_replay_creates_no_duplicate_notification() -> None:
+    """Calling cancel_booking twice on the same booking creates only one BOOKING_CANCELLED notification."""
+    from apps.bookings.services import cancel_booking
+
+    owner = _user(role=UserRole.VENUE_OWNER)
+    customer = _user(role=UserRole.CUSTOMER)
+    booking = _pending_booking(
+        customer=customer,
+        owner=owner,
+        hours_ahead=48,
+        status=BookingStatus.CONFIRMED,
+    )
+
+    cancel_booking(booking.id, actor=customer)
+    cancel_booking(booking.id, actor=customer)
+
+    assert (
+        Notification.objects.filter(
+            recipient=owner,
+            type=NotificationType.BOOKING_CANCELLED,
+            booking=booking,
+        ).count()
+        == 1
+    )
+
+
+def test_admin_user_list_returns_zero_notifications() -> None:
+    """ADMIN user gets an empty list even when booking/venue notifications exist."""
+    admin = _user(role=UserRole.ADMIN)
+    owner = _user(role=UserRole.VENUE_OWNER)
+    venue = _venue(owner=owner, review_status=VenueReviewStatus.APPROVED)
+    create_notification(
+        recipient=owner,
+        type=NotificationType.VENUE_APPROVED,
+        venue=venue,
+    )
+
+    client = authenticate_client(Client(), admin)
+    resp = client.get("/api/v1/notifications/")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_list_notifications_negative_offset_clamps_to_zero() -> None:
+    """Negative offset clamps to 0 and returns the same first page as offset=0."""
+    owner = _user(role=UserRole.VENUE_OWNER)
+    venue = _venue(owner=owner)
+    create_notification(recipient=owner, type=NotificationType.VENUE_APPROVED, venue=venue)
+    create_notification(recipient=owner, type=NotificationType.VENUE_REJECTED, venue=venue)
+
+    client = authenticate_client(Client(), owner)
+    resp_neg = client.get("/api/v1/notifications/?offset=-10")
+    resp_zero = client.get("/api/v1/notifications/?offset=0")
+    assert resp_neg.status_code == 200
+    assert resp_zero.status_code == 200
+    assert resp_neg.json() == resp_zero.json()
+
+
+def test_confirm_and_cancel_never_call_sms_sender(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Booking confirm and cancel must not invoke the SMS sender."""
+    from apps.billing.services.payment import pay_booking_with_wallet
+    from apps.bookings.services import cancel_booking
+
+    sent_messages: list[tuple[str, str]] = []
+
+    class FakeSmsSender:
+        def send_otp(self, phone: str, code: str) -> None:
+            sent_messages.append((phone, code))
+
+    monkeypatch.setattr("apps.accounts.sms.get_sms_sender", lambda: FakeSmsSender())
+
+    owner = _user(role=UserRole.VENUE_OWNER)
+    customer = _user(role=UserRole.CUSTOMER)
+    _fund_wallet(customer, 100_000)
+    booking = _pending_booking(customer=customer, owner=owner, hours_ahead=48, amount_online_toman=50_000)
+
+    pay_booking_with_wallet(
+        user=customer,
+        booking_id=booking.id,
+        idempotency_key=f"sms-pay-{uuid.uuid4().hex}",
+    )
+    cancel_booking(booking.id, actor=customer)
+
+    assert len(sent_messages) == 0
+
+
+def test_deleted_booking_set_null_renders_cancelled_fallback_copy() -> None:
+    """Deleting a booking sets notification.booking=NULL and renders cancelled fallback copy."""
+    owner = _user(role=UserRole.VENUE_OWNER)
+    customer = _user(role=UserRole.CUSTOMER)
+    booking = _pending_booking(
+        customer=customer,
+        owner=owner,
+        hours_ahead=48,
+        status=BookingStatus.CANCELLED,
+    )
+    notif = create_notification(
+        recipient=owner,
+        type=NotificationType.BOOKING_CANCELLED,
+        booking=booking,
+    )
+
+    client = authenticate_client(Client(), owner)
+    live_resp = client.get("/api/v1/notifications/")
+    assert live_resp.status_code == 200
+    live_rows = live_resp.json()
+    assert len(live_rows) == 1
+    assert live_rows[0]["title"] == "رزرو لغو شد"
+    assert booking.venue.name in live_rows[0]["body"]
+    assert "لغو شد." in live_rows[0]["body"]
+
+    booking.delete()
+    notif.refresh_from_db()
+    assert notif.booking_id is None
+
+    fallback_resp = client.get("/api/v1/notifications/")
+    assert fallback_resp.status_code == 200
+    fallback_rows = fallback_resp.json()
+    assert len(fallback_rows) == 1
+    assert fallback_rows[0]["booking_id"] is None
+    assert (fallback_rows[0]["title"], fallback_rows[0]["body"]) == (
+        "رزرو لغو شد",
+        "یک رزرو لغو شد.",
+    )

@@ -142,7 +142,7 @@ def initiate_payment_for_booking(
         description=f"Table reservation at {booking.venue.name} (Booking #{booking.id})",
         order_id=str(tx.id),
         customer_phone=getattr(booking.customer, "phone", ""),
-        customer_email=getattr(booking.customer, "email", ""),
+        customer_email="",  # User model has no email field (phone field is User.phone)
         metadata={"booking_id": booking.id, "transaction_id": tx.id},
     )
 
@@ -384,7 +384,7 @@ def handle_payment_callback(
         pin = TablePin.objects.select_for_update().get(pk=tx.booking.table_pin_id)
         booking = (
             Booking.objects.select_for_update()
-            .select_related("table_pin")
+            .select_related("table_pin", "venue__owner")
             .get(pk=tx.booking_id)
         )
         tx_locked = PaymentTransaction.objects.select_for_update().get(pk=tx.pk)
@@ -529,7 +529,12 @@ def pay_booking_with_wallet(
         return existing_tx
 
     with transaction.atomic():
-        booking = Booking.objects.select_for_update().filter(pk=booking_id).first()
+        booking = (
+            Booking.objects.select_for_update()
+            .select_related("venue__owner")
+            .filter(pk=booking_id)
+            .first()
+        )
         if not booking:
             raise Http404("Booking not found.")
 

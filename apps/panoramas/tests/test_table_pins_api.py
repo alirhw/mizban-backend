@@ -257,6 +257,85 @@ class TestTablePinValidation:
         )
         assert resp.status_code == 422
 
+    def test_table_pin_capacity_boolean_rejected_422(self, client: Client, venue_owner: Any, space: Any) -> None:
+        """Boolean capacity (true) must be rejected with 422 on create and update."""
+        authenticate_client(client, venue_owner)
+        create_url = f"/api/v1/panoramas/spaces/{space.id}/pins"
+
+        resp = client.post(
+            create_url,
+            '{"table_number": "T-BOOL", "capacity": true, "pitch": 0.0, "yaw": 0.0, "reservation_fee_toman": 50000}',
+            content_type="application/json",
+        )
+        assert resp.status_code == 422
+
+        pin = TablePinFactory(venue=space.venue, space=space)
+        update_url = f"/api/v1/panoramas/pins/{pin.id}"
+        resp = client.patch(
+            update_url,
+            '{"capacity": true}',
+            content_type="application/json",
+        )
+        assert resp.status_code == 422
+
+    def test_table_pin_reservation_fee_bigint_bounds(self, client: Client, venue_owner: Any, space: Any) -> None:
+        """reservation_fee_toman enforces PostgreSQL signed 64-bit integer max."""
+        authenticate_client(client, venue_owner)
+        create_url = f"/api/v1/panoramas/spaces/{space.id}/pins"
+        max_bigint = 9_223_372_036_854_775_807
+        over_bigint = 9_223_372_036_854_775_808
+
+        resp = client.post(
+            create_url,
+            {"table_number": "T-OVER", "capacity": 2, "pitch": 0.0, "yaw": 0.0, "reservation_fee_toman": over_bigint},
+            content_type="application/json",
+        )
+        assert resp.status_code == 422
+
+        resp = client.post(
+            create_url,
+            {"table_number": "T-MAXB", "capacity": 2, "pitch": 0.0, "yaw": 0.0, "reservation_fee_toman": max_bigint},
+            content_type="application/json",
+        )
+        assert resp.status_code == 201
+        pin_id = resp.json()["id"]
+
+        update_url = f"/api/v1/panoramas/pins/{pin_id}"
+        resp = client.patch(
+            update_url,
+            {"reservation_fee_toman": over_bigint},
+            content_type="application/json",
+        )
+        assert resp.status_code == 422
+
+        resp = client.patch(
+            update_url,
+            {"reservation_fee_toman": max_bigint},
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["reservation_fee_toman"] == max_bigint
+
+    def test_table_pin_capacity_negative_rejected_422(self, client: Client, venue_owner: Any, space: Any) -> None:
+        """Negative capacity (-1) must be rejected with 422 on create and update."""
+        authenticate_client(client, venue_owner)
+        create_url = f"/api/v1/panoramas/spaces/{space.id}/pins"
+
+        resp = client.post(
+            create_url,
+            {"table_number": "T-NEG", "capacity": -1, "pitch": 0.0, "yaw": 0.0, "reservation_fee_toman": 50_000},
+            content_type="application/json",
+        )
+        assert resp.status_code == 422
+
+        pin = TablePinFactory(venue=space.venue, space=space)
+        resp = client.patch(
+            f"/api/v1/panoramas/pins/{pin.id}",
+            {"capacity": -1},
+            content_type="application/json",
+        )
+        assert resp.status_code == 422
+
 
 @pytest.mark.django_db
 class TestTablePinPermissions:

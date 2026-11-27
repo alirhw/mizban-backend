@@ -136,7 +136,7 @@ def list_venue_reviews(venue_id: int, *, limit: int = 20, offset: int = 0) -> di
     """Return visible reviews and aggregate rating for a venue (FR-25)."""
     if not Venue.objects.filter(pk=venue_id).exists():
         raise Http404("Venue not found.")
-    qs = Review.objects.filter(booking__table_pin__venue_id=venue_id, is_visible=True)
+    qs = Review.objects.filter(booking__venue_id=venue_id, is_visible=True)
     return _list_public_reviews(qs, limit=limit, offset=offset)
 
 

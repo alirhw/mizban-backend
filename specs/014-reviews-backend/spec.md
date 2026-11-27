@@ -28,7 +28,7 @@ Customers who have completed a reservation at a venue currently have no way to s
   - `Meta.ordering = ["-created_at"]`
   - `Meta.constraints`:
     - `UniqueConstraint(fields=["booking"], name="unique_review_per_booking")`
-    - `CheckConstraint(condition=Q(rating__gte=1, rating__lte=5), name="review_rating_range_1_5")`
+    - `CheckConstraint(condition=Q(rating__gte=1, rating__lte=5), name="review_rating_between_1_and_5")`
 - **REQ-REV-002** **Service-layer & transaction boundaries (`ARCH-001`, `ARCH-002`, `ARCH-006`):**
   All review creation and query logic shall live in `apps/reviews/services.py`. Ninja views in `apps/reviews/api.py` (already mounted at `/api/v1/reviews` in `config/api.py`) shall only authenticate, validate schemas, delegate to `services.py`, and return typed responses.
 - **REQ-REV-003** **Submit review (`POST /api/v1/reviews/` -> `201` `ReviewMineOut`, `auth=auth`):**
@@ -79,7 +79,7 @@ Customers who have completed a reservation at a venue currently have no way to s
 
 ## 6. Non-functional targets
 - **Security & Privacy (IDOR / PII):** Unauthenticated `POST /` or `GET /my/` returns `401`; non-`CUSTOMER` role raises `PermissionDenied` (`403 FORBIDDEN`); wrong customer on `booking` raises `ReviewNotAllowedError` (`403 REVIEW_NOT_ALLOWED`); `ReviewCreateIn` uses `extra="forbid"`; `ReviewPublicOut` never serializes `booking_id`, `phone`, `last_name`, `email`, `is_visible`, or hidden (`is_visible=False`) reviews.
-- **Concurrency & Integrity:** `select_for_update()` on `Booking` + DB `unique_review_per_booking` prevents duplicate reviews under concurrent `POST /` requests; DB `review_rating_range_1_5` enforces `1 <= rating <= 5`.
+- **Concurrency & Integrity:** `select_for_update()` on `Booking` + DB `unique_review_per_booking` prevents duplicate reviews under concurrent `POST /` requests; DB `review_rating_between_1_and_5` enforces `1 <= rating <= 5`.
 - **Query Efficiency:** Public list endpoints use `select_related("booking__customer", "booking__table_pin")` to avoid N+1 queries; `average_rating` and `review_count` are computed via a single SQL aggregate (`Avg`, `Count`) over `is_visible=True`.
 - **Contract & Tests:** `python manage.py check`, `pytest apps/reviews/tests/` (PostgreSQL), and `./check-contract.sh` (with `api/openapi.snapshot.json` updated under protected-path review) pass with 0 failures and 0 skipped tests.
 

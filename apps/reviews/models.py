@@ -14,7 +14,7 @@ class Review(models.Model):
     )
     rating = models.IntegerField()
     text = models.TextField()
-    is_visible = models.BooleanField(default=True)
+    is_visible = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
