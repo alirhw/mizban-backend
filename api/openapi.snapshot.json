@@ -2097,6 +2097,103 @@
         ]
       }
     },
+    "/api/v1/billing/admin/financial-report/": {
+      "get": {
+        "operationId": "apps_billing_api_admin_financial_report",
+        "summary": "Get read-only platform financial report (ADMIN only)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from_date",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "to_date",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "payment_status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payment Status"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialReportOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Expose get_financial_report over HTTP (Task T-040 / FR-40 / UC-10).",
+        "tags": [
+          "billing"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/wallets/me/": {
       "get": {
         "operationId": "apps_wallets_api_get_my_wallet_endpoint",
@@ -4962,6 +5059,227 @@
           "idempotency_key"
         ],
         "title": "WalletPayIn",
+        "type": "object"
+      },
+      "FinancialReportOut": {
+        "additionalProperties": false,
+        "description": "Read-only admin financial report response (Task T-040 / FR-40 / UC-10).",
+        "properties": {
+          "payments": {
+            "$ref": "#/components/schemas/FinancialReportPaymentsSectionOut"
+          },
+          "wallet": {
+            "$ref": "#/components/schemas/FinancialReportWalletSectionOut"
+          },
+          "subscriptions": {
+            "$ref": "#/components/schemas/FinancialReportSubscriptionsSectionOut"
+          }
+        },
+        "required": [
+          "payments",
+          "wallet",
+          "subscriptions"
+        ],
+        "title": "FinancialReportOut",
+        "type": "object"
+      },
+      "FinancialReportPaymentRowOut": {
+        "additionalProperties": false,
+        "description": "Single payment transaction row in the admin financial report.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "integer"
+          },
+          "provider_name": {
+            "title": "Provider Name",
+            "type": "string"
+          },
+          "amount_toman": {
+            "title": "Amount Toman",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "booking_id",
+          "customer_id",
+          "provider_name",
+          "amount_toman",
+          "status",
+          "created_at"
+        ],
+        "title": "FinancialReportPaymentRowOut",
+        "type": "object"
+      },
+      "FinancialReportPaymentsSectionOut": {
+        "additionalProperties": false,
+        "description": "Aggregated payments section of the admin financial report.",
+        "properties": {
+          "total_toman": {
+            "title": "Total Toman",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "counts_by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Status",
+            "type": "object"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/FinancialReportPaymentRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "total_toman",
+          "count",
+          "counts_by_status",
+          "rows"
+        ],
+        "title": "FinancialReportPaymentsSectionOut",
+        "type": "object"
+      },
+      "FinancialReportSubscriptionsSectionOut": {
+        "additionalProperties": false,
+        "description": "Aggregated subscriptions section of the admin financial report (post-MVP placeholder).",
+        "properties": {
+          "total_toman": {
+            "title": "Total Toman",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {},
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "total_toman",
+          "count",
+          "rows"
+        ],
+        "title": "FinancialReportSubscriptionsSectionOut",
+        "type": "object"
+      },
+      "FinancialReportWalletRowOut": {
+        "additionalProperties": false,
+        "description": "Single wallet ledger row in the admin financial report.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "amount_toman": {
+            "title": "Amount Toman",
+            "type": "integer"
+          },
+          "balance_after_toman": {
+            "title": "Balance After Toman",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "booking_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "type",
+          "amount_toman",
+          "balance_after_toman",
+          "reason",
+          "booking_id",
+          "created_at"
+        ],
+        "title": "FinancialReportWalletRowOut",
+        "type": "object"
+      },
+      "FinancialReportWalletSectionOut": {
+        "additionalProperties": false,
+        "description": "Aggregated wallet ledger section of the admin financial report.",
+        "properties": {
+          "total_credit_toman": {
+            "title": "Total Credit Toman",
+            "type": "integer"
+          },
+          "total_debit_toman": {
+            "title": "Total Debit Toman",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/FinancialReportWalletRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "total_credit_toman",
+          "total_debit_toman",
+          "count",
+          "rows"
+        ],
+        "title": "FinancialReportWalletSectionOut",
         "type": "object"
       },
       "WalletLedgerEntryOut": {

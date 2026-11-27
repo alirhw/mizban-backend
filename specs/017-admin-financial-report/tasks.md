@@ -1,0 +1,28 @@
+# Tasks 017 - Admin Financial Report (T-040 / FR-40, UC-10)
+Rules: one owner per task, max ~400 changed lines, tests named up front,
+no two parallel tasks edit the same file, ownership follows `ownership.yaml` strictly,
+migrations for `apps/wallets` (and `apps/billing`) are flagged for human review.
+
+| ID | Task | Owner | Depends on | Files (max) | Tests | DoD |
+|----|------|-------|------------|-------------|-------|-----|
+| **T-040-01** | Spec & Plan for admin financial report (FR-40, UC-10) | `requirements-analyst` / `planner` | None | `specs/017-admin-financial-report/spec.md`, `specs/017-admin-financial-report/tasks.md` | N/A (spec + Gherkin criteria) | Spec follows `000-template`; G1/G2 decided values explicitly labeled as **PROJECT decisions, NOT SRS facts**; role rule (`UserRole.ADMIN` only, `is_staff` alone -> 403), Tehran half-open UTC range (`TEHRAN` from `core.jalali`, 422 on invalid/`from_date > to_date`), DB `Sum` totals rule, `subscriptions` stub, `50`/`100` pagination, privacy exclusions, conditional indexes (`idx_pay_status_created_at`, `idx_wallet_tx_time`), and explicit out-of-scope follow-ups (CSV/PDF export, payout actions, FR-27, `frontend/` admin report page) documented. |
+| **T-040-02** | Add conditional DB indexes to `PaymentTransaction` & `WalletTransaction` + generate migrations | `finance-engineer` *(migrations flagged for human gate)* | T-040-01 | `apps/billing/models.py`, `apps/wallets/models.py`, `apps/billing/migrations/0003_*.py`, `apps/wallets/migrations/0002_*.py` *(protected path — human gate)* | Verified by `manage.py check` & `apps/billing/tests/test_admin_financial_report.py` | `PaymentTransaction.Meta.indexes` adds `Index(fields=["status", "created_at"], name="idx_pay_status_created_at")`; `WalletTransaction.Meta.indexes` adds `Index(fields=["created_at"], name="idx_wallet_tx_time")`; migrations generated via `python manage.py makemigrations` cleanly; `apps/wallets/migrations/**` and `apps/billing/migrations/**` reviewed at human gate before applying; <= 40 lines. |
+| **T-040-03** | Reporting service, schemas & thin Ninja endpoint (`GET /api/v1/billing/admin/financial-report/`) | `finance-engineer` | T-040-01, T-040-02 | `apps/billing/services/report.py`, `apps/billing/schemas.py`, `apps/billing/api.py` | Verified by `apps/billing/tests/test_admin_financial_report.py` | `get_financial_report` enforces `user.role == UserRole.ADMIN` (`PermissionDenied` -> 403 even if `is_staff=True`); parses `from_date`/`to_date` as `YYYY-MM-DD` in `TEHRAN` -> half-open UTC `[start, end)` (422 on invalid format or `from_date > to_date`); computes DB `Sum` for `payments.total_toman` (`SUCCESS` only) and `counts_by_status` unaffected by `payment_status`/pagination, DB `Sum` for `wallet.total_credit_toman`/`total_debit_toman`, `subscriptions` stub `{total_toman: 0, count: 0, rows: []}`, and paginated `rows` (`limit` 1..100 default 50, `offset >= 0` default 0) with payment row fields (`id`, `booking_id`, `customer_id`, `provider_name`, `amount_toman`, `status`, `created_at`) and wallet row fields (`id`, `user_id`, `type`, `amount_toman`, `balance_after_toman`, `reason`, `booking_id`, `created_at`); `FinancialReportOut` (`extra="forbid"`) omits `phone`, `email`, `card_pan_masked`, `tracking_code`; `GET /api/v1/billing/admin/financial-report/` (`auth=auth`) added to `apps/billing/api.py`; <= 260 lines. |
+| **T-040-04** | PostgreSQL tests for admin financial report | `test-engineer` | T-040-03 | `apps/billing/tests/test_admin_financial_report.py` | `apps/billing/tests/test_admin_financial_report.py` | Covers all 4 Gherkin scenarios: `401` unauth, `403` for `CUSTOMER`/`VENUE_OWNER`/staff-non-admin, `200` for `ADMIN`; Tehran midnight UTC boundary (`20:29:59Z` vs `20:30:00Z`), missing `from_date`/`to_date`, `422` on invalid format and `from_date > to_date`; `payments.total_toman` (`SUCCESS` only) & `counts_by_status` unaffected by `payment_status` & pagination; `wallet` DB sums & pagination; `subscriptions` stub; absence of `phone`, `email`, `card_pan_masked`, `tracking_code`; 0 failed, 0 skipped on PostgreSQL; <= 260 lines. |
+| **T-040-05** | Review & OpenAPI snapshot update | `code-reviewer` + `security-engineer` *(+ human gate for `api/openapi.snapshot.json` & migrations)* | T-040-02, T-040-03, T-040-04 | `api/openapi.snapshot.json` *(protected path — human gate)* | `manage.py check`, `pytest`, `./check-contract.sh` | Code Reviewer & Security Engineer approve; protected migrations and `api/openapi.snapshot.json` pass human gate; `./check-contract.sh` passes cleanly. |
+
+## Parallel groups
+- **Group A (Spec & Plan):** `T-040-01`
+- **Group B1 (Indexes & Protected Migrations):** `T-040-02` (`finance-engineer` + human gate for `apps/wallets/migrations/**` & `apps/billing/migrations/**`)
+- **Group B2 (Service, Schemas, Endpoint & Tests):** `T-040-03` (`finance-engineer`) -> `T-040-04` (`test-engineer`)
+- **Group C (Independent Review & Protected-Path Contract Update):** `T-040-05` (`code-reviewer` + `security-engineer` + human-gated `api/openapi.snapshot.json` update)
+
+## Estimates
+| Task | Estimated Diff | Estimated Tokens | Estimated Cost | Estimated Elapsed |
+|------|----------------|------------------|----------------|-------------------|
+| T-040-01 | ~140 lines (docs) | ~7k | ~$0.03 | ~4 min |
+| T-040-02 | ~35 lines | ~3k | ~$0.02 | ~3 min |
+| T-040-03 | ~220–260 lines | ~12k | ~$0.06 | ~10 min |
+| T-040-04 | ~200–260 lines | ~11k | ~$0.05 | ~10 min |
+| T-040-05 | ~70 lines (`openapi.snapshot.json`) + review | ~9k | ~$0.04 | ~5 min |
+| **Feature Total** | **~455–555 code+test lines (~140 spec)** | **~42k** | **~$0.20** | **~32 min** |

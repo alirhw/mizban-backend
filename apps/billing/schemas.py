@@ -93,3 +93,74 @@ class WalletPayIn(Schema):
         description="Client-generated unique idempotency token.",
     )
 
+
+class FinancialReportPaymentRowOut(Schema):
+    """Single payment transaction row in the admin financial report."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    booking_id: int
+    customer_id: int
+    provider_name: str
+    amount_toman: int
+    status: str
+    created_at: datetime
+
+
+class FinancialReportWalletRowOut(Schema):
+    """Single wallet ledger row in the admin financial report."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    user_id: int
+    type: str
+    amount_toman: int
+    balance_after_toman: int
+    reason: str
+    booking_id: int | None
+    created_at: datetime
+
+
+class FinancialReportPaymentsSectionOut(Schema):
+    """Aggregated payments section of the admin financial report."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_toman: int
+    count: int
+    counts_by_status: dict[str, int]
+    rows: list[FinancialReportPaymentRowOut]
+
+
+class FinancialReportWalletSectionOut(Schema):
+    """Aggregated wallet ledger section of the admin financial report."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_credit_toman: int
+    total_debit_toman: int
+    count: int
+    rows: list[FinancialReportWalletRowOut]
+
+
+class FinancialReportSubscriptionsSectionOut(Schema):
+    """Aggregated subscriptions section of the admin financial report (post-MVP placeholder)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_toman: int
+    count: int
+    rows: list[Any]
+
+
+class FinancialReportOut(Schema):
+    """Read-only admin financial report response (Task T-040 / FR-40 / UC-10)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    payments: FinancialReportPaymentsSectionOut
+    wallet: FinancialReportWalletSectionOut
+    subscriptions: FinancialReportSubscriptionsSectionOut
+

@@ -154,6 +154,7 @@ class PaymentTransaction(models.Model):
             models.Index(fields=["booking", "status"], name="idx_pay_booking_status"),
             models.Index(fields=["customer", "status"], name="idx_pay_customer_status"),
             models.Index(fields=["created_at"], name="idx_pay_created_at"),
+            models.Index(fields=["status", "created_at"], name="idx_pay_status_created_at"),
         ]
 
     def __str__(self) -> str:

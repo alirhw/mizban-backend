@@ -22,6 +22,7 @@ from apps.accounts.auth import auth
 from apps.accounts.models import UserRole
 from apps.billing.models import PaymentTransaction
 from apps.billing.schemas import (
+    FinancialReportOut,
     PaymentCallbackOut,
     PaymentInitiateIn,
     PaymentInitiateOut,
@@ -34,6 +35,7 @@ from apps.billing.services.payment import (
     initiate_payment_for_booking,
     pay_booking_with_wallet,
 )
+from apps.billing.services.report import get_financial_report
 from apps.bookings.models import Booking
 
 logger = logging.getLogger(__name__)
@@ -278,4 +280,36 @@ def wallet_pay(request: HttpRequest, payload: WalletPayIn) -> PaymentTransaction
         user=auth_user,
         booking_id=payload.booking_id,
         idempotency_key=payload.idempotency_key,
+    )
+
+
+@router.get(
+    "/admin/financial-report/",
+    response={200: FinancialReportOut},
+    auth=auth,
+    summary="Get read-only platform financial report (ADMIN only)",
+)
+@router.get(
+    "/admin/financial-report",
+    response={200: FinancialReportOut},
+    auth=auth,
+    summary="Get read-only platform financial report (no trailing slash)",
+    include_in_schema=False,
+)
+def admin_financial_report(
+    request: HttpRequest,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    payment_status: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Expose get_financial_report over HTTP (Task T-040 / FR-40 / UC-10)."""
+    return get_financial_report(
+        getattr(request, "auth", None),
+        from_date=from_date,
+        to_date=to_date,
+        payment_status=payment_status,
+        limit=limit,
+        offset=offset,
     )

@@ -129,6 +129,7 @@ class WalletTransaction(models.Model):
             models.Index(fields=["wallet", "created_at"], name="idx_wallet_tx_created_at"),
             models.Index(fields=["idempotency_key"], name="idx_wallet_tx_idemp"),
             models.Index(fields=["wallet", "type"], name="idx_wallet_tx_type"),
+            models.Index(fields=["created_at"], name="idx_wallet_tx_time"),
         ]
 
     def __str__(self) -> str:
