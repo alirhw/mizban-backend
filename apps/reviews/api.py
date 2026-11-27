@@ -11,7 +11,12 @@ from ninja.responses import Status
 
 from apps.accounts.auth import auth
 from apps.reviews import services
-from apps.reviews.schemas import ReviewCreateIn, ReviewListOut, ReviewMineOut
+from apps.reviews.schemas import (
+    ReviewAdminOut,
+    ReviewCreateIn,
+    ReviewListOut,
+    ReviewMineOut,
+)
 
 router = Router(tags=["reviews"])
 
@@ -57,3 +62,50 @@ def list_table_reviews(request, table_pin_id: int, limit: int = 20, offset: int 
 def list_my_reviews(request, limit: int = 20, offset: int = 0):
     """Return all reviews submitted by the authenticated customer."""
     return services.list_my_reviews(request.auth, limit=limit, offset=offset)
+
+
+@router.get(
+    "/admin/",
+    response=list[ReviewAdminOut],
+    auth=auth,
+    summary="List all reviews for admin moderation (FR-41)",
+)
+def list_admin_reviews(
+    request,
+    venue_id: int | None = None,
+    is_visible: bool | None = None,
+    limit: int = 20,
+    offset: int = 0,
+):
+    """Return paginated reviews for admin moderation with optional filters."""
+    return services.list_admin_reviews(
+        request.auth,
+        venue_id=venue_id,
+        is_visible=is_visible,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/admin/{review_id}/hide",
+    response=ReviewAdminOut,
+    auth=auth,
+    summary="Hide a review (FR-41, BR-13)",
+)
+def hide_review(request, review_id: int):
+    """Hide a review from public listing."""
+    review = services.set_review_visibility(request.auth, review_id, is_visible=False)
+    return services.serialize_admin_review(review)
+
+
+@router.post(
+    "/admin/{review_id}/show",
+    response=ReviewAdminOut,
+    auth=auth,
+    summary="Show a review (FR-41, BR-13)",
+)
+def show_review(request, review_id: int):
+    """Restore a hidden review to public listing."""
+    review = services.set_review_visibility(request.auth, review_id, is_visible=True)
+    return services.serialize_admin_review(review)

@@ -2321,6 +2321,167 @@
           }
         ]
       }
+    },
+    "/api/v1/reviews/admin/": {
+      "get": {
+        "operationId": "apps_reviews_api_list_admin_reviews",
+        "summary": "List all reviews for admin moderation (FR-41)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "venue_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Venue Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "is_visible",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Visible"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewAdminOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Return paginated reviews for admin moderation with optional filters.",
+        "tags": [
+          "reviews"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reviews/admin/{review_id}/hide": {
+      "post": {
+        "operationId": "apps_reviews_api_hide_review",
+        "summary": "Hide a review (FR-41, BR-13)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "schema": {
+              "title": "Review Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewAdminOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Hide a review from public listing.",
+        "tags": [
+          "reviews"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reviews/admin/{review_id}/show": {
+      "post": {
+        "operationId": "apps_reviews_api_show_review",
+        "summary": "Show a review (FR-41, BR-13)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "schema": {
+              "title": "Review Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewAdminOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Restore a hidden review to public listing.",
+        "tags": [
+          "reviews"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4874,6 +5035,62 @@
           "created_at"
         ],
         "title": "ReviewPublicOut",
+        "type": "object"
+      },
+      "ReviewAdminOut": {
+        "additionalProperties": false,
+        "description": "Admin moderation review payload including venue reference.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "reviewer_name": {
+            "title": "Reviewer Name",
+            "type": "string"
+          },
+          "table_number": {
+            "title": "Table Number",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "booking_id": {
+            "title": "Booking Id",
+            "type": "integer"
+          },
+          "is_visible": {
+            "title": "Is Visible",
+            "type": "boolean"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "rating",
+          "text",
+          "reviewer_name",
+          "table_number",
+          "created_at",
+          "booking_id",
+          "is_visible",
+          "venue_id"
+        ],
+        "title": "ReviewAdminOut",
         "type": "object"
       }
     },

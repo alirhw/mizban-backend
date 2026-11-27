@@ -55,3 +55,11 @@ class ReviewListOut(Schema):
     average_rating: float | None
     review_count: int
     reviews: list[ReviewPublicOut]
+
+
+class ReviewAdminOut(ReviewMineOut):
+    """Admin moderation review payload including venue reference."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    venue_id: int

@@ -492,3 +492,366 @@ def test_my_reviews_unauthenticated_401_and_venue_owner_403_and_pagination(
     assert my_page.status_code == 200
     assert [r["id"] for r in my_page.json()] == [r2.id]
     assert {r1.id, r3.id}.isdisjoint({r["id"] for r in my_page.json()})
+
+
+# ---------------------------------------------------------------------------
+# T-038 (FR-41, BR-13): Admin Review Moderation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_admin_hide_review_removes_from_venue_and_table_lists_and_averages(
+    client: Client,
+) -> None:
+    """T-038 Case 1: Admin hide sets is_visible=False and removes review from public lists and averages."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    pin: Any = TablePinFactory()
+    review = Review.objects.create(
+        booking=_completed_booking(table_pin=pin),
+        rating=5,
+        text="Great spot",
+        is_visible=True,
+    )
+
+    authenticate_client(client, admin)
+    resp = client.post(f"/api/v1/reviews/admin/{review.id}/hide")
+    assert resp.status_code == 200
+    assert resp.json()["is_visible"] is False
+
+    venue_resp = client.get(f"/api/v1/reviews/venues/{pin.venue_id}/")
+    assert venue_resp.status_code == 200
+    assert venue_resp.json() == {"average_rating": None, "review_count": 0, "reviews": []}
+
+    table_resp = client.get(f"/api/v1/reviews/tables/{pin.id}/")
+    assert table_resp.status_code == 200
+    assert table_resp.json() == {"average_rating": None, "review_count": 0, "reviews": []}
+
+
+@pytest.mark.django_db
+def test_admin_show_review_restores_to_venue_and_table_lists_and_averages(
+    client: Client,
+) -> None:
+    """T-038 Case 2: Admin show sets is_visible=True and restores review to public lists and averages."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    pin: Any = TablePinFactory()
+    review = Review.objects.create(
+        booking=_completed_booking(table_pin=pin),
+        rating=4,
+        text="Restored review",
+        is_visible=False,
+    )
+
+    authenticate_client(client, admin)
+    resp = client.post(f"/api/v1/reviews/admin/{review.id}/show")
+    assert resp.status_code == 200
+    assert resp.json()["is_visible"] is True
+
+    venue_resp = client.get(f"/api/v1/reviews/venues/{pin.venue_id}/")
+    assert venue_resp.status_code == 200
+    venue_data = venue_resp.json()
+    assert venue_data["average_rating"] == 4.0
+    assert venue_data["review_count"] == 1
+    assert [r["id"] for r in venue_data["reviews"]] == [review.id]
+
+    table_resp = client.get(f"/api/v1/reviews/tables/{pin.id}/")
+    assert table_resp.status_code == 200
+    table_data = table_resp.json()
+    assert table_data["average_rating"] == 4.0
+    assert table_data["review_count"] == 1
+    assert [r["id"] for r in table_data["reviews"]] == [review.id]
+
+
+@pytest.mark.django_db
+def test_admin_hide_already_hidden_review_is_idempotent_noop(client: Client) -> None:
+    """T-038 Case 3: Hiding an already-hidden review returns 200 no-op with one row."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    review = Review.objects.create(
+        booking=_completed_booking(),
+        rating=3,
+        text="Already hidden",
+        is_visible=False,
+    )
+
+    authenticate_client(client, admin)
+    resp = client.post(f"/api/v1/reviews/admin/{review.id}/hide")
+    assert resp.status_code == 200
+    assert resp.json()["is_visible"] is False
+    review.refresh_from_db()
+    assert review.is_visible is False
+    assert Review.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_admin_show_already_visible_review_is_idempotent_noop(client: Client) -> None:
+    """T-038 Case 4: Showing an already-visible review returns 200 no-op."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    review = Review.objects.create(
+        booking=_completed_booking(),
+        rating=5,
+        text="Already visible",
+        is_visible=True,
+    )
+
+    authenticate_client(client, admin)
+    resp = client.post(f"/api/v1/reviews/admin/{review.id}/show")
+    assert resp.status_code == 200
+    assert resp.json()["is_visible"] is True
+    review.refresh_from_db()
+    assert review.is_visible is True
+
+
+@pytest.mark.django_db
+def test_admin_hide_and_show_nonexistent_review_return_404(client: Client) -> None:
+    """T-038 Case 5: Hide and show on a nonexistent review id return 404."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    authenticate_client(client, admin)
+
+    assert client.post("/api/v1/reviews/admin/9999999/hide").status_code == 404
+    assert client.post("/api/v1/reviews/admin/9999999/show").status_code == 404
+
+
+@pytest.mark.django_db
+def test_customer_cannot_hide_own_review_returns_403(client: Client) -> None:
+    """T-038 Case 6: Customers cannot moderate reviews, not even their own (403)."""
+    customer: Any = UserFactory(role=UserRole.CUSTOMER)
+    review = Review.objects.create(
+        booking=_completed_booking(customer=customer),
+        rating=5,
+        text="My own review",
+        is_visible=True,
+    )
+
+    authenticate_client(client, customer)
+    resp = client.post(f"/api/v1/reviews/admin/{review.id}/hide")
+    assert resp.status_code == 403
+    review.refresh_from_db()
+    assert review.is_visible is True
+
+
+@pytest.mark.django_db
+def test_venue_owner_cannot_hide_review_even_for_own_venue_returns_403(
+    client: Client,
+) -> None:
+    """T-038 Case 7: Venue owner (including the review's venue owner) gets 403 on moderation."""
+    owner: Any = UserFactory(role=UserRole.VENUE_OWNER)
+    venue: Any = VenueFactory(owner=owner)
+    pin: Any = TablePinFactory(venue=venue)
+    review = Review.objects.create(
+        booking=_completed_booking(table_pin=pin),
+        rating=2,
+        text="Harsh feedback",
+        is_visible=True,
+    )
+
+    authenticate_client(client, owner)
+    resp = client.post(f"/api/v1/reviews/admin/{review.id}/hide")
+    assert resp.status_code == 403
+    review.refresh_from_db()
+    assert review.is_visible is True
+
+
+@pytest.mark.django_db
+def test_unauthenticated_admin_moderation_endpoints_return_401(client: Client) -> None:
+    """T-038 Case 8: Unauthenticated requests to admin hide/show/list return 401."""
+    review = Review.objects.create(
+        booking=_completed_booking(),
+        rating=4,
+        text="Auth check",
+        is_visible=True,
+    )
+
+    assert client.post(f"/api/v1/reviews/admin/{review.id}/hide").status_code == 401
+    assert client.post(f"/api/v1/reviews/admin/{review.id}/show").status_code == 401
+    assert client.get("/api/v1/reviews/admin/").status_code == 401
+
+
+@pytest.mark.django_db
+def test_admin_list_reviews_returns_visible_and_hidden_and_supports_filters(
+    client: Client,
+) -> None:
+    """T-038 Case 9: Admin list returns visible + hidden with is_visible, and filters by is_visible & venue_id."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    venue_a: Any = VenueFactory()
+    venue_b: Any = VenueFactory()
+    pin_a: Any = TablePinFactory(venue=venue_a)
+    pin_b: Any = TablePinFactory(venue=venue_b)
+
+    r_a_vis = Review.objects.create(
+        booking=_completed_booking(table_pin=pin_a),
+        rating=5,
+        text="Venue A visible",
+        is_visible=True,
+    )
+    r_a_hid = Review.objects.create(
+        booking=_completed_booking(table_pin=pin_a),
+        rating=2,
+        text="Venue A hidden",
+        is_visible=False,
+    )
+    r_b_hid = Review.objects.create(
+        booking=_completed_booking(table_pin=pin_b),
+        rating=1,
+        text="Venue B hidden",
+        is_visible=False,
+    )
+
+    authenticate_client(client, admin)
+
+    all_resp = client.get("/api/v1/reviews/admin/")
+    assert all_resp.status_code == 200
+    all_items = all_resp.json()
+    assert {item["id"] for item in all_items} == {r_a_vis.id, r_a_hid.id, r_b_hid.id}
+    by_id = {item["id"]: item for item in all_items}
+    assert by_id[r_a_vis.id]["is_visible"] is True
+    assert by_id[r_a_hid.id]["is_visible"] is False
+
+    hidden_resp = client.get("/api/v1/reviews/admin/?is_visible=false")
+    assert hidden_resp.status_code == 200
+    assert {item["id"] for item in hidden_resp.json()} == {r_a_hid.id, r_b_hid.id}
+
+    venue_a_resp = client.get(f"/api/v1/reviews/admin/?venue_id={venue_a.id}")
+    assert venue_a_resp.status_code == 200
+    assert {item["id"] for item in venue_a_resp.json()} == {r_a_vis.id, r_a_hid.id}
+
+
+@pytest.mark.django_db
+def test_admin_list_reviews_exposes_no_pii_fields(client: Client) -> None:
+    """T-038 Case 10: Admin list response contains no phone, email, or last_name anywhere."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    customer: Any = UserFactory(role=UserRole.CUSTOMER, phone="09127776655")
+    Review.objects.create(
+        booking=_completed_booking(customer=customer),
+        rating=4,
+        text="Nice place",
+        is_visible=True,
+    )
+
+    authenticate_client(client, admin)
+    resp = client.get("/api/v1/reviews/admin/")
+    assert resp.status_code == 200
+    raw_body = resp.content.decode("utf-8")
+    assert customer.phone not in raw_body
+
+    items = resp.json()
+    assert len(items) == 1
+    for forbidden_key in ("phone", "email", "last_name"):
+        assert forbidden_key not in items[0]
+        assert forbidden_key not in raw_body
+
+
+@pytest.mark.django_db
+def test_admin_hide_and_show_recompute_venue_average_rating(client: Client) -> None:
+    """T-038 Case 11: Venue with 5-star and 3-star averages 4.0 -> hide 5-star -> 3.0 -> show -> 4.0."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    pin: Any = TablePinFactory()
+    r5 = Review.objects.create(
+        booking=_completed_booking(table_pin=pin),
+        rating=5,
+        text="Five stars",
+        is_visible=True,
+    )
+    Review.objects.create(
+        booking=_completed_booking(table_pin=pin),
+        rating=3,
+        text="Three stars",
+        is_visible=True,
+    )
+
+    initial = client.get(f"/api/v1/reviews/venues/{pin.venue_id}/")
+    assert initial.status_code == 200
+    assert initial.json()["average_rating"] == 4.0
+    assert initial.json()["review_count"] == 2
+
+    authenticate_client(client, admin)
+    assert client.post(f"/api/v1/reviews/admin/{r5.id}/hide").status_code == 200
+
+    after_hide = client.get(f"/api/v1/reviews/venues/{pin.venue_id}/")
+    assert after_hide.status_code == 200
+    assert after_hide.json()["average_rating"] == 3.0
+    assert after_hide.json()["review_count"] == 1
+
+    assert client.post(f"/api/v1/reviews/admin/{r5.id}/show").status_code == 200
+
+    after_show = client.get(f"/api/v1/reviews/venues/{pin.venue_id}/")
+    assert after_show.status_code == 200
+    assert after_show.json()["average_rating"] == 4.0
+    assert after_show.json()["review_count"] == 2
+
+
+@pytest.mark.django_db
+def test_reviews_delete_endpoint_does_not_exist_returns_404(client: Client) -> None:
+    """T-038 Case 12: DELETE /api/v1/reviews/{review_id}/ route does not exist (404)."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    review = Review.objects.create(
+        booking=_completed_booking(),
+        rating=5,
+        text="Permanent row",
+        is_visible=True,
+    )
+
+    authenticate_client(client, admin)
+    resp = client.delete(f"/api/v1/reviews/{review.id}/")
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_admin_hide_preserves_review_row_in_database(client: Client) -> None:
+    """T-038 Case 13: Hiding a review flips is_visible without deleting the DB row."""
+    admin: Any = UserFactory(role=UserRole.ADMIN)
+    review = Review.objects.create(
+        booking=_completed_booking(),
+        rating=4,
+        text="Keep in DB",
+        is_visible=True,
+    )
+    count_before = Review.objects.count()
+
+    authenticate_client(client, admin)
+    resp = client.post(f"/api/v1/reviews/admin/{review.id}/hide")
+    assert resp.status_code == 200
+    assert Review.objects.count() == count_before
+    review.refresh_from_db()
+    assert review.is_visible is False
+
+
+@pytest.mark.django_db
+def test_admin_moderation_pagination_clamping_is_staff_and_403_on_list_and_show(
+    client: Client,
+) -> None:
+    """Admin list/show reject CUSTOMER and VENUE_OWNER (403), allow is_staff, and clamp pagination."""
+    customer: Any = UserFactory(role=UserRole.CUSTOMER)
+    owner: Any = UserFactory(role=UserRole.VENUE_OWNER)
+    staff_user: Any = UserFactory(role=UserRole.CUSTOMER, is_staff=True)
+
+    r1 = Review.objects.create(
+        booking=_completed_booking(customer=customer),
+        rating=3,
+        text="First",
+        is_visible=True,
+    )
+    r2 = Review.objects.create(
+        booking=_completed_booking(customer=customer),
+        rating=4,
+        text="Second",
+        is_visible=False,
+    )
+    r3 = Review.objects.create(
+        booking=_completed_booking(customer=customer),
+        rating=5,
+        text="Third",
+        is_visible=True,
+    )
+
+    for non_admin in (customer, owner):
+        authenticate_client(client, non_admin)
+        assert client.get("/api/v1/reviews/admin/").status_code == 403
+        assert client.post(f"/api/v1/reviews/admin/{r2.id}/show").status_code == 403
+
+    authenticate_client(client, staff_user)
+    paged = client.get("/api/v1/reviews/admin/?limit=1&offset=1")
+    assert paged.status_code == 200
+    assert [item["id"] for item in paged.json()] == [r2.id]
+
+    clamped = client.get("/api/v1/reviews/admin/?limit=200&offset=-5")
+    assert clamped.status_code == 200
+    assert [item["id"] for item in clamped.json()] == [r3.id, r2.id, r1.id]

@@ -160,3 +160,75 @@ def list_my_reviews(user: Any, *, limit: int = 20, offset: int = 0) -> list[dict
         .order_by("-created_at")[clamped_offset : clamped_offset + clamped_limit]
     )
     return [serialize_my_review(review) for review in rows]
+
+
+def _require_admin(admin_user: Any) -> None:
+    """Ensure the caller has administrator privileges."""
+    if not (
+        getattr(admin_user, "is_staff", False)
+        or getattr(admin_user, "role", None) == UserRole.ADMIN
+    ):
+        raise PermissionDenied("Only administrators can moderate reviews.")
+
+
+def serialize_admin_review(review: Review) -> dict[str, Any]:
+    """Serialize a Review for admin moderation."""
+    data = serialize_my_review(review)
+    data["venue_id"] = review.booking.venue_id
+    return data
+
+
+def set_review_visibility(
+    admin_user: Any,
+    review_id: int,
+    *,
+    is_visible: bool,
+) -> Review:
+    """Hide or show a review (FR-41, BR-13)."""
+    _require_admin(admin_user)
+
+    with transaction.atomic():
+        review = (
+            Review.objects.select_for_update()
+            .select_related("booking__table_pin", "booking__customer")
+            .filter(pk=review_id)
+            .first()
+        )
+        if review is None:
+            raise Http404("Review not found.")
+
+        if review.is_visible != is_visible:
+            review.is_visible = is_visible
+            review.save(update_fields=["is_visible"])
+
+    logger.info(
+        "Admin id=%s set review id=%s visibility is_visible=%s",
+        admin_user.id,
+        review.id,
+        is_visible,
+    )
+    return review
+
+
+def list_admin_reviews(
+    admin_user: Any,
+    *,
+    venue_id: int | None = None,
+    is_visible: bool | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """Return paginated reviews for admin moderation with optional filters."""
+    _require_admin(admin_user)
+
+    qs = Review.objects.select_related("booking__table_pin", "booking__customer").order_by(
+        "-created_at"
+    )
+    if venue_id is not None:
+        qs = qs.filter(booking__venue_id=venue_id)
+    if is_visible is not None:
+        qs = qs.filter(is_visible=is_visible)
+
+    clamped_limit, clamped_offset = _clamp_pagination(limit, offset)
+    rows = list(qs[clamped_offset : clamped_offset + clamped_limit])
+    return [serialize_admin_review(r) for r in rows]
