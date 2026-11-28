@@ -153,6 +153,14 @@ class InvalidSlotError(DomainError):
     default_message = "The selected slot is outside the venue's operating hours."
 
 
+class InvalidAddonError(DomainError):
+    """Selected design add-on does not exist, belongs to another venue, or is inactive."""
+
+    error_code = "INVALID_ADDON"
+    status_code = 400
+    default_message = "One or more selected design add-ons are invalid or unavailable."
+
+
 class FileTooLargeError(DomainError):
     """File size exceeds the maximum allowed limit."""
 

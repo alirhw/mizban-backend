@@ -537,7 +537,7 @@ def test_callback_methods_and_trailing_slash_tolerance(client, pin):
         ("POST", "/api/v1/billing/callback/"),
         ("POST", "/api/v1/billing/callback"),
     ]):
-        target_time = time(10 + idx, 0)
+        target_time = time(10 + idx * 2, 0)
         customer = UserFactory(role="CUSTOMER")
         booking = create_booking_lock(
             user=customer,

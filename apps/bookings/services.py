@@ -190,6 +190,7 @@ def create_booking_lock(
     """
     from apps.panoramas.models import TablePin
     from apps.venues.models import DesignAddon
+    from core.exceptions import InvalidAddonError
 
     if now is None:
         now = dj_timezone.now()
@@ -216,18 +217,20 @@ def create_booking_lock(
         # Lock the TablePin row to serialize concurrent booking attempts on the same table
         pin = TablePin.objects.select_for_update().get(pk=pin_id)
 
-        # REQ-LOCK-005: Expire any stale locks that have elapsed unpaid
+        # REQ-LOCK-005: Expire any overlapping stale locks that have elapsed unpaid
         # This frees the DB partial unique constraint and maintains correctness without celery
         Booking.objects.filter(
             table_pin_id=pin.pk,
-            slot_date=slot_date,
-            slot_start_time=slot_start_time,
+            start_at__lt=end_at_utc,
+            end_at__gt=start_at_utc,
             status=BookingStatus.PENDING_PAYMENT,
             lock_expires_at__lte=now,
         ).update(status=BookingStatus.EXPIRED, updated_at=now)
 
-        # REQ-LOCK-003: Check if an active confirmed booking or active lock exists
-        if Booking.objects.active_locks_for_slot(pin.pk, slot_date, slot_start_time, now=now).exists():
+        # REQ-LOCK-003: Check if an overlapping active confirmed booking or active lock exists
+        if Booking.objects.active_locks_for_interval(
+            pin.pk, start_at_utc, end_at_utc, now=now
+        ).exists():
             raise SlotAlreadyReservedError(
                 "This table is currently reserved or locked by another customer for this slot."
             )
@@ -243,6 +246,24 @@ def create_booking_lock(
             raise SlotAlreadyReservedError(
                 "This table is currently reserved or locked by another customer for this slot."
             )
+
+        # REQ-LOCK-006: Validate design add-ons BEFORE creating Booking row (fail fast, no lock)
+        requested_addon_ids = list(dict.fromkeys(addon_ids))
+        addons: list[DesignAddon] = []
+        total_addon_fee = 0
+        if requested_addon_ids:
+            addons = list(
+                DesignAddon.objects.filter(
+                    id__in=requested_addon_ids,
+                    venue=pin.venue,
+                    is_active=True,
+                )
+            )
+            if len(addons) != len(requested_addon_ids):
+                raise InvalidAddonError(
+                    "One or more selected design add-ons are invalid or unavailable."
+                )
+            total_addon_fee = sum(addon.fee for addon in addons)
 
         # Determine table reservation fee (read directly from pin, FR-004 / BR-003)
         amount_online_toman = pin.reservation_fee_toman
@@ -260,28 +281,21 @@ def create_booking_lock(
             locked_at=now,
             lock_expires_at=now + LOCK_TTL,
             amount_online_toman=amount_online_toman,
-            amount_in_person_toman=0,
+            amount_in_person_toman=total_addon_fee,
         )
 
-        # REQ-LOCK-006: Attach selected design addons with price snapshot (BR-003)
-        if addon_ids:
-            addons = DesignAddon.objects.filter(id__in=addon_ids, venue=pin.venue, is_active=True)
-            total_addon_fee = 0
-            booking_addons = []
-            for addon in addons:
-                booking_addons.append(
+        # Attach validated design addons with price snapshot (BR-003)
+        if addons:
+            BookingAddon.objects.bulk_create(
+                [
                     BookingAddon(
                         booking=booking,
                         design_addon=addon,
                         price_snapshot_toman=addon.fee,
                     )
-                )
-                total_addon_fee += addon.fee
-
-            if booking_addons:
-                BookingAddon.objects.bulk_create(booking_addons)
-                booking.amount_in_person_toman = total_addon_fee
-                booking.save(update_fields=["amount_in_person_toman", "updated_at"])
+                    for addon in addons
+                ]
+            )
 
         logger.info(
             "Booking lock created: booking_id=%s venue_id=%s pin_id=%s",
@@ -343,12 +357,12 @@ def initiate_booking(
     resolved_date = resolve_date(slot_date)
     resolved_time = resolve_time(slot_start_time)
 
-    # 3. TablePin and Venue resolution
-    pin = TablePin.objects.select_related("venue").filter(pk=table_pin_id).first()
+    # 3. TablePin, Space, and Venue resolution
+    pin = TablePin.objects.select_related("venue", "space").filter(pk=table_pin_id).first()
     if not pin:
         raise Http404("Table pin not found.")
 
-    if not pin.is_active:
+    if not pin.is_active or (pin.space is not None and not pin.space.is_active):
         raise TableNotBookableError("This table is currently not available for reservations.")
 
     if venue_id is not None and pin.venue_id != venue_id:
@@ -359,11 +373,13 @@ def initiate_booking(
     if not venue.is_approved or not venue.has_active_subscription(now=now):
         raise VenueNotBookableError("This venue is not currently accepting reservations.")
 
-    # 4. Validate that requested slot is in operating hours
-    if venue.operating_hours.exists():
-        slots = get_venue_slots_for_date(venue, on_date=resolved_date, now=now)
-        if not any(s.start_time == resolved_time for s in slots):
-            raise InvalidSlotError("The requested slot is outside the venue's operating hours.")
+    # 4. Validate that venue has operating hours and requested slot is in operating hours
+    if not venue.operating_hours.exists():
+        raise InvalidSlotError("This venue has no operating hours configured.")
+
+    slots = get_venue_slots_for_date(venue, on_date=resolved_date, now=now)
+    if not any(s.start_time == resolved_time for s in slots):
+        raise InvalidSlotError("The requested slot is outside the venue's operating hours.")
 
     # 5. Acquire atomic booking lock (TD-004)
     return create_booking_lock(

@@ -307,18 +307,19 @@ def test_deactivate_addon_hides_from_public_and_booking_selection(api, owner_use
     assert public_detail.status_code == 200
     assert public_detail.json()["design_addons"] == []
 
+    from core.exceptions import InvalidAddonError
+
     now = timezone.now()
     slot_dt = (now + timedelta(hours=48)).replace(minute=0, second=0, microsecond=0)
-    booking = create_booking_lock(
-        user=customer_user,
-        table_pin=pin,
-        slot_date=slot_dt.date(),
-        slot_start_time=slot_dt.time(),
-        addon_ids=[addon.id],
-        now=now,
-    )
-    assert BookingAddon.objects.filter(booking=booking).count() == 0
-    assert booking.amount_in_person_toman == 0
+    with pytest.raises(InvalidAddonError):
+        create_booking_lock(
+            user=customer_user,
+            table_pin=pin,
+            slot_date=slot_dt.date(),
+            slot_start_time=slot_dt.time(),
+            addon_ids=[addon.id],
+            now=now,
+        )
 
 
 @pytest.mark.django_db

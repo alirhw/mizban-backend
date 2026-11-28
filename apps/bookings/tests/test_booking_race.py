@@ -147,3 +147,24 @@ def test_lock_attempt_inside_24h_lead_time_raises_error():
             slot_start_time=target_dt.time(),
             now=now,
         )
+
+
+def test_two_simultaneous_overlapping_initiates_exactly_one_wins():
+    """Concurrent overlapping intervals (10:15 and 10:30) on the same table pin: one wins, one conflicts."""
+    pin = table_pin_factory()
+    now = timezone.now()
+    target_date = (now + timedelta(days=3)).date()
+    attempts = [
+        dict(user=user_factory(), table_pin=pin, slot_date=target_date, slot_start_time=time(10, 15), now=now),
+        dict(user=user_factory(), table_pin=pin, slot_date=target_date, slot_start_time=time(10, 30), now=now),
+    ]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = sorted(result for result, _ in pool.map(_attempt, attempts))
+
+    assert outcomes == ["conflict", "created"]
+    assert Booking.objects.filter(
+        table_pin=pin,
+        slot_date=target_date,
+        status=BookingStatus.PENDING_PAYMENT,
+    ).count() == 1

@@ -109,3 +109,9 @@ Scenario: Expired lock frees the table
 
 ## 9. Open questions
 None - decided in TD-004 / ADR-003.
+
+## 10. Booking-Initiation Integrity Rules (T-044)
+- **Interval-overlap conflict (`REQ-LOCK-003` / `REQ-LOCK-004`):** Inside `create_booking_lock`'s `transaction.atomic()` + `TablePin.objects.select_for_update()` block, stale-lock expiry (`PENDING_PAYMENT` with `lock_expires_at <= now`) and active-lock conflict detection (`CONFIRMED` or `PENDING_PAYMENT` with `lock_expires_at > now`) both match overlapping `[start_at, end_at)` intervals (`start_at < end_at_utc AND end_at > start_at_utc`) via `Booking.objects.active_locks_for_interval(...)`.
+- **No-hours venue rejection:** `initiate_booking` requires the venue to have at least one `OperatingHours` row; venues with no operating hours configured are rejected with `400 INVALID_SLOT` rather than skipping the slot-grid check.
+- **Deactivated space rejection:** `initiate_booking` checks `pin.is_active` and (when `pin.space` is not `None`) `pin.space.is_active`, rejecting deactivated spaces with `400 TABLE_NOT_BOOKABLE`.
+- **Add-on ID validation (`REQ-LOCK-006`):** `create_booking_lock` validates all requested `addon_ids` (deduplicated) against `DesignAddon(venue=pin.venue, is_active=True)` *before* inserting the `Booking` row; any nonexistent, cross-venue, or inactive add-on ID raises `400 INVALID_ADDON` (`InvalidAddonError`) with zero `Booking` or lock created.

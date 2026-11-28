@@ -158,9 +158,9 @@ def test_spike_service_multiway_contention_20_rounds() -> None:
     base_date = (dj_timezone.now() + timedelta(days=2)).date()
 
     for r in range(ROUNDS):
-        # Unique slot time per round to isolate rounds
-        hour = 8 + (r % 14)
-        slot_date = base_date + timedelta(days=(r // 14))
+        # Unique non-overlapping 2-hour-spaced slot time per round to isolate rounds
+        hour = 8 + (r % 7) * 2
+        slot_date = base_date + timedelta(days=(r // 7))
         slot_time = time(hour, 0)
 
         # Create distinct users for each competing worker
