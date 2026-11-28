@@ -16,6 +16,7 @@ import {
   listOwnerVenueBookings,
   listOwnerVenueSpaces,
   listVenueAddons,
+  submitVenueForReview,
   updateVenueAddon,
   type DesignAddonOut,
   type VenueOwnerOut,
@@ -73,6 +74,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     createVenueAddon: vi.fn(),
     updateVenueAddon: vi.fn(),
     deleteVenueAddon: vi.fn(),
+    submitVenueForReview: vi.fn(),
   };
 });
 
@@ -84,6 +86,7 @@ const mockedListVenueAddons = vi.mocked(listVenueAddons);
 const mockedCreateVenueAddon = vi.mocked(createVenueAddon);
 const mockedUpdateVenueAddon = vi.mocked(updateVenueAddon);
 const mockedDeleteVenueAddon = vi.mocked(deleteVenueAddon);
+const mockedSubmitVenueForReview = vi.mocked(submitVenueForReview);
 
 const VENUE_FIXTURE: VenueOwnerOut = {
   id: 9,
@@ -295,5 +298,139 @@ describe("OwnerVenueDashboard design add-ons section (T-035 frontend)", () => {
     expect(
       screen.getByText("هنوز افزودنی طراحی برای این مجموعه ثبت نشده است.")
     ).toBeInTheDocument();
+  });
+});
+
+async function renderDashboardWithVenue(
+  venueOverrides: Partial<VenueOwnerOut> = {},
+  subOverrides: Partial<VenueSubscriptionOut> = {}
+) {
+  mockedGetOwnerVenue.mockResolvedValueOnce({ ...VENUE_FIXTURE, ...venueOverrides });
+  mockedGetOwnerVenueSubscription.mockResolvedValueOnce({ ...SUB_FIXTURE, ...subOverrides });
+  mockedListOwnerVenueSpaces.mockResolvedValueOnce([]);
+  mockedListOwnerVenueBookings.mockResolvedValueOnce([]);
+  mockedListVenueAddons.mockResolvedValueOnce([]);
+
+  render(React.createElement(OwnerVenueDashboard, { venueId: 9 }));
+  await screen.findByText("وضعیت بررسی مجموعه");
+}
+
+describe("OwnerVenueDashboard review-status panel (T-036 frontend)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("shows each of the four review_status header badges with the decided Persian labels", async () => {
+    const cases: Array<[VenueOwnerOut["review_status"], string]> = [
+      ["DRAFT", "پیش‌نویس"],
+      ["PENDING_REVIEW", "در انتظار بررسی"],
+      ["APPROVED", "تایید شده"],
+      ["REJECTED", "رد شده"],
+    ];
+
+    for (const [status, label] of cases) {
+      await renderDashboardWithVenue({
+        review_status: status,
+        is_approved: status === "APPROVED",
+      });
+      expect(screen.getByText(label)).toBeInTheDocument();
+      cleanup();
+      vi.clearAllMocks();
+    }
+  });
+
+  it("shows submit button for DRAFT even when subscription is inactive and no spaces/tables exist", async () => {
+    await renderDashboardWithVenue(
+      { review_status: "DRAFT", is_approved: false, subscription_status: "INACTIVE" },
+      { is_active: false, has_ever_subscribed: false }
+    );
+
+    const submitBtn = screen.getByRole("button", { name: "ارسال برای بررسی" });
+    expect(submitBtn).toBeEnabled();
+  });
+
+  it("shows REJECTED rejection_reason verbatim, submitted_for_review_at, and resubmit button", async () => {
+    await renderDashboardWithVenue({
+      review_status: "REJECTED",
+      is_approved: false,
+      rejection_reason: "تصویر ۳۶۰ سالن اصلی بارگذاری نشده است.",
+      submitted_for_review_at: "2026-11-28T08:00:00Z",
+    });
+
+    expect(screen.getByText("تصویر ۳۶۰ سالن اصلی بارگذاری نشده است.")).toBeInTheDocument();
+    expect(screen.getByText(/زمان آخرین ارسال:/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ارسال دوباره برای بررسی" })).toBeEnabled();
+  });
+
+  it("shows no submit button for PENDING_REVIEW or APPROVED", async () => {
+    await renderDashboardWithVenue({
+      review_status: "PENDING_REVIEW",
+      is_approved: false,
+      submitted_for_review_at: "2026-11-28T08:00:00Z",
+    });
+    expect(screen.getByText(/در انتظار بررسی مدیر پلتفرم است/)).toBeInTheDocument();
+    expect(screen.getByText(/زمان ارسال:/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /ارسال/ })).not.toBeInTheDocument();
+
+    cleanup();
+    vi.clearAllMocks();
+
+    await renderDashboardWithVenue({
+      review_status: "APPROVED",
+      is_approved: true,
+    });
+    expect(screen.queryByRole("button", { name: /ارسال/ })).not.toBeInTheDocument();
+  });
+
+  it("updates panel directly from returned VenueOwnerOut on submit success without extra getOwnerVenue call", async () => {
+    const user = userEvent.setup();
+    await renderDashboardWithVenue({
+      review_status: "DRAFT",
+      is_approved: false,
+    });
+
+    mockedSubmitVenueForReview.mockResolvedValueOnce({
+      ...VENUE_FIXTURE,
+      review_status: "PENDING_REVIEW",
+      is_approved: false,
+      rejection_reason: "",
+      submitted_for_review_at: "2026-11-28T08:30:00Z",
+    });
+
+    await user.click(screen.getByRole("button", { name: "ارسال برای بررسی" }));
+
+    await waitFor(() => expect(mockedSubmitVenueForReview).toHaveBeenCalledWith(9));
+    expect(await screen.findByText("در انتظار بررسی")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /ارسال/ })).not.toBeInTheDocument();
+    expect(mockedGetOwnerVenue).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows Persian message without raw error_code and refreshes venue on 409 VENUE_NOT_SUBMITTABLE", async () => {
+    const user = userEvent.setup();
+    await renderDashboardWithVenue({
+      review_status: "DRAFT",
+      is_approved: false,
+    });
+
+    mockedSubmitVenueForReview.mockRejectedValueOnce(
+      new ApiError(409, "VENUE_NOT_SUBMITTABLE", "Venue cannot be submitted.", {})
+    );
+    mockedGetOwnerVenue.mockResolvedValueOnce({
+      ...VENUE_FIXTURE,
+      review_status: "APPROVED",
+      is_approved: true,
+    });
+
+    await user.click(screen.getByRole("button", { name: "ارسال برای بررسی" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).not.toContain("VENUE_NOT_SUBMITTABLE");
+    expect(alert.textContent).toContain("امکان ارسال برای بررسی را ندارد");
+    await waitFor(() => expect(mockedGetOwnerVenue).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("تایید شده")).toBeInTheDocument();
   });
 });

@@ -695,3 +695,9 @@ export async function deleteVenueAddon(venueId: number, addonId: number): Promis
     method: "DELETE",
   });
 }
+
+export async function submitVenueForReview(venueId: number): Promise<VenueOwnerOut> {
+  return apiFetch<VenueOwnerOut>(`/venues/owner/venues/${venueId}/submit`, {
+    method: "POST",
+  });
+}

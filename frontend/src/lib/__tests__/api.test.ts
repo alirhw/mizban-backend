@@ -12,9 +12,11 @@ import {
   otpVerify,
   payBookingWithWallet,
   resetCsrfTokenCache,
+  submitVenueForReview,
   updateVenueAddon,
   type DesignAddonOut,
   type PaymentTransactionOut,
+  type VenueOwnerOut,
 } from "../api";
 
 describe("api client (TD-006 session + CSRF contract)", () => {
@@ -376,6 +378,79 @@ describe("api client (TD-006 session + CSRF contract)", () => {
       status: 409,
       errorCode: "ADDON_IN_USE",
       message: "Design add-on is referenced by existing bookings.",
+    });
+  });
+
+  it("submitVenueForReview calls POST /api/v1/venues/owner/venues/{venueId}/submit with no body and returns VenueOwnerOut", async () => {
+    const venueOut: VenueOwnerOut = {
+      id: 9,
+      name: "کافه تست",
+      slug: "test-cafe",
+      city: "تهران",
+      venue_type: "CAFE",
+      address: "خیابان ولیعصر",
+      description: "",
+      operating_hours: [],
+      design_addons: [],
+      is_approved: false,
+      review_status: "PENDING_REVIEW",
+      rejection_reason: "",
+      submitted_for_review_at: "2026-11-28T08:00:00Z",
+      subscription_status: "INACTIVE",
+      is_publicly_visible: false,
+      created_at: "2026-11-01T00:00:00Z",
+      updated_at: "2026-11-28T08:00:00Z",
+    };
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-submit-venue" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(venueOut), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+    const result = await submitVenueForReview(9);
+
+    expect(result).toEqual(venueOut);
+    const [postUrl, postInit] = fetchMock.mock.calls[1]!;
+    expect(String(postUrl)).toContain("/api/v1/venues/owner/venues/9/submit");
+    expect(postInit?.method).toBe("POST");
+    expect(postInit?.body).toBeUndefined();
+  });
+
+  it("submitVenueForReview surfaces ApiError(409, VENUE_NOT_SUBMITTABLE) when venue is not submittable", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-submit-409" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error_code: "VENUE_NOT_SUBMITTABLE",
+            message: "Venue cannot be submitted in its current state.",
+            details: {},
+          }),
+          {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      );
+
+    await expect(submitVenueForReview(9)).rejects.toMatchObject({
+      name: "ApiError",
+      status: 409,
+      errorCode: "VENUE_NOT_SUBMITTABLE",
+      message: "Venue cannot be submitted in its current state.",
     });
   });
 });

@@ -19,6 +19,7 @@ import {
   listSpaceTablePins,
   listVenueAddons,
   listVenueSlots,
+  submitVenueForReview,
   updateTablePin,
   updateVenueAddon,
   type BlockedSlotOut,
@@ -86,6 +87,35 @@ function mapAddonErrorToPersian(err: unknown, fallback: string): string {
   return fallback;
 }
 
+function getReviewStatusBadge(reviewStatus: string): { label: string; toneClass: string } {
+  switch (reviewStatus) {
+    case "APPROVED":
+      return { label: "تایید شده", toneClass: "bg-emerald-100 text-emerald-900" };
+    case "PENDING_REVIEW":
+      return { label: "در انتظار بررسی", toneClass: "bg-amber-100 text-amber-900" };
+    case "REJECTED":
+      return { label: "رد شده", toneClass: "bg-red-100 text-red-900" };
+    case "DRAFT":
+    default:
+      return { label: "پیش‌نویس", toneClass: "bg-stone-100 text-stone-700" };
+  }
+}
+
+function mapReviewSubmitErrorToPersian(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 409 || err.errorCode === "VENUE_NOT_SUBMITTABLE") {
+      return "وضعیت فعلی مجموعه امکان ارسال برای بررسی را ندارد؛ اطلاعات وضعیت به‌روزرسانی شد.";
+    }
+    if (err.status === 403 || err.errorCode === "FORBIDDEN") {
+      return "شما دسترسی لازم برای ارسال این مجموعه را ندارید.";
+    }
+    if (err.status === 404 || err.errorCode === "NOT_FOUND") {
+      return "مجموعه مورد نظر یافت نشد.";
+    }
+  }
+  return "ارسال مجموعه برای بررسی با خطا مواجه شد.";
+}
+
 export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -131,6 +161,11 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
   const [inUseAddonId, setInUseAddonId] = useState<number | null>(null);
   const [addonError, setAddonError] = useState<string | null>(null);
   const [addonSuccess, setAddonSuccess] = useState<string | null>(null);
+
+  // Review status submit state
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
 
   // Section (c): BlockedSlot manager state
   const dateOptions = useMemo(
@@ -511,6 +546,29 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
     return tehranDate === selectedDate;
   });
 
+  async function handleSubmitForReview() {
+    setSubmittingReview(true);
+    setReviewError(null);
+    setReviewSuccess(null);
+    try {
+      const updatedVenue = await submitVenueForReview(venueId);
+      setVenue(updatedVenue);
+      setReviewSuccess("مجموعه با موفقیت برای بررسی مدیر پلتفرم ارسال شد.");
+    } catch (err) {
+      setReviewError(mapReviewSubmitErrorToPersian(err));
+      if (err instanceof ApiError && (err.status === 409 || err.errorCode === "VENUE_NOT_SUBMITTABLE")) {
+        const refreshed = await getOwnerVenue(venueId).catch(() => null);
+        if (refreshed) {
+          setVenue(refreshed);
+        }
+      }
+    } finally {
+      setSubmittingReview(false);
+    }
+  }
+
+  const reviewBadge = getReviewStatusBadge(venue.review_status);
+
   return (
     <section className="space-y-8">
       {/* Header */}
@@ -519,13 +577,9 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold text-stone-900">{venue.name}</h1>
             <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                venue.is_approved
-                  ? "bg-emerald-100 text-emerald-900"
-                  : "bg-stone-100 text-stone-700"
-              }`}
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${reviewBadge.toneClass}`}
             >
-              {venue.is_approved ? "تایید شده" : "در انتظار تایید"}
+              {reviewBadge.label}
             </span>
           </div>
           <p className="text-sm text-stone-600">
@@ -539,6 +593,89 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
         >
           بازگشت به مجموعه‌های من
         </Link>
+      </div>
+
+      {/* Review Status Panel */}
+      <div className="rounded-xl border border-stone-200 bg-white p-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-stone-900">وضعیت بررسی مجموعه</h2>
+          {venue.review_status === "DRAFT" || venue.review_status === "REJECTED" ? (
+            <button
+              type="button"
+              disabled={submittingReview}
+              onClick={() => void handleSubmitForReview()}
+              className="rounded-lg bg-stone-900 px-4 py-2 text-xs font-medium text-white hover:bg-stone-800 disabled:opacity-50"
+            >
+              {submittingReview
+                ? "در حال ارسال..."
+                : venue.review_status === "REJECTED"
+                  ? "ارسال دوباره برای بررسی"
+                  : "ارسال برای بررسی"}
+            </button>
+          ) : null}
+        </div>
+
+        {reviewError ? (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800"
+          >
+            {reviewError}
+          </div>
+        ) : null}
+        {reviewSuccess ? (
+          <div
+            role="status"
+            className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800"
+          >
+            {reviewSuccess}
+          </div>
+        ) : null}
+
+        {venue.review_status === "DRAFT" ? (
+          <p className="text-sm text-stone-700">
+            این مجموعه در حالت پیش‌نویس قرار دارد و هنوز برای بررسی مدیر ارسال نشده است.
+          </p>
+        ) : null}
+
+        {venue.review_status === "PENDING_REVIEW" ? (
+          <div className="space-y-1 text-sm text-amber-900">
+            <p>مجموعه شما ارسال شده و در انتظار بررسی مدیر پلتفرم است.</p>
+            {venue.submitted_for_review_at ? (
+              <p className="text-xs text-stone-600">
+                زمان ارسال:{" "}
+                {formatJalaliDate(venue.submitted_for_review_at, { includeTime: true })}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {venue.review_status === "APPROVED" ? (
+          <p className="text-sm text-emerald-900">
+            مجموعه شما توسط مدیر پلتفرم تایید شده است.
+          </p>
+        ) : null}
+
+        {venue.review_status === "REJECTED" ? (
+          <div className="space-y-2 text-sm">
+            <p className="text-red-900">
+              درخواست بررسی مجموعه رد شده است. پس از اصلاح موارد زیر می‌توانید دوباره ارسال
+              کنید.
+            </p>
+            {venue.rejection_reason ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-950">
+                <div className="mb-1 font-semibold">دلیل رد:</div>
+                <p className="whitespace-pre-wrap">{venue.rejection_reason}</p>
+              </div>
+            ) : null}
+            {venue.submitted_for_review_at ? (
+              <p className="text-xs text-stone-600">
+                زمان آخرین ارسال:{" "}
+                {formatJalaliDate(venue.submitted_for_review_at, { includeTime: true })}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {/* (d) Read-only Subscription Card */}

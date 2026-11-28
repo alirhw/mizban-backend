@@ -146,3 +146,15 @@ Scenario: 8. Authorization & IDOR isolation
 
 ## 8. Open questions
 - **Auto-demotion of `APPROVED` venues on owner edit:** Should future edits to core profile fields on an `APPROVED` venue require re-review? *Closed for T-036 (not in T-036; follow-up product decision).*
+
+## 9. Frontend Owner Review-Status Panel (Follow-up (c))
+- **Location:** Integrated into `frontend/src/components/OwnerVenueDashboard.tsx` (header badge + review-status panel directly below the header; no new route).
+- **API Client (`frontend/src/lib/api.ts`):** Hand-written `submitVenueForReview(venueId)` calling `POST /api/v1/venues/owner/venues/{venueId}/submit` with no request body and returning `VenueOwnerOut`.
+- **Four-State Labels & Actions:**
+  - `DRAFT` -> badge `"پیش‌نویس"`, button `"ارسال برای بررسی"`.
+  - `PENDING_REVIEW` -> badge `"در انتظار بررسی"`, `submitted_for_review_at` formatted with `formatJalaliDate`, waiting note, no submit button.
+  - `APPROVED` -> badge `"تایید شده"`, no submit button.
+  - `REJECTED` -> badge `"رد شده"`, `rejection_reason` displayed verbatim, `submitted_for_review_at` when present, button `"ارسال دوباره برای بررسی"`.
+  - Submit button is never disabled due to inactive subscription, missing panoramas, or missing tables.
+- **State Sync & Error Mapping:** On 200 success, updates dashboard `venue` state directly from the returned `VenueOwnerOut` without an extra `getOwnerVenue` refetch. On `409 VENUE_NOT_SUBMITTABLE`, displays a Persian message (no raw `error_code`) and calls `getOwnerVenue(venueId)` to refresh true state.
+- **Tests:** `frontend/src/lib/__tests__/api.test.ts` (`submitVenueForReview` contract + `409 VENUE_NOT_SUBMITTABLE`) and `frontend/src/lib/__tests__/OwnerVenueDashboard.test.tsx` (4-state header badges, `DRAFT` + inactive subscription submittability, `REJECTED` verbatim reason + resubmit, `PENDING_REVIEW` / `APPROVED` no submit button, 200 direct state update without refetch, and `409` message + `getOwnerVenue` refresh).
