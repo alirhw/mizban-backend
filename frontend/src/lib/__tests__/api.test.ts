@@ -6,6 +6,8 @@ import {
   createVenueAddon,
   deleteVenueAddon,
   getMe,
+  hideReview,
+  listAdminReviews,
   listMyReviews,
   listPublicVenues,
   listTableReviews,
@@ -16,10 +18,12 @@ import {
   otpVerify,
   payBookingWithWallet,
   resetCsrfTokenCache,
+  showReview,
   submitVenueForReview,
   updateVenueAddon,
   type DesignAddonOut,
   type PaymentTransactionOut,
+  type ReviewAdminOut,
   type ReviewListOut,
   type ReviewMineOut,
   type VenueOwnerOut,
@@ -595,5 +599,121 @@ describe("api client (TD-006 session + CSRF contract)", () => {
     expect(res).toEqual(myReviews);
     expect(String(fetchMock.mock.calls[0]![0])).toContain("/api/v1/reviews/my/");
     expect(fetchMock.mock.calls[0]![1]?.method).toBe("GET");
+  });
+
+  it("listAdminReviews calls GET /api/v1/reviews/admin/ with venue_id, is_visible, limit, offset and returns ReviewAdminOut[]", async () => {
+    const adminReviews: ReviewAdminOut[] = [
+      {
+        id: 71,
+        booking_id: 201,
+        venue_id: 5,
+        table_number: "3",
+        rating: 4,
+        text: "برخورد خوب",
+        reviewer_name: "رضا",
+        created_at: "2026-11-28T08:00:00Z",
+        is_visible: false,
+      },
+    ];
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(adminReviews), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await listAdminReviews({
+      venue_id: 5,
+      is_visible: false,
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(res).toEqual(adminReviews);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain(
+      "/api/v1/reviews/admin/?venue_id=5&is_visible=false&limit=20&offset=0"
+    );
+    expect(init?.method).toBe("GET");
+    expect(init?.cache).toBe("no-store");
+  });
+
+  it("hideReview and showReview call POST /hide and /show and return updated ReviewAdminOut", async () => {
+    const hiddenOut: ReviewAdminOut = {
+      id: 71,
+      booking_id: 201,
+      venue_id: 5,
+      table_number: "3",
+      rating: 4,
+      text: "برخورد خوب",
+      reviewer_name: "رضا",
+      created_at: "2026-11-28T08:00:00Z",
+      is_visible: false,
+    };
+    const shownOut: ReviewAdminOut = { ...hiddenOut, is_visible: true };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-admin-mod" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(hiddenOut), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(shownOut), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+    expect(await hideReview(71)).toEqual(hiddenOut);
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("/api/v1/reviews/admin/71/hide");
+    expect(fetchMock.mock.calls[1]![1]?.method).toBe("POST");
+
+    expect(await showReview(71)).toEqual(shownOut);
+    expect(String(fetchMock.mock.calls[2]![0])).toContain("/api/v1/reviews/admin/71/show");
+    expect(fetchMock.mock.calls[2]![1]?.method).toBe("POST");
+  });
+
+  it("listAdminReviews, hideReview, and showReview surface ApiError(403, FORBIDDEN)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error_code: "FORBIDDEN", message: "Forbidden", details: {} }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    await expect(listAdminReviews()).rejects.toMatchObject({
+      name: "ApiError",
+      status: 403,
+      errorCode: "FORBIDDEN",
+    });
+
+    for (const fn of [() => hideReview(71), () => showReview(71)]) {
+      resetCsrfTokenCache();
+      fetchMock
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ csrf_token: "tok-403" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ error_code: "FORBIDDEN", message: "Forbidden", details: {} }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          )
+        );
+      await expect(fn()).rejects.toMatchObject({
+        name: "ApiError",
+        status: 403,
+        errorCode: "FORBIDDEN",
+      });
+    }
   });
 });

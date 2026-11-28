@@ -111,3 +111,12 @@ Scenario: 4. Auth and admin-only RBAC enforcement (401 / 403 / 404)
 
 ## 8. Open questions
 - None; all parameters (`ReviewAdminOut` fields, `is_staff` / `UserRole.ADMIN` check, idempotent 200 behavior, and pagination clamping) are fixed for T-038.
+
+## 9. Frontend Admin Review Moderation UI (Follow-up (e))
+- **Route & Navigation:** New client page `frontend/src/app/admin/reviews/page.tsx` and Header link `"مدیریت نظرها"` in `frontend/src/components/Header.tsx` rendered only when `user.role === "ADMIN"`.
+- **API Client (`frontend/src/lib/api.ts`):** Hand-written `ReviewAdminOut` (`id`, `booking_id`, `venue_id`, `table_number`, `rating`, `text`, `reviewer_name`, `created_at`, `is_visible`), `listAdminReviews({ venue_id?, is_visible?, limit?, offset? })`, `hideReview(reviewId)`, and `showReview(reviewId)`.
+- **Moderation & Privacy Rules:**
+  - Filters by venue (`listPublicVenues()`), visibility (`all` / `visible` / `hidden`), and pagination (`limit=20`, `offset`).
+  - Hide/show-only: `"پنهان کردن"` on visible rows and `"نمایش دادن"` on hidden rows update the row in place from the returned `ReviewAdminOut` with no extra refetch and no delete button anywhere.
+  - Never displays phone numbers or raw `error_code`; `403 FORBIDDEN` renders a Persian admin-only message without redirect loops (allowing `is_staff` users who open `/admin/reviews` directly).
+- **Tests:** `frontend/src/lib/__tests__/api.test.ts` and `frontend/src/lib/__tests__/AdminReviews.test.tsx` (Header role visibility, venue/visibility filters, in-place hide/show, 403 Persian message, zero delete buttons).

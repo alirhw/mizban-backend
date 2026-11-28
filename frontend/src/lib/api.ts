@@ -775,3 +775,43 @@ export async function listMyReviews(
     cache: "no-store",
   });
 }
+
+export interface ReviewAdminOut extends ReviewMineOut {
+  venue_id: number;
+}
+
+export async function listAdminReviews(
+  params: {
+    venue_id?: number | null;
+    is_visible?: boolean | null;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<ReviewAdminOut[]> {
+  const search = new URLSearchParams();
+  if (params.venue_id !== undefined && params.venue_id !== null) {
+    search.set("venue_id", String(params.venue_id));
+  }
+  if (params.is_visible !== undefined && params.is_visible !== null) {
+    search.set("is_visible", String(params.is_visible));
+  }
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  return apiFetch<ReviewAdminOut[]>(`/reviews/admin/${qs ? `?${qs}` : ""}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function hideReview(reviewId: number): Promise<ReviewAdminOut> {
+  return apiFetch<ReviewAdminOut>(`/reviews/admin/${reviewId}/hide`, {
+    method: "POST",
+  });
+}
+
+export async function showReview(reviewId: number): Promise<ReviewAdminOut> {
+  return apiFetch<ReviewAdminOut>(`/reviews/admin/${reviewId}/show`, {
+    method: "POST",
+  });
+}

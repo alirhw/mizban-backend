@@ -16,6 +16,11 @@ export function Header() {
           <Link href="/" className="hover:text-stone-900">
             کافه‌ها
           </Link>
+          {!loading && user?.role === "ADMIN" ? (
+            <Link href="/admin/reviews" className="hover:text-stone-900">
+              مدیریت نظرها
+            </Link>
+          ) : null}
           {loading ? (
             <span className="text-stone-400">...</span>
           ) : user ? (
