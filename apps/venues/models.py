@@ -74,7 +74,10 @@ class Venue(models.Model):
     def has_active_subscription(self, now=None) -> bool:
         """Single read path for BR-005 subscription activity (Decision 5 / T-025)."""
         current_time = now or timezone.now()
-        return self.venue_subscriptions.filter(expires_at__gt=current_time).exists()
+        return self.venue_subscriptions.filter(
+            starts_at__lte=current_time,
+            expires_at__gt=current_time,
+        ).exists()
 
     @property
     def subscription_status(self) -> str:

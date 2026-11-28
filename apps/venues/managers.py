@@ -18,5 +18,6 @@ class VenueQuerySet(models.QuerySet):
         current_time = now or timezone.now()
         return self.filter(
             is_approved=True,
+            venue_subscriptions__starts_at__lte=current_time,
             venue_subscriptions__expires_at__gt=current_time,
         ).distinct()

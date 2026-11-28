@@ -95,6 +95,34 @@ def _extract_callback_params(request: HttpRequest) -> dict[str, Any]:
     return params
 
 
+def validate_callback_url(raw_url: str, *, request: HttpRequest) -> str | None:
+    """Validate that a payment callback_url is a safe relative path or allowlisted origin."""
+    target = raw_url.strip() if isinstance(raw_url, str) else ""
+    if not target:
+        return None
+
+    if target.startswith("/") and not target.startswith("//"):
+        return target
+
+    parsed = urlparse(target)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+
+    allowed_origins = {
+        f"{request.scheme}://{request.get_host()}",
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+    }
+    frontend_origin = getattr(settings, "FRONTEND_ORIGIN", "")
+    if isinstance(frontend_origin, str) and frontend_origin.strip():
+        allowed_origins.add(frontend_origin.strip().rstrip("/"))
+
+    target_origin = f"{parsed.scheme}://{parsed.netloc}"
+    if target_origin in allowed_origins:
+        return target
+    return None
+
+
 def _resolve_safe_dev_redirect_url(
     request: HttpRequest,
     params: dict[str, Any],
@@ -129,30 +157,8 @@ def _resolve_safe_dev_redirect_url(
                     stored_url = candidate
 
     raw_callback_url = params.get("callback_url")
-    target = stored_url or (raw_callback_url.strip() if isinstance(raw_callback_url, str) else "")
-    if not target:
-        return None
-
-    if target.startswith("/") and not target.startswith("//"):
-        return target
-
-    parsed = urlparse(target)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return None
-
-    allowed_origins = {
-        f"{request.scheme}://{request.get_host()}",
-        "http://127.0.0.1:3000",
-        "http://localhost:3000",
-    }
-    frontend_origin = getattr(settings, "FRONTEND_ORIGIN", "")
-    if isinstance(frontend_origin, str) and frontend_origin.strip():
-        allowed_origins.add(frontend_origin.strip().rstrip("/"))
-
-    target_origin = f"{parsed.scheme}://{parsed.netloc}"
-    if target_origin in allowed_origins:
-        return target
-    return None
+    candidate_url = stored_url or (raw_callback_url if isinstance(raw_callback_url, str) else "")
+    return validate_callback_url(candidate_url, request=request)
 
 
 def _append_callback_query(callback_url: str, result: Any) -> str:
@@ -194,6 +200,18 @@ def initiate_payment(request: HttpRequest, payload: PaymentInitiateIn):
     if getattr(auth_user, "role", None) != UserRole.CUSTOMER:
         raise PermissionDenied("Only customers can initiate booking payments.")
 
+    validated_callback_url = validate_callback_url(payload.callback_url, request=request)
+    if validated_callback_url is None:
+        raise ValidationError(
+            [
+                {
+                    "loc": ["body", "callback_url"],
+                    "msg": "Callback URL must be a relative path or an allowlisted origin.",
+                    "type": "value_error",
+                }
+            ]
+        )
+
     if not Booking.objects.filter(pk=payload.booking_id).exists():
         raise Http404("Booking not found.")
 
@@ -201,7 +219,7 @@ def initiate_payment(request: HttpRequest, payload: PaymentInitiateIn):
         user=auth_user,
         booking_id=payload.booking_id,
         idempotency_key=payload.idempotency_key,
-        callback_url=payload.callback_url,
+        callback_url=validated_callback_url,
     )
     return Status(
         201,

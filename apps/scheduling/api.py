@@ -6,6 +6,8 @@ via schemas.py, delegate to services.py, map domain errors.
 """
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 from ninja.responses import Status
@@ -33,11 +35,19 @@ def get_slots(
     Slot availability is computed dynamically (BR-001 / BR-002) and is NEVER cached (ARCH-004).
     If table_pin_id is provided, filters available slots using the T-011 availability filter.
     """
-    venue = get_object_or_404(Venue, pk=venue_id)
+    venue = Venue.objects.public().filter(pk=venue_id).first()
+    if venue is None:
+        raise Http404("Venue not found.")
+    try:
+        target_date = services.resolve_date(date)
+    except (ValueError, TypeError) as exc:
+        raise DjangoValidationError(
+            {"date": ["Invalid date format. Expected YYYY-MM-DD or Jalali YYYY/MM/DD."]}
+        ) from exc
     table_pin = None
     if table_pin_id is not None:
         table_pin = get_object_or_404(TablePin, pk=table_pin_id, venue=venue)
-    return services.get_venue_slots_for_date(venue, on_date=date, table_pin=table_pin)
+    return services.get_venue_slots_for_date(venue, on_date=target_date, table_pin=table_pin)
 
 
 @router.post(

@@ -46,24 +46,46 @@ class VenueAdmin(admin.ModelAdmin):
 
     @admin.action(description="Approve selected venues (is_approved=True)")
     def approve_selected_venues(self, request, queryset):
-        for venue in queryset:
-            venue.is_approved = True
-            venue.review_status = VenueReviewStatus.APPROVED
-            venue.rejection_reason = ""
-            venue.save(update_fields=["is_approved", "review_status", "rejection_reason", "updated_at"])
-            vid, vslug = venue.id, venue.slug
-            transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
-        self.message_user(request, f"{queryset.count()} venue(s) approved.")
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import create_notification
+
+        count = 0
+        with transaction.atomic():
+            for venue in queryset.select_related("owner"):
+                venue.is_approved = True
+                venue.review_status = VenueReviewStatus.APPROVED
+                venue.rejection_reason = ""
+                venue.save(update_fields=["is_approved", "review_status", "rejection_reason", "updated_at"])
+                create_notification(
+                    recipient=venue.owner,
+                    type=NotificationType.VENUE_APPROVED,
+                    venue=venue,
+                )
+                vid, vslug = venue.id, venue.slug
+                transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
+                count += 1
+        self.message_user(request, f"{count} venue(s) approved.")
 
     @admin.action(description="Reject selected venues (is_approved=False)")
     def reject_selected_venues(self, request, queryset):
-        for venue in queryset:
-            venue.is_approved = False
-            venue.review_status = VenueReviewStatus.REJECTED
-            venue.save(update_fields=["is_approved", "review_status", "updated_at"])
-            vid, vslug = venue.id, venue.slug
-            transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
-        self.message_user(request, f"{queryset.count()} venue(s) rejected.")
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import create_notification
+
+        count = 0
+        with transaction.atomic():
+            for venue in queryset.select_related("owner"):
+                venue.is_approved = False
+                venue.review_status = VenueReviewStatus.REJECTED
+                venue.save(update_fields=["is_approved", "review_status", "updated_at"])
+                create_notification(
+                    recipient=venue.owner,
+                    type=NotificationType.VENUE_REJECTED,
+                    venue=venue,
+                )
+                vid, vslug = venue.id, venue.slug
+                transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
+                count += 1
+        self.message_user(request, f"{count} venue(s) rejected.")
 
 
 @admin.register(OperatingHours)
@@ -71,12 +93,32 @@ class OperatingHoursAdmin(admin.ModelAdmin):
     list_display = ("venue", "weekday", "open_time", "close_time")
     list_filter = ("weekday",)
 
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        vid, vslug = obj.venue_id, obj.venue.slug
+        transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
+
+    def delete_model(self, request, obj):
+        vid, vslug = obj.venue_id, obj.venue.slug
+        super().delete_model(request, obj)
+        transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
+
 
 @admin.register(DesignAddon)
 class DesignAddonAdmin(admin.ModelAdmin):
     list_display = ("title", "venue", "fee", "is_active")
     list_filter = ("is_active",)
     search_fields = ("title",)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        vid, vslug = obj.venue_id, obj.venue.slug
+        transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
+
+    def delete_model(self, request, obj):
+        vid, vslug = obj.venue_id, obj.venue.slug
+        super().delete_model(request, obj)
+        transaction.on_commit(lambda vid=vid, vslug=vslug: invalidate_venue_cache(vid, vslug))
 
 
 @admin.register(SubscriptionPlan)

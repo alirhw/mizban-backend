@@ -88,10 +88,59 @@ def _hash_otp_code(code: str) -> str:
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
+_OTP_RATE_LIMIT_LUA = """
+local phone_key = KEYS[1]
+local ip_key = KEYS[2]
+local phone_limit = tonumber(ARGV[1])
+local ip_limit = tonumber(ARGV[2])
+local window = tonumber(ARGV[3])
+local p = tonumber(redis.call("GET", phone_key) or "0")
+if p >= phone_limit then
+    return 0
+end
+local ip = tonumber(redis.call("GET", ip_key) or "0")
+if ip >= ip_limit then
+    return 0
+end
+local new_p = redis.call("INCR", phone_key)
+if new_p == 1 then
+    redis.call("EXPIRE", phone_key, window)
+end
+local new_ip = redis.call("INCR", ip_key)
+if new_ip == 1 then
+    redis.call("EXPIRE", ip_key, window)
+end
+return 1
+"""
+
+_OTP_VERIFY_LUA = """
+local key = KEYS[1]
+local candidate_hash = ARGV[1]
+local max_attempts = tonumber(ARGV[2])
+local raw = redis.call("GET", key)
+if not raw then
+    return {"MISSING", 0}
+end
+local record = cjson.decode(raw)
+if record["code_hash"] == candidate_hash then
+    redis.call("DEL", key)
+    return {"OK", 0}
+end
+local attempts = tonumber(record["attempts"] or 0) + 1
+if attempts >= max_attempts then
+    redis.call("DEL", key)
+    return {"BURNED", attempts}
+end
+record["attempts"] = attempts
+redis.call("SET", key, cjson.encode(record), "KEEPTTL")
+return {"INVALID", attempts}
+"""
+
+
 def request_otp(phone: str, *, ip: str) -> int:
     """Generate a 5-digit OTP, store its SHA-256 hash in Redis, and send via SMS adapter.
 
-    Enforces max 3 requests per 10 minutes per phone and per IP.
+    Enforces max 3 requests per 10 minutes per phone and per IP atomically.
     Replaces any previous active OTP for the phone immediately.
     """
     normalized_phone = validate_iranian_phone(phone)
@@ -101,18 +150,18 @@ def request_otp(phone: str, *, ip: str) -> int:
     phone_rate_key = otp_phone_rate_key(normalized_phone)
     ip_rate_key = otp_ip_rate_key(client_ip)
 
-    phone_count = int(client.get(phone_rate_key) or 0)
-    ip_count = int(client.get(ip_rate_key) or 0)
-    if phone_count >= OTP_RATE_LIMIT_MAX_REQUESTS or ip_count >= OTP_RATE_LIMIT_MAX_REQUESTS:
+    allowed = client.eval(
+        _OTP_RATE_LIMIT_LUA,
+        2,
+        phone_rate_key,
+        ip_rate_key,
+        OTP_RATE_LIMIT_MAX_REQUESTS,
+        OTP_RATE_LIMIT_MAX_REQUESTS,
+        OTP_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    if not allowed:
         logger.warning("OTP request rate limit exceeded.")
         raise OtpRateLimitedError()
-
-    pipe = client.pipeline()
-    pipe.incr(phone_rate_key)
-    pipe.expire(phone_rate_key, OTP_RATE_LIMIT_WINDOW_SECONDS, nx=True)
-    pipe.incr(ip_rate_key)
-    pipe.expire(ip_rate_key, OTP_RATE_LIMIT_WINDOW_SECONDS, nx=True)
-    pipe.execute()
 
     code = f"{secrets.randbelow(10**OTP_LENGTH):0{OTP_LENGTH}d}"
     ttl_seconds = get_otp_ttl_seconds()
@@ -138,30 +187,22 @@ def verify_otp(phone: str, code: str) -> Any:
 
     client = get_redis_client()
     key = otp_redis_key(normalized_phone)
-    raw = client.get(key)
+    outcome = client.eval(_OTP_VERIFY_LUA, 1, key, candidate_hash, OTP_MAX_ATTEMPTS)
+    status_raw = outcome[0]
+    status = status_raw.decode("utf-8") if isinstance(status_raw, bytes) else str(status_raw)
 
-    if raw is None:
+    if status == "MISSING":
         # Constant-time dummy comparison so missing/expired path does not shortcut timing
         hmac.compare_digest(candidate_hash, _DUMMY_SHA256_HEX)
         raise OtpExpiredError()
 
-    record = json.loads(raw)
-    expected_hash = record["code_hash"]
-    attempts = int(record.get("attempts", 0))
-
-    if not hmac.compare_digest(candidate_hash, expected_hash):
-        attempts += 1
-        if attempts >= OTP_MAX_ATTEMPTS:
-            client.delete(key)
-            logger.warning("OTP verification burned after maximum failed attempts.")
-        else:
-            record["attempts"] = attempts
-            client.set(key, json.dumps(record), keepttl=True)
-            logger.info("OTP verification failed attempt recorded.")
+    if status == "BURNED":
+        logger.warning("OTP verification burned after maximum failed attempts.")
         raise OtpInvalidError()
 
-    # Single-use: delete the record immediately on success
-    client.delete(key)
+    if status == "INVALID":
+        logger.info("OTP verification failed attempt recorded.")
+        raise OtpInvalidError()
 
     user = User.objects.filter(phone=normalized_phone).first()
     if user is None:

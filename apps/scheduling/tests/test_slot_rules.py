@@ -152,9 +152,22 @@ def test_get_venue_slots_for_date_with_jalali_date_string():
 @pytest.mark.django_db
 def test_scheduling_api_endpoint():
     """API endpoint GET /api/v1/scheduling/venues/{venue_id}/slots returns typed SlotOut schemas."""
+    from django.utils import timezone as dj_tz
+
+    from apps.venues.models import SubscriptionPlan, VenueSubscription
+
     client = Client()
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     venue = VenueFactory(owner=owner, is_approved=True)
+    plan = SubscriptionPlan.objects.create(name="SlotTestPlan", duration_days=30, price_toman=100_000)
+    now = dj_tz.now()
+    VenueSubscription.objects.create(
+        venue=venue,
+        plan=plan,
+        starts_at=now - timedelta(days=1),
+        expires_at=now + timedelta(days=29),
+        created_by=owner,
+    )
 
     # Weekday 0 (Monday)
     OperatingHoursFactory(
@@ -180,13 +193,25 @@ def test_scheduling_api_endpoint():
 @pytest.mark.django_db
 def test_scheduling_api_endpoint_with_t011_availability_filter():
     """GET /api/v1/scheduling/venues/{venue_id}/slots?table_pin_id=X filters occupied slots."""
+    from django.utils import timezone as dj_tz
+
     from apps.bookings.models import Booking, BookingStatus
     from apps.panoramas.tests.factories import TablePinFactory
+    from apps.venues.models import SubscriptionPlan, VenueSubscription
 
     client = Client()
     owner = UserFactory(role=UserRole.VENUE_OWNER)
     customer = UserFactory(role=UserRole.CUSTOMER)
     venue = VenueFactory(owner=owner, is_approved=True)
+    plan = SubscriptionPlan.objects.create(name="SlotTestPlan2", duration_days=30, price_toman=100_000)
+    now = dj_tz.now()
+    VenueSubscription.objects.create(
+        venue=venue,
+        plan=plan,
+        starts_at=now - timedelta(days=1),
+        expires_at=now + timedelta(days=29),
+        created_by=owner,
+    )
     pin = TablePinFactory(venue=venue)
 
     # TablePinFactory auto-generates 7-day operating hours (08:00-23:00).

@@ -17,7 +17,7 @@ from typing import Any
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Exists, OuterRef
 from django.db.models.deletion import ProtectedError
 from django.http import Http404
@@ -69,14 +69,19 @@ def invalidate_venue_cache(venue_id: int, slug: str | None = None) -> None:
 def list_public_venues(
     city: str | None = None,
     venue_type: str | None = None,
+    *,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[Venue]:
     """Return publicly listed venues (BR-005: approved + active subscription)."""
-    qs = Venue.objects.public().order_by("name")
+    clamped_limit = max(1, min(int(limit), 100))
+    clamped_offset = max(0, int(offset))
+    qs = Venue.objects.public().order_by("name", "id")
     if city:
         qs = qs.filter(city__iexact=city.strip())
     if venue_type:
         qs = qs.filter(venue_type=venue_type.strip().upper())
-    return list(qs)
+    return list(qs[clamped_offset : clamped_offset + clamped_limit])
 
 
 def get_public_venue_by_slug(slug: str) -> dict[str, Any]:
@@ -88,6 +93,9 @@ def get_public_venue_by_slug(slug: str) -> dict[str, Any]:
     cache_key = get_venue_slug_cache_key(slug)
     cached_data = cache.get(cache_key)
     if cached_data is not None:
+        if not Venue.objects.public().filter(slug=slug).exists():
+            invalidate_venue_cache(cached_data["id"], slug)
+            raise Http404("Venue not found or not publicly available.")
         return cached_data
 
     venue = (
@@ -144,6 +152,7 @@ def list_owner_venues(user: Any) -> list[Venue]:
     now = timezone.now()
     active_sub_exists = VenueSubscription.objects.filter(
         venue_id=OuterRef("pk"),
+        starts_at__lte=now,
         expires_at__gt=now,
     )
     qs = (
@@ -199,23 +208,36 @@ def create_venue_for_owner(
     if not base_slug:
         base_slug = f"venue-{user.id}"
 
-    candidate_slug = base_slug
-    counter = 1
-    while Venue.objects.filter(slug=candidate_slug).exists():
-        candidate_slug = f"{base_slug}-{counter}"
-        counter += 1
-
+    max_slug_attempts = 20
     with transaction.atomic():
-        venue = Venue.objects.create(
-            owner=user,
-            name=name.strip(),
-            slug=candidate_slug,
-            city=city.strip(),
-            venue_type=venue_type.strip().upper(),
-            address=address.strip(),
-            description=description.strip() if description else "",
-            is_approved=False,
-        )
+        candidate_slug = base_slug
+        counter = 1
+        while Venue.objects.filter(slug=candidate_slug).exists():
+            candidate_slug = f"{base_slug}-{counter}"
+            counter += 1
+
+        venue = None
+        for _ in range(max_slug_attempts):
+            try:
+                with transaction.atomic():
+                    venue = Venue.objects.create(
+                        owner=user,
+                        name=name.strip(),
+                        slug=candidate_slug,
+                        city=city.strip(),
+                        venue_type=venue_type.strip().upper(),
+                        address=address.strip(),
+                        description=description.strip() if description else "",
+                        is_approved=False,
+                    )
+                break
+            except IntegrityError as exc:
+                if "slug" not in str(exc).lower():
+                    raise
+                candidate_slug = f"{base_slug}-{counter}"
+                counter += 1
+        if venue is None:
+            raise IntegrityError(f"Could not allocate a unique slug for base '{base_slug}'.")
 
     return venue
 
@@ -489,7 +511,7 @@ def get_owner_venue_subscription(
             "has_ever_subscribed": False,
         }
 
-    is_active = latest.expires_at > current_time
+    is_active = latest.starts_at <= current_time < latest.expires_at
     days_remaining = (
         max(0, math.ceil((latest.expires_at - current_time).total_seconds() / 86400))
         if is_active
@@ -528,7 +550,7 @@ def list_owner_venue_bookings(
     Enforces identical role/IDOR checks (403/404) via get_owner_venue().
     Constant-query read via select_related('table_pin', 'customer').
     """
-    from apps.bookings.models import Booking
+    from apps.bookings.models import Booking, BookingStatus
 
     venue = get_owner_venue(user, venue_id)
     clamped_limit = max(1, min(int(limit), 200))
@@ -554,11 +576,29 @@ def list_owner_venue_bookings(
             "end_jalali": format_jalali(booking.end_at, fmt="%Y/%m/%d %H:%M"),
             "amount_online_toman": booking.amount_online_toman,
             "amount_in_person_toman": booking.amount_in_person_toman,
-            "customer_phone_masked": mask_phone(booking.customer.phone),
+            "customer_phone_masked": (
+                mask_phone(booking.customer.phone)
+                if booking.status == BookingStatus.CONFIRMED
+                else None
+            ),
             "created_at": booking.created_at,
         }
         for booking in bookings
     ]
+
+
+def list_admin_venues(
+    admin_user: Any,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[Venue]:
+    """List all venues (any status) for platform administrators (T-046 m35)."""
+    if not (admin_user.is_staff or admin_user.role == UserRole.ADMIN):
+        raise PermissionDenied("Only administrators can list all venues.")
+    clamped_limit = max(1, min(int(limit), 100))
+    clamped_offset = max(0, int(offset))
+    return list(Venue.objects.order_by("name", "id")[clamped_offset : clamped_offset + clamped_limit])
 
 
 def _validate_addon_fields(title: str, fee: int) -> str:

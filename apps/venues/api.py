@@ -20,6 +20,7 @@ from apps.venues.schemas import (
     DesignAddonOut,
     DesignAddonUpdateIn,
     OwnerBookingOut,
+    VenueAdminItemOut,
     VenueApprovalOut,
     VenueCreateIn,
     VenueOwnerOut,
@@ -207,6 +208,17 @@ def delete_my_venue_addon(request, venue_id: int, addon_id: int):
 # ---------------------------------------------------------------------------
 
 
+@router.get(
+    "/admin/venues",
+    response=list[VenueAdminItemOut],
+    auth=auth,
+    summary="Admin list all venues",
+)
+def list_admin_venues_endpoint(request, limit: int = 50, offset: int = 0):
+    """List all venues regardless of approval or subscription status (ADMIN/staff only)."""
+    return services.list_admin_venues(request.auth, limit=limit, offset=offset)
+
+
 @router.post(
     "/admin/venues/{venue_id}/approve",
     response=VenueApprovalOut,
@@ -255,12 +267,19 @@ def list_public(
     request,
     city: str | None = None,
     venue_type: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ):
     """List approved venues with active subscription (BR-005).
 
     Privacy: Never exposes owner phone number or internal status flags.
     """
-    return services.list_public_venues(city=city, venue_type=venue_type)
+    return services.list_public_venues(
+        city=city,
+        venue_type=venue_type,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{slug}", response=VenuePublicDetailOut, summary="Get public venue detail")

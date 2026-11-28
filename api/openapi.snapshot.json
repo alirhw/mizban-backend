@@ -692,6 +692,59 @@
         ]
       }
     },
+    "/api/v1/venues/admin/venues": {
+      "get": {
+        "operationId": "apps_venues_api_list_admin_venues_endpoint",
+        "summary": "Admin list all venues",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VenueAdminItemOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "List all venues regardless of approval or subscription status (ADMIN/staff only).",
+        "tags": [
+          "venues"
+        ],
+        "security": [
+          {
+            "ActiveSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/venues/admin/venues/{venue_id}/approve": {
       "post": {
         "operationId": "apps_venues_api_approve_venue_endpoint",
@@ -812,6 +865,26 @@
                 }
               ],
               "title": "Venue Type"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
             },
             "required": false
           }
@@ -3277,8 +3350,15 @@
             "type": "integer"
           },
           "customer_phone_masked": {
-            "title": "Customer Phone Masked",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Phone Masked"
           },
           "created_at": {
             "format": "date-time",
@@ -3361,6 +3441,40 @@
           "is_active"
         ],
         "title": "DesignAddonUpdateIn",
+        "type": "object"
+      },
+      "VenueAdminItemOut": {
+        "description": "Admin venue list item across all statuses (T-046 m35).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "is_approved": {
+            "title": "Is Approved",
+            "type": "boolean"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "is_approved",
+          "review_status"
+        ],
+        "title": "VenueAdminItemOut",
         "type": "object"
       },
       "VenueApprovalOut": {

@@ -180,5 +180,15 @@ class OwnerBookingOut(Schema):
     end_jalali: str
     amount_online_toman: int
     amount_in_person_toman: int
-    customer_phone_masked: str
+    customer_phone_masked: str | None
     created_at: datetime
+
+
+class VenueAdminItemOut(Schema):
+    """Admin venue list item across all statuses (T-046 m35)."""
+
+    id: int
+    name: str
+    slug: str
+    is_approved: bool
+    review_status: str

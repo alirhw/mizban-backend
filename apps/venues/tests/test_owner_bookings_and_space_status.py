@@ -60,7 +60,8 @@ class TestOwnerVenueBookingsEndpoint:
         assert len(items) == 2
         assert items[0]["booking_id"] == sooner.id
         assert items[1]["booking_id"] == later.id
-        assert items[0]["customer_phone_masked"] == "0912***789"
+        assert items[0]["customer_phone_masked"] is None
+        assert items[1]["customer_phone_masked"] == "0912***789"
         assert items[0]["table_number"] == "T-12"
         assert items[0]["status"] == BookingStatus.PENDING_PAYMENT
         assert items[0]["amount_online_toman"] == 75_000
