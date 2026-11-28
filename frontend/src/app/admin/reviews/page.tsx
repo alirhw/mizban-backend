@@ -40,6 +40,8 @@ export default function AdminReviewsPage() {
   const [offset, setOffset] = useState(0);
 
   const [reviews, setReviews] = useState<ReviewAdminOut[]>([]);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [reachedEndOfList, setReachedEndOfList] = useState(false);
   const [loadingReviews, setLoadingReviews] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -77,6 +79,7 @@ export default function AdminReviewsPage() {
     let active = true;
     setLoadingReviews(true);
     setErrorMessage(null);
+    setReachedEndOfList(false);
 
     const parsedVenueId = venueIdFilter ? Number(venueIdFilter) : undefined;
     const isVisibleParam =
@@ -90,7 +93,13 @@ export default function AdminReviewsPage() {
     })
       .then((data) => {
         if (!active) return;
-        setReviews(data);
+        if (offset > 0 && data.length === 0) {
+          setReachedEndOfList(true);
+        } else {
+          setReviews(data);
+          setReachedEndOfList(false);
+        }
+        setHasLoadedOnce(true);
         setForbidden(false);
       })
       .catch((err) => {
@@ -232,16 +241,46 @@ export default function AdminReviewsPage() {
         </div>
       ) : null}
 
-      {loadingReviews ? (
+      {loadingReviews && !hasLoadedOnce ? (
         <div className="rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-600">
           در حال دریافت نظرها...
         </div>
-      ) : reviews.length === 0 ? (
-        <div className="rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-500">
-          نظری با این فیلترها یافت نشد.
-        </div>
+      ) : errorMessage && reviews.length === 0 ? null : reviews.length === 0 ? (
+        offset > 0 ? (
+          <div className="rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-600 flex flex-wrap items-center justify-between gap-3">
+            <span>به انتهای فهرست رسیدید</span>
+            <button
+              type="button"
+              onClick={() => setOffset((prev) => Math.max(0, prev - PAGE_SIZE))}
+              className="rounded-lg border border-stone-300 px-3.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-100"
+            >
+              بازگشت به صفحه قبل
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-500">
+            نظری با این فیلترها یافت نشد.
+          </div>
+        )
       ) : (
         <div className="space-y-3">
+          {loadingReviews ? (
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
+              در حال به‌روزرسانی نظرها...
+            </div>
+          ) : null}
+          {reachedEndOfList ? (
+            <div className="rounded-xl border border-stone-200 bg-amber-50 p-4 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-3">
+              <span>به انتهای فهرست رسیدید</span>
+              <button
+                type="button"
+                onClick={() => setOffset((prev) => Math.max(0, prev - PAGE_SIZE))}
+                className="rounded-lg border border-amber-300 bg-white px-3.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+              >
+                بازگشت به صفحه قبل
+              </button>
+            </div>
+          ) : null}
           {reviews.map((review) => (
             <div
               key={review.id}

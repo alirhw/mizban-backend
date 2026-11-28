@@ -148,7 +148,7 @@ describe("OwnerVenueDashboard design add-ons section (T-035 frontend)", () => {
     expect(screen.getByText("شمع‌آرایی")).toBeInTheDocument();
     expect(screen.getByText("۱۲۰٬۰۰۰ تومان")).toBeInTheDocument();
     expect(screen.getByText("۵۰٬۰۰۰ تومان")).toBeInTheDocument();
-    expect(screen.getByText("فعال")).toBeInTheDocument();
+    expect(screen.getAllByText("فعال").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("غیرفعال")).toBeInTheDocument();
   });
 

@@ -123,20 +123,16 @@ export default function OwnerVenuesPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {items.map(({ venue, subscription }) => {
-            const subBadge = subscription
-              ? getSubscriptionBadge(subscription)
-              : getSubscriptionBadge({
-                  is_active: venue.subscription_status === "ACTIVE",
-                  days_remaining: 0,
-                  has_ever_subscribed: venue.subscription_status === "ACTIVE",
-                });
+            const subBadge = getSubscriptionBadge(subscription);
 
             const toneClasses =
               subBadge.tone === "emerald"
                 ? "bg-emerald-100 text-emerald-900"
                 : subBadge.tone === "amber"
                   ? "bg-amber-100 text-amber-900"
-                  : "bg-red-100 text-red-900";
+                  : subBadge.tone === "neutral"
+                    ? "bg-stone-100 text-stone-700"
+                    : "bg-red-100 text-red-900";
 
             return (
               <div
@@ -164,7 +160,7 @@ export default function OwnerVenuesPage() {
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-stone-600">وضعیت اشتراک:</span>
                       <span className={`rounded-full px-2 py-0.5 font-semibold ${toneClasses}`}>
-                        {venue.subscription_status} ({subBadge.label})
+                        {subBadge.label}
                       </span>
                     </div>
                     {subscription?.plan_name ? (

@@ -107,4 +107,44 @@ describe("owner dashboard helpers (PH-06-02)", () => {
       formatJalaliDate("2026-11-26T07:30:00Z", { includeTime: true, latinDigits: true })
     ).toMatch(/1405\/09\/05/);
   });
+
+  it("M8: returns UNKNOWN badge when subscription is null", () => {
+    const badge = getSubscriptionBadge(null);
+    expect(badge.code).toBe("UNKNOWN");
+    expect(badge.label).toBe("نامشخص");
+    expect(badge.detail).toBe("اطلاعات اشتراک در دسترس نیست");
+    expect(badge.tone).toBe("neutral");
+  });
+
+  it("m32: validates weekday, close_time, crosses_midnight, and 120-min empty-hours grid", () => {
+    const baseNow = Date.parse("2026-11-25T10:00:00Z");
+    // 2026-11-26 is Thursday -> Python weekday = 3
+    const thursday11Tehran = "2026-11-26T07:30:00Z"; // 11:00 Tehran
+    const thursday21Tehran = "2026-11-26T17:30:00Z"; // 21:00 Tehran (120m slot ends 23:00)
+
+    const weekdayMismatch = validateBlockedSlotInput(
+      thursday11Tehran,
+      [{ weekday: 4, open_time: "09:00:00", close_time: "23:00:00", crosses_midnight: false }],
+      baseNow
+    );
+    expect(weekdayMismatch.valid).toBe(false);
+
+    const pastClose = validateBlockedSlotInput(
+      thursday21Tehran,
+      [{ weekday: 3, open_time: "09:00:00", close_time: "22:00:00", crosses_midnight: false }],
+      baseNow
+    );
+    expect(pastClose.valid).toBe(false);
+
+    const crossesMidnightOk = validateBlockedSlotInput(
+      thursday21Tehran,
+      [{ weekday: 3, open_time: "09:00:00", close_time: "02:00:00", crosses_midnight: true }],
+      baseNow
+    );
+    expect(crossesMidnightOk.valid).toBe(true);
+
+    // Empty operatingHours: 120-min grid -> 10:00 Tehran (600m) valid, 11:00 Tehran (660m) invalid
+    expect(validateBlockedSlotInput("2026-11-26T06:30:00Z", [], baseNow).valid).toBe(true);
+    expect(validateBlockedSlotInput("2026-11-26T07:30:00Z", [], baseNow).valid).toBe(false);
+  });
 });

@@ -154,10 +154,10 @@ describe("T-040 frontend: Admin financial report page & Header", () => {
     expect(await screen.findByText("گزارش مالی پلتفرم")).toBeInTheDocument();
     expect(screen.getByText("۳۰۰٬۰۰۰ تومان")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("SUCCESS: 2")).toBeInTheDocument();
-    expect(screen.getByText("FAILED: 1")).toBeInTheDocument();
+    expect(screen.getByText("موفق: 2")).toBeInTheDocument();
+    expect(screen.getByText("ناموفق: 1")).toBeInTheDocument();
     expect(screen.getByText("sandbox")).toBeInTheDocument();
-    expect(screen.getByText("BOOKING_CANCEL_REFUND")).toBeInTheDocument();
+    expect(screen.getByText("بازپرداخت لغو رزرو")).toBeInTheDocument();
     expect(
       screen.getByText(/هنوز پرداخت آنلاین اشتراکی ثبت نشده است/)
     ).toBeInTheDocument();

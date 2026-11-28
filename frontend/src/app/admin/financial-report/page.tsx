@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -17,6 +17,44 @@ import { formatToman } from "@/lib/panorama";
 
 const PAGE_SIZE = 50;
 const PAYMENT_STATUS_OPTIONS = ["INITIATED", "PENDING", "SUCCESS", "FAILED", "TIMEOUT"] as const;
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  INITIATED: "آغاز شده",
+  PENDING: "در انتظار پرداخت",
+  SUCCESS: "موفق",
+  FAILED: "ناموفق",
+  TIMEOUT: "منقضی‌شده",
+};
+
+const WALLET_TYPE_LABELS: Record<string, string> = {
+  CREDIT: "واریز",
+  DEBIT: "برداشت",
+};
+
+const WALLET_REASON_LABELS: Record<string, string> = {
+  CANCELLATION_REFUND: "بازپرداخت لغو رزرو",
+  BOOKING_CANCEL_REFUND: "بازپرداخت لغو رزرو",
+  BOOKING_PAYMENT: "پرداخت رزرو",
+  BOOKING_DEBIT: "برداشت بابت رزرو",
+  WALLET_TOPUP: "شارژ کیف پول",
+  ADMIN_ADJUSTMENT: "تعدیل مدیر",
+};
+
+function getPaymentStatusLabel(status: string): string {
+  return PAYMENT_STATUS_LABELS[status] ?? "نامشخص";
+}
+
+function getWalletTypeLabel(type: string): string {
+  return WALLET_TYPE_LABELS[type] ?? "نامشخص";
+}
+
+function getWalletReasonLabel(reason: string): string {
+  const trimmed = reason.trim();
+  if (!trimmed) return "—";
+  if (WALLET_REASON_LABELS[trimmed]) return WALLET_REASON_LABELS[trimmed];
+  if (/^[A-Z0-9_]+$/.test(trimmed)) return "—";
+  return trimmed;
+}
 
 function mapFinancialReportErrorToPersian(err: unknown): string {
   if (err instanceof ApiError) {
@@ -46,6 +84,8 @@ export default function AdminFinancialReportPage() {
   const [hasMore, setHasMore] = useState(false);
   const [forbidden, setForbidden] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const filterGenRef = useRef(0);
 
   useEffect(() => {
     if (authLoading) return;
@@ -55,6 +95,7 @@ export default function AdminFinancialReportPage() {
     }
 
     let active = true;
+    filterGenRef.current += 1;
     setLoading(true);
     setErrorMessage(null);
 
@@ -95,9 +136,10 @@ export default function AdminFinancialReportPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, user, fromDate, toDate, paymentStatus, router]);
+  }, [authLoading, user, fromDate, toDate, paymentStatus, router, reloadNonce]);
 
   async function handleShowMore() {
+    const gen = filterGenRef.current;
     setLoadingMore(true);
     setErrorMessage(null);
     try {
@@ -109,6 +151,7 @@ export default function AdminFinancialReportPage() {
         limit: PAGE_SIZE,
         offset: nextOffset,
       });
+      if (filterGenRef.current !== gen) return;
       setReport(data);
       setPaymentRows((prev) => [...prev, ...data.payments.rows]);
       setWalletRows((prev) => [...prev, ...data.wallet.rows]);
@@ -116,9 +159,12 @@ export default function AdminFinancialReportPage() {
         data.payments.rows.length === PAGE_SIZE || data.wallet.rows.length === PAGE_SIZE
       );
     } catch (err) {
+      if (filterGenRef.current !== gen) return;
       setErrorMessage(mapFinancialReportErrorToPersian(err));
     } finally {
-      setLoadingMore(false);
+      if (filterGenRef.current === gen) {
+        setLoadingMore(false);
+      }
     }
   }
 
@@ -213,7 +259,7 @@ export default function AdminFinancialReportPage() {
             <option value="">همه</option>
             {PAYMENT_STATUS_OPTIONS.map((status) => (
               <option key={status} value={status}>
-                {status}
+                {getPaymentStatusLabel(status)}
               </option>
             ))}
           </select>
@@ -223,18 +269,34 @@ export default function AdminFinancialReportPage() {
       {errorMessage ? (
         <div
           role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"
+          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 flex flex-wrap items-center justify-between gap-3"
         >
-          {errorMessage}
+          <span>{errorMessage}</span>
+          {!report ? (
+            <button
+              type="button"
+              onClick={() => setReloadNonce((prev) => prev + 1)}
+              className="rounded-lg bg-red-800 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-red-900"
+            >
+              تلاش مجدد
+            </button>
+          ) : null}
         </div>
       ) : null}
 
-      {loading || !report ? (
-        <div className="rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-600">
-          در حال دریافت گزارش مالی...
-        </div>
+      {!report ? (
+        loading ? (
+          <div className="rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-600">
+            در حال دریافت گزارش مالی...
+          </div>
+        ) : null
       ) : (
         <div className="space-y-6">
+          {loading ? (
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
+              در حال به‌روزرسانی گزارش مالی...
+            </div>
+          ) : null}
           {/* Payments Totals & Rows */}
           <div className="rounded-xl border border-stone-200 bg-white p-5 space-y-4">
             <h2 className="text-lg font-bold text-stone-900">پرداخت‌های آنلاین</h2>
@@ -262,7 +324,7 @@ export default function AdminFinancialReportPage() {
                   key={status}
                   className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-stone-700"
                 >
-                  {status}: {statusCount}
+                  {getPaymentStatusLabel(status)}: {statusCount}
                 </span>
               ))}
             </div>
@@ -291,7 +353,7 @@ export default function AdminFinancialReportPage() {
                         <td className="py-2.5 pl-3">{row.customer_id}</td>
                         <td className="py-2.5 pl-3">{row.provider_name}</td>
                         <td className="py-2.5 pl-3 font-medium">{formatToman(row.amount_toman)}</td>
-                        <td className="py-2.5 pl-3 text-xs">{row.status}</td>
+                        <td className="py-2.5 pl-3 text-xs">{getPaymentStatusLabel(row.status)}</td>
                         <td className="py-2.5 text-xs text-stone-600">
                           {formatJalaliDate(row.created_at, { includeTime: true })}
                         </td>
@@ -309,13 +371,13 @@ export default function AdminFinancialReportPage() {
 
             <div className="grid gap-3 sm:grid-cols-3 text-sm">
               <div className="rounded-lg bg-stone-50 p-3">
-                <div className="text-xs text-stone-500">مجموع واریز (CREDIT)</div>
+                <div className="text-xs text-stone-500">مجموع واریز</div>
                 <div className="mt-1 font-bold text-stone-900">
                   {formatToman(report.wallet.total_credit_toman)}
                 </div>
               </div>
               <div className="rounded-lg bg-stone-50 p-3">
-                <div className="text-xs text-stone-500">مجموع برداشت (DEBIT)</div>
+                <div className="text-xs text-stone-500">مجموع برداشت</div>
                 <div className="mt-1 font-bold text-stone-900">
                   {formatToman(report.wallet.total_debit_toman)}
                 </div>
@@ -348,10 +410,10 @@ export default function AdminFinancialReportPage() {
                       <tr key={row.id}>
                         <td className="py-2.5 pl-3 font-mono text-xs">{row.id}</td>
                         <td className="py-2.5 pl-3">{row.user_id}</td>
-                        <td className="py-2.5 pl-3 text-xs">{row.type}</td>
+                        <td className="py-2.5 pl-3 text-xs">{getWalletTypeLabel(row.type)}</td>
                         <td className="py-2.5 pl-3 font-medium">{formatToman(row.amount_toman)}</td>
                         <td className="py-2.5 pl-3">{formatToman(row.balance_after_toman)}</td>
-                        <td className="py-2.5 pl-3 text-xs">{row.reason}</td>
+                        <td className="py-2.5 pl-3 text-xs">{getWalletReasonLabel(row.reason)}</td>
                         <td className="py-2.5 pl-3 text-xs">
                           {row.booking_id !== null ? `#${row.booking_id}` : "—"}
                         </td>

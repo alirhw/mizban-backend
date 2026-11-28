@@ -4,15 +4,28 @@ export const OWNER_EMPTY_VENUES_TEXT = "هنوز ونیویی ثبت نکرده�
 export const OWNER_FORBIDDEN_TEXT = "دسترسی ندارید";
 
 export interface SubscriptionBadge {
-  code: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "INACTIVE";
+  code: "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "INACTIVE" | "UNKNOWN";
   label: string;
   detail: string;
-  tone: "emerald" | "amber" | "red";
+  tone: "emerald" | "amber" | "red" | "neutral";
 }
 
+export const UNKNOWN_SUBSCRIPTION_BADGE: SubscriptionBadge = {
+  code: "UNKNOWN",
+  label: "نامشخص",
+  detail: "اطلاعات اشتراک در دسترس نیست",
+  tone: "neutral",
+};
+
 export function getSubscriptionBadge(
-  sub: Pick<VenueSubscriptionOut, "is_active" | "days_remaining" | "has_ever_subscribed">
+  sub:
+    | Pick<VenueSubscriptionOut, "is_active" | "days_remaining" | "has_ever_subscribed">
+    | null
+    | undefined
 ): SubscriptionBadge {
+  if (!sub) {
+    return UNKNOWN_SUBSCRIPTION_BADGE;
+  }
   if (sub.is_active) {
     if (sub.days_remaining <= 7) {
       return {
@@ -91,6 +104,24 @@ export function formatMaskedPhone(phone: string): string {
   return "***";
 }
 
+const TEHRAN_WEEKDAY_MAP: Record<string, number> = {
+  Mon: 0,
+  Tue: 1,
+  Wed: 2,
+  Thu: 3,
+  Fri: 4,
+  Sat: 5,
+  Sun: 6,
+};
+
+function getTehranWeekday(date: Date): number {
+  const short = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tehran",
+    weekday: "short",
+  }).format(date);
+  return TEHRAN_WEEKDAY_MAP[short] ?? 0;
+}
+
 function getTehranMinutesFromMidnight(date: Date): number {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Tehran",
@@ -117,12 +148,16 @@ export interface BlockedSlotValidationResult {
   error: string | null;
 }
 
+export type BlockedSlotOperatingHoursInput = Pick<OperatingHoursOut, "open_time"> &
+  Partial<Pick<OperatingHoursOut, "weekday" | "close_time" | "crosses_midnight">>;
+
 /**
- * Validate a BlockedSlot start instant against past-time and 120-minute (90+30) grid alignment.
+ * Validate a BlockedSlot start instant against past-time, weekday operating hours,
+ * close_time / crosses_midnight bounds, and 120-minute (90+30) grid alignment.
  */
 export function validateBlockedSlotInput(
   slotStartIso: string,
-  operatingHours: Pick<OperatingHoursOut, "open_time">[] = [],
+  operatingHours: BlockedSlotOperatingHoursInput[] = [],
   nowMs: number = Date.now()
 ): BlockedSlotValidationResult {
   const startMs = Date.parse(slotStartIso);
@@ -139,22 +174,52 @@ export function validateBlockedSlotInput(
     return { valid: false, error: "زمان اسلات با بازه کاری تراز نیست." };
   }
 
+  const tehranMinutes = getTehranMinutesFromMidnight(startDate);
   if (operatingHours.length > 0) {
-    const tehranMinutes = getTehranMinutesFromMidnight(startDate);
-    const matchesAnyOpening = operatingHours.some((oh) => {
+    const tehranWeekday = getTehranWeekday(startDate);
+    const prevWeekday = (tehranWeekday + 6) % 7;
+    const hasWeekdayInfo = operatingHours.some((oh) => oh.weekday !== undefined);
+    const matchingDayHours = hasWeekdayInfo
+      ? operatingHours.filter(
+          (oh) =>
+            oh.weekday === tehranWeekday ||
+            (oh.crosses_midnight === true && oh.weekday === prevWeekday)
+        )
+      : operatingHours;
+
+    if (matchingDayHours.length === 0) {
+      return { valid: false, error: "مجموعه در این روز هفته فعال نیست." };
+    }
+
+    const matchesOpening = matchingDayHours.some((oh) => {
       const openMinutes = parseHhMmToMinutes(oh.open_time);
       if (openMinutes === null) return false;
-      const diff = tehranMinutes - openMinutes;
-      return diff >= 0 && diff % 120 === 0;
+
+      const isPrevDayCrossMidnight =
+        hasWeekdayInfo && oh.weekday === prevWeekday && oh.crosses_midnight === true;
+      const slotRelativeStart = isPrevDayCrossMidnight ? tehranMinutes + 24 * 60 : tehranMinutes;
+      const diff = slotRelativeStart - openMinutes;
+      if (diff < 0 || diff % 120 !== 0) return false;
+
+      if (oh.close_time !== undefined) {
+        const rawCloseMinutes = parseHhMmToMinutes(oh.close_time);
+        if (rawCloseMinutes === null) return false;
+        const effectiveCloseMinutes =
+          oh.crosses_midnight || rawCloseMinutes <= openMinutes
+            ? rawCloseMinutes + 24 * 60
+            : rawCloseMinutes;
+        if (slotRelativeStart + 120 > effectiveCloseMinutes) {
+          return false;
+        }
+      }
+      return true;
     });
-    if (!matchesAnyOpening) {
+
+    if (!matchesOpening) {
       return { valid: false, error: "زمان اسلات با بازه ۱۲۰ دقیقه‌ای مجموعه تراز نیست." };
     }
-  } else {
-    const tehranMinutes = getTehranMinutesFromMidnight(startDate);
-    if (tehranMinutes % 30 !== 0) {
-      return { valid: false, error: "زمان اسلات با بازه کاری تراز نیست." };
-    }
+  } else if (tehranMinutes % 120 !== 0) {
+    return { valid: false, error: "زمان اسلات با بازه ۱۲۰ دقیقه‌ای تراز نیست." };
   }
 
   return { valid: true, error: null };

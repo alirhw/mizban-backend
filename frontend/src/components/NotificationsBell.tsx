@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -30,6 +30,7 @@ export function NotificationsBell() {
   const [hasMore, setHasMore] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
+  const listRequestGenRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -46,16 +47,22 @@ export function NotificationsBell() {
   }, []);
 
   async function loadFirstPage() {
+    const gen = ++listRequestGenRef.current;
     setLoadingList(true);
+    setLoadingMore(false);
     setErrorMessage(null);
     try {
       const items = await listNotifications({ limit: PAGE_SIZE, offset: 0 });
+      if (listRequestGenRef.current !== gen) return;
       setNotifications(items);
       setHasMore(items.length === PAGE_SIZE);
     } catch (err) {
+      if (listRequestGenRef.current !== gen) return;
       setErrorMessage(mapNotificationErrorToPersian(err));
     } finally {
-      setLoadingList(false);
+      if (listRequestGenRef.current === gen) {
+        setLoadingList(false);
+      }
     }
   }
 
@@ -68,6 +75,7 @@ export function NotificationsBell() {
   }
 
   async function handleLoadMore() {
+    const gen = listRequestGenRef.current;
     setLoadingMore(true);
     setErrorMessage(null);
     try {
@@ -75,12 +83,16 @@ export function NotificationsBell() {
         limit: PAGE_SIZE,
         offset: notifications.length,
       });
+      if (listRequestGenRef.current !== gen) return;
       setNotifications((prev) => [...prev, ...items]);
       setHasMore(items.length === PAGE_SIZE);
     } catch (err) {
+      if (listRequestGenRef.current !== gen) return;
       setErrorMessage(mapNotificationErrorToPersian(err));
     } finally {
-      setLoadingMore(false);
+      if (listRequestGenRef.current === gen) {
+        setLoadingMore(false);
+      }
     }
   }
 

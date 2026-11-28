@@ -69,10 +69,21 @@ function validateAddonInput(
   return { valid: true, title, fee };
 }
 
-function mapAddonErrorToPersian(err: unknown, fallback: string): string {
+const OWNER_BOOKINGS_PAGE_SIZE = 50;
+
+type AddonOperation = "create" | "update" | "delete" | "deactivate";
+
+function mapAddonErrorToPersian(
+  err: unknown,
+  operation: AddonOperation,
+  fallback: string
+): string {
   if (err instanceof ApiError) {
     if (err.status === 409 || err.errorCode === "ADDON_IN_USE") {
-      return "این افزودنی در رزروهای ثبت‌شده استفاده شده و قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.";
+      if (operation === "delete") {
+        return "این افزودنی در رزروهای ثبت‌شده استفاده شده و قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.";
+      }
+      return fallback;
     }
     if (err.errorCode === "VALIDATION_ERROR") {
       return "اطلاعات واردشده معتبر نیست؛ لطفاً عنوان و هزینه را بررسی کنید.";
@@ -87,7 +98,31 @@ function mapAddonErrorToPersian(err: unknown, fallback: string): string {
   return fallback;
 }
 
-function getReviewStatusBadge(reviewStatus: string): { label: string; toneClass: string } {
+function mapBlockSlotErrorToPersian(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 409 || err.errorCode === "SLOT_ALREADY_RESERVED") {
+      return "این اسلات قبلاً رزرو یا مسدود شده است.";
+    }
+    if (err.errorCode === "INVALID_SLOT") {
+      return "زمان انتخاب‌شده برای مسدودسازی معتبر نیست (اسلات گذشته یا نامعتبر).";
+    }
+    if (err.status === 422 || err.errorCode === "VALIDATION_ERROR") {
+      return "زمان انتخاب‌شده با برنامه اسلات‌های این میز مطابقت ندارد.";
+    }
+    if (err.status === 403 || err.errorCode === "FORBIDDEN") {
+      return "شما دسترسی لازم برای مسدودسازی اسلات‌های این مجموعه را ندارید.";
+    }
+    if (err.status === 404 || err.errorCode === "NOT_FOUND") {
+      return "میز مورد نظر یافت نشد.";
+    }
+    if (err.message) {
+      return err.message;
+    }
+  }
+  return "مسدودسازی اسلات با خطا مواجه شد.";
+}
+
+export function getReviewStatusBadge(reviewStatus: string): { label: string; toneClass: string } {
   switch (reviewStatus) {
     case "APPROVED":
       return { label: "تایید شده", toneClass: "bg-emerald-100 text-emerald-900" };
@@ -96,8 +131,9 @@ function getReviewStatusBadge(reviewStatus: string): { label: string; toneClass:
     case "REJECTED":
       return { label: "رد شده", toneClass: "bg-red-100 text-red-900" };
     case "DRAFT":
-    default:
       return { label: "پیش‌نویس", toneClass: "bg-stone-100 text-stone-700" };
+    default:
+      return { label: "نامشخص", toneClass: "bg-stone-100 text-stone-700" };
   }
 }
 
@@ -131,10 +167,17 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
 
   const [venue, setVenue] = useState<VenueOwnerOut | null>(null);
   const [subscription, setSubscription] = useState<VenueSubscriptionOut | null>(null);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [spaces, setSpaces] = useState<SpaceOut[]>([]);
+  const [spacesError, setSpacesError] = useState<string | null>(null);
   const [pins, setPins] = useState<TablePinOut[]>([]);
+  const [pinErrorsBySpaceId, setPinErrorsBySpaceId] = useState<Record<number, string>>({});
   const [addons, setAddons] = useState<DesignAddonOut[]>([]);
+  const [addonsError, setAddonsError] = useState<string | null>(null);
   const [bookings, setBookings] = useState<OwnerBookingOut[]>([]);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
+  const [hasMoreBookings, setHasMoreBookings] = useState(false);
+  const [loadingMoreBookings, setLoadingMoreBookings] = useState(false);
 
   // Section (b): Pin edit state
   const [editingPinId, setEditingPinId] = useState<number | null>(null);
@@ -198,6 +241,111 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
   const [blockSuccess, setBlockSuccess] = useState<string | null>(null);
   const [mutatingBlockKey, setMutatingBlockKey] = useState<string | null>(null);
 
+  async function fetchSpacePins(spaceList: SpaceOut[]) {
+    const results = await Promise.allSettled(
+      spaceList.map((space) => listSpaceTablePins(space.id))
+    );
+    const flatPins: TablePinOut[] = [];
+    const nextErrors: Record<number, string> = {};
+    results.forEach((res, index) => {
+      const space = spaceList[index]!;
+      if (res.status === "fulfilled") {
+        flatPins.push(...res.value);
+      } else {
+        nextErrors[space.id] = `دریافت میزهای فضای «${space.name}» با خطا مواجه شد.`;
+      }
+    });
+    setPins(flatPins);
+    setPinErrorsBySpaceId(nextErrors);
+    setSelectedPinId((prev) =>
+      prev && flatPins.some((p) => p.id === prev) ? prev : (flatPins[0]?.id ?? null)
+    );
+  }
+
+  async function retrySpacePins(space: SpaceOut) {
+    try {
+      const spacePins = await listSpaceTablePins(space.id);
+      setPins((prev) => [
+        ...prev.filter((p) => p.space_id !== space.id),
+        ...spacePins,
+      ]);
+      setPinErrorsBySpaceId((prev) => {
+        const next = { ...prev };
+        delete next[space.id];
+        return next;
+      });
+      setSelectedPinId((prev) => prev ?? spacePins[0]?.id ?? null);
+    } catch {
+      setPinErrorsBySpaceId((prev) => ({
+        ...prev,
+        [space.id]: `دریافت میزهای فضای «${space.name}» با خطا مواجه شد.`,
+      }));
+    }
+  }
+
+  async function retrySubscription() {
+    setSubscriptionError(null);
+    try {
+      const subData = await getOwnerVenueSubscription(venueId);
+      setSubscription(subData);
+    } catch {
+      setSubscription(null);
+      setSubscriptionError("دریافت اطلاعات اشتراک با خطا مواجه شد.");
+    }
+  }
+
+  async function retrySpaces() {
+    setSpacesError(null);
+    try {
+      const spaceList = await listOwnerVenueSpaces(venueId);
+      setSpaces(spaceList);
+      await fetchSpacePins(spaceList);
+    } catch {
+      setSpacesError("دریافت فهرست فضاها با خطا مواجه شد.");
+    }
+  }
+
+  async function retryBookings() {
+    setBookingsError(null);
+    try {
+      const bookingList = await listOwnerVenueBookings(venueId, {
+        limit: OWNER_BOOKINGS_PAGE_SIZE,
+        offset: 0,
+      });
+      setBookings(bookingList);
+      setHasMoreBookings(bookingList.length >= OWNER_BOOKINGS_PAGE_SIZE);
+    } catch {
+      setBookingsError("دریافت فهرست رزروها با خطا مواجه شد.");
+    }
+  }
+
+  async function handleLoadMoreBookings() {
+    if (loadingMoreBookings || !hasMoreBookings) return;
+    setLoadingMoreBookings(true);
+    try {
+      const nextPage = await listOwnerVenueBookings(venueId, {
+        limit: OWNER_BOOKINGS_PAGE_SIZE,
+        offset: bookings.length,
+      });
+      setBookings((prev) => [...prev, ...nextPage]);
+      setHasMoreBookings(nextPage.length >= OWNER_BOOKINGS_PAGE_SIZE);
+    } catch {
+      setBookingsError("دریافت رزروهای بیشتر با خطا مواجه شد.");
+    } finally {
+      setLoadingMoreBookings(false);
+    }
+  }
+
+  async function retryAddons() {
+    setAddonsError(null);
+    try {
+      const addonList = await listVenueAddons(venueId);
+      setAddons(addonList);
+    } catch {
+      setAddonsError("دریافت فهرست افزودنی‌ها با خطا مواجه شد.");
+    }
+  }
+
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
@@ -207,35 +355,12 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
     if (!isOwnerRole) return;
 
     let active = true;
-    Promise.all([
-      getOwnerVenue(venueId),
-      getOwnerVenueSubscription(venueId),
-      listOwnerVenueSpaces(venueId),
-      listOwnerVenueBookings(venueId),
-      listVenueAddons(venueId),
-    ])
-      .then(async ([venueData, subData, spaceList, bookingList, addonList]) => {
-        const pinLists = await Promise.all(
-          spaceList.map((space) => listSpaceTablePins(space.id).catch(() => [] as TablePinOut[]))
-        );
-        if (!active) return;
-        const flatPins = pinLists.flat();
 
-        setVenue(venueData);
-        setSubscription(subData);
-        setSpaces(spaceList);
-        setPins(flatPins);
-        setAddons(addonList);
-        setBookings(bookingList);
-        setSelectedPinId((prev) =>
-          prev && flatPins.some((p) => p.id === prev) ? prev : (flatPins[0]?.id ?? null)
-        );
-        setLoadError(null);
-        setForbidden(false);
-        setNotFoundError(false);
-        setLoadedVenueId(venueId);
-      })
-      .catch((err) => {
+    async function loadDashboard() {
+      let venueData: VenueOwnerOut;
+      try {
+        venueData = await getOwnerVenue(venueId);
+      } catch (err) {
         if (!active) return;
         if (err instanceof ApiError && err.status === 401) {
           router.replace(`/login?next=${encodeURIComponent(`/owner/venues/${venueId}`)}`);
@@ -250,7 +375,66 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
           return;
         }
         setLoadError("دریافت اطلاعات مجموعه با خطا مواجه شد.");
-      });
+        return;
+      }
+
+      if (!active) return;
+      setVenue(venueData);
+      setLoadError(null);
+      setForbidden(false);
+      setNotFoundError(false);
+      setLoadedVenueId(venueId);
+
+      const [subRes, spacesRes, bookingsRes, addonsRes] = await Promise.allSettled([
+        getOwnerVenueSubscription(venueId),
+        listOwnerVenueSpaces(venueId),
+        listOwnerVenueBookings(venueId, { limit: OWNER_BOOKINGS_PAGE_SIZE, offset: 0 }),
+        listVenueAddons(venueId),
+      ]);
+
+      if (!active) return;
+
+      if (subRes.status === "fulfilled") {
+        setSubscription(subRes.value);
+        setSubscriptionError(null);
+      } else {
+        setSubscription(null);
+        setSubscriptionError("دریافت اطلاعات اشتراک با خطا مواجه شد.");
+      }
+
+      if (spacesRes.status === "fulfilled") {
+        setSpaces(spacesRes.value);
+        setSpacesError(null);
+        await fetchSpacePins(spacesRes.value);
+      } else {
+        setSpaces([]);
+        setPins([]);
+        setPinErrorsBySpaceId({});
+        setSpacesError("دریافت فهرست فضاها با خطا مواجه شد.");
+      }
+
+      if (!active) return;
+
+      if (bookingsRes.status === "fulfilled") {
+        setBookings(bookingsRes.value);
+        setHasMoreBookings(bookingsRes.value.length >= OWNER_BOOKINGS_PAGE_SIZE);
+        setBookingsError(null);
+      } else {
+        setBookings([]);
+        setHasMoreBookings(false);
+        setBookingsError("دریافت فهرست رزروها با خطا مواجه شد.");
+      }
+
+      if (addonsRes.status === "fulfilled") {
+        setAddons(addonsRes.value);
+        setAddonsError(null);
+      } else {
+        setAddons([]);
+        setAddonsError("دریافت فهرست افزودنی‌ها با خطا مواجه شد.");
+      }
+    }
+
+    void loadDashboard();
 
     return () => {
       active = false;
@@ -295,7 +479,12 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
   }
 
   async function handleSavePin(pinId: number) {
-    const parsedFee = Number(editFee);
+    const trimmedFee = editFee.trim();
+    if (!/^\d+$/.test(trimmedFee)) {
+      setPinError("هزینه رزرو را وارد کنید.");
+      return;
+    }
+    const parsedFee = Number(trimmedFee);
     const parsedCapacity = Number(editCapacity);
     if (!Number.isInteger(parsedFee) || parsedFee < 0) {
       setPinError("هزینه رزرو باید عدد صحیح نامنفی باشد.");
@@ -363,7 +552,7 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
       setShowCreateAddon(false);
       setAddonSuccess(`افزودنی «${created.title}» با موفقیت ایجاد شد.`);
     } catch (err) {
-      setAddonError(mapAddonErrorToPersian(err, "ایجاد افزودنی طراحی با خطا مواجه شد."));
+      setAddonError(mapAddonErrorToPersian(err, "create", "ایجاد افزودنی طراحی با خطا مواجه شد."));
     } finally {
       setCreatingAddon(false);
     }
@@ -390,7 +579,7 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
       setInUseAddonId(null);
       setAddonSuccess(`تغییرات افزودنی «${updated.title}» ذخیره شد.`);
     } catch (err) {
-      setAddonError(mapAddonErrorToPersian(err, "ذخیره تغییرات افزودنی با خطا مواجه شد."));
+      setAddonError(mapAddonErrorToPersian(err, "update", "ذخیره تغییرات افزودنی با خطا مواجه شد."));
     } finally {
       setSavingAddon(false);
     }
@@ -411,7 +600,7 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
       if (err instanceof ApiError && (err.status === 409 || err.errorCode === "ADDON_IN_USE")) {
         setInUseAddonId(addon.id);
       }
-      setAddonError(mapAddonErrorToPersian(err, "حذف افزودنی طراحی با خطا مواجه شد."));
+      setAddonError(mapAddonErrorToPersian(err, "delete", "حذف افزودنی طراحی با خطا مواجه شد."));
     } finally {
       setDeletingAddonId(null);
     }
@@ -431,7 +620,7 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
       setInUseAddonId(null);
       setAddonSuccess(`افزودنی «${updated.title}» غیرفعال شد.`);
     } catch (err) {
-      setAddonError(mapAddonErrorToPersian(err, "غیرفعال‌سازی افزودنی با خطا مواجه شد."));
+      setAddonError(mapAddonErrorToPersian(err, "deactivate", "غیرفعال‌سازی افزودنی با خطا مواجه شد."));
     } finally {
       setSavingAddon(false);
     }
@@ -458,13 +647,7 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
       setBlockSuccess("اسلات انتخاب‌شده با موفقیت مسدود شد.");
       setScheduleRefreshNonce((prev) => prev + 1);
     } catch (err) {
-      if (err instanceof ApiError && err.message) {
-        setBlockError(
-          "مسدودسازی این اسلات امکان‌پذیر نیست (ممکن است رزرو یا قبلاً مسدود شده باشد)."
-        );
-      } else {
-        setBlockError("مسدودسازی اسلات با خطا مواجه شد.");
-      }
+      setBlockError(mapBlockSlotErrorToPersian(err));
     } finally {
       setMutatingBlockKey(null);
     }
@@ -685,9 +868,7 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
           <div className="grid gap-3 text-sm sm:grid-cols-4">
             <div className="rounded-lg bg-stone-50 p-3">
               <div className="text-xs text-stone-500">وضعیت</div>
-              <div className="mt-1 font-bold text-stone-900">
-                {subscription.is_active ? "ACTIVE" : "INACTIVE"} ({subBadge.label})
-              </div>
+              <div className="mt-1 font-bold text-stone-900">{subBadge.label}</div>
             </div>
             <div className="rounded-lg bg-stone-50 p-3">
               <div className="text-xs text-stone-500">طرح</div>
@@ -706,6 +887,17 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
               </div>
             </div>
           </div>
+        ) : subscriptionError ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-red-800">
+            <span>اطلاعات اشتراک در دسترس نیست.</span>
+            <button
+              type="button"
+              onClick={() => void retrySubscription()}
+              className="rounded border border-red-300 bg-red-50 px-3 py-1 text-xs font-medium text-red-900 hover:bg-red-100"
+            >
+              تلاش مجدد
+            </button>
+          </div>
         ) : (
           <p className="text-sm text-stone-500">اطلاعات اشتراک در دسترس نیست.</p>
         )}
@@ -714,7 +906,18 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
       {/* (a) Spaces & Panorama Status */}
       <div className="rounded-xl border border-stone-200 bg-white p-5 space-y-3">
         <h2 className="text-lg font-bold text-stone-900">فضاها و وضعیت پانوراما ۳۶۰ درجه</h2>
-        {spaces.length === 0 ? (
+        {spacesError ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            <span>{spacesError}</span>
+            <button
+              type="button"
+              onClick={() => void retrySpaces()}
+              className="rounded border border-red-300 bg-white px-2.5 py-1 font-medium text-red-900 hover:bg-red-100"
+            >
+              تلاش مجدد فضاها
+            </button>
+          </div>
+        ) : spaces.length === 0 ? (
           <p className="text-sm text-stone-500">هنوز فضایی برای این مجموعه ثبت نشده است.</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -759,6 +962,27 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
             {pinSuccess}
           </div>
         ) : null}
+        {Object.entries(pinErrorsBySpaceId).map(([spaceIdStr, msg]) => {
+          const targetSpace = spaces.find((s) => s.id === Number(spaceIdStr));
+          return (
+            <div
+              key={spaceIdStr}
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800"
+            >
+              <span>{msg}</span>
+              {targetSpace ? (
+                <button
+                  type="button"
+                  onClick={() => void retrySpacePins(targetSpace)}
+                  className="rounded border border-red-300 bg-white px-2.5 py-1 font-medium text-red-900 hover:bg-red-100"
+                >
+                  تلاش مجدد میزهای {targetSpace.name}
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
 
         {pins.length === 0 ? (
           <p className="text-sm text-stone-500">هنوز میزی برای این مجموعه ثبت نشده است.</p>
@@ -882,6 +1106,18 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
           ) : null}
         </div>
 
+        {addonsError ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            <span>{addonsError}</span>
+            <button
+              type="button"
+              onClick={() => void retryAddons()}
+              className="rounded border border-red-300 bg-white px-2.5 py-1 font-medium text-red-900 hover:bg-red-100"
+            >
+              تلاش مجدد افزودنی‌ها
+            </button>
+          </div>
+        ) : null}
         {addonError ? (
           <div
             role="alert"
@@ -1111,6 +1347,11 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
                               >
                                 غیرفعال کردن افزودنی
                               </button>
+                            ) : isInUse && !addon.is_active ? (
+                              <span className="text-xs text-amber-900">
+                                این افزودنی هم‌اکنون غیرفعال است و به‌دلیل استفاده در رزروهای قبلی
+                                قابل حذف نیست.
+                              </span>
                             ) : null}
                           </div>
                         )}
@@ -1289,7 +1530,18 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
       {/* (e) Bookings Overview (Read-only, masked phone, no money actions) */}
       <div className="rounded-xl border border-stone-200 bg-white p-5 space-y-4">
         <h2 className="text-lg font-bold text-stone-900">نمای کلی رزروها</h2>
-        {bookings.length === 0 ? (
+        {bookingsError ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            <span>{bookingsError}</span>
+            <button
+              type="button"
+              onClick={() => void retryBookings()}
+              className="rounded border border-red-300 bg-white px-2.5 py-1 font-medium text-red-900 hover:bg-red-100"
+            >
+              تلاش مجدد رزروها
+            </button>
+          </div>
+        ) : bookings.length === 0 ? (
           <p className="text-sm text-stone-500">هنوز رزروی برای این مجموعه ثبت نشده است.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -1325,6 +1577,19 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
                 ))}
               </tbody>
             </table>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3 text-xs text-stone-600">
+              <span>نمایش {bookings.length} رزرو</span>
+              {hasMoreBookings ? (
+                <button
+                  type="button"
+                  disabled={loadingMoreBookings}
+                  onClick={() => void handleLoadMoreBookings()}
+                  className="rounded-lg border border-stone-300 bg-white px-3.5 py-1.5 font-medium text-stone-800 hover:bg-stone-100 disabled:opacity-50"
+                >
+                  {loadingMoreBookings ? "در حال بارگذاری..." : "نمایش بیشتر"}
+                </button>
+              ) : null}
+            </div>
           </div>
         )}
       </div>
