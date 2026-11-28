@@ -125,3 +125,12 @@ Scenario: 9. Security & IDOR isolation
 
 ## 8. Open questions
 - None. All behaviour is fully specified by FR-32, BR-003, BR-15, and existing `get_owner_venue` / `invalidate_venue_cache` patterns.
+
+## 9. Frontend Owner Dashboard Section (Follow-up (b))
+- **Location:** Integrated as a new `"مدیریت افزودنی‌های طراحی"` section inside `frontend/src/components/OwnerVenueDashboard.tsx` (rendered by `app/owner/venues/[id]/page.tsx`, no new route), reusing the dashboard's existing `getOwnerVenue` 401/403/404 handling and `formatToman` helper.
+- **API Client (`frontend/src/lib/api.ts`):** Hand-written `DesignAddonCreateIn`, `DesignAddonUpdateIn`, `listVenueAddons`, `createVenueAddon`, `updateVenueAddon`, and `deleteVenueAddon` (with `204 No Content` empty-body handling in `apiFetch`).
+- **Flows & Validation:**
+  - **List & Empty State:** Loads `listVenueAddons(venueId)` alongside dashboard data; shows table of `title`, `formatToman(fee)`, and active status, or an empty state with an inline create trigger.
+  - **Create & Inline Edit:** Client-side validation enforces non-empty `title` (<= 200 chars) and integer `fee >= 0` before sending requests (rejecting negatives, floats, empty strings). Inline edit sends `PUT` full replace and displays the BR-15 note that fee changes apply to future bookings only. No image field (Django Admin only).
+  - **Delete & `409 ADDON_IN_USE`:** Requires Persian inline confirmation before `DELETE`. On `409 ADDON_IN_USE`, keeps the row, displays a Persian message without raw `error_code`, and offers immediate deactivation (`PUT` with `is_active: false`).
+- **Tests:** `frontend/src/lib/__tests__/api.test.ts` (client contract + 204 + 409) and `frontend/src/lib/__tests__/OwnerVenueDashboard.test.tsx` (jsdom component tests for list, empty state, create, client-side fee validation, inline edit + BR-15 note, 409 `ADDON_IN_USE` + deactivation, and 204 delete).

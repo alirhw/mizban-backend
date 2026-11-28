@@ -13,6 +13,18 @@ export interface DesignAddonOut {
   is_active: boolean;
 }
 
+export interface DesignAddonCreateIn {
+  title: string;
+  fee: number;
+  is_active?: boolean;
+}
+
+export interface DesignAddonUpdateIn {
+  title: string;
+  fee: number;
+  is_active: boolean;
+}
+
 export interface VenuePublicItemOut {
   id: number;
   name: string;
@@ -424,6 +436,10 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     throw await buildApiError(response);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return (await response.json()) as T;
 }
 
@@ -643,5 +659,39 @@ export async function payBookingWithWallet(
   return apiFetch<PaymentTransactionOut>("/billing/wallet-pay/", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function listVenueAddons(venueId: number): Promise<DesignAddonOut[]> {
+  return apiFetch<DesignAddonOut[]>(`/venues/owner/venues/${venueId}/addons/`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function createVenueAddon(
+  venueId: number,
+  payload: DesignAddonCreateIn
+): Promise<DesignAddonOut> {
+  return apiFetch<DesignAddonOut>(`/venues/owner/venues/${venueId}/addons/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateVenueAddon(
+  venueId: number,
+  addonId: number,
+  payload: DesignAddonUpdateIn
+): Promise<DesignAddonOut> {
+  return apiFetch<DesignAddonOut>(`/venues/owner/venues/${venueId}/addons/${addonId}/`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteVenueAddon(venueId: number, addonId: number): Promise<void> {
+  return apiFetch<void>(`/venues/owner/venues/${venueId}/addons/${addonId}/`, {
+    method: "DELETE",
   });
 }

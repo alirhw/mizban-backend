@@ -8,16 +8,21 @@ import { OwnerForbidden } from "@/components/OwnerForbidden";
 import {
   ApiError,
   createPinBlockedSlot,
+  createVenueAddon,
   deleteBlockedSlot,
+  deleteVenueAddon,
   getOwnerVenue,
   getOwnerVenueSubscription,
   listOwnerVenueBookings,
   listOwnerVenueSpaces,
   listPinBlockedSlots,
   listSpaceTablePins,
+  listVenueAddons,
   listVenueSlots,
   updateTablePin,
+  updateVenueAddon,
   type BlockedSlotOut,
+  type DesignAddonOut,
   type OwnerBookingOut,
   type SlotOut,
   type SpaceOut,
@@ -41,6 +46,46 @@ export interface OwnerVenueDashboardProps {
   venueId: number;
 }
 
+function validateAddonInput(
+  titleInput: string,
+  feeInput: string
+): { valid: true; title: string; fee: number } | { valid: false; error: string } {
+  const title = titleInput.trim();
+  if (!title) {
+    return { valid: false, error: "عنوان افزودنی طراحی الزامی است." };
+  }
+  if (title.length > 200) {
+    return { valid: false, error: "عنوان افزودنی طراحی نباید بیش از ۲۰۰ کاراکتر باشد." };
+  }
+  const trimmedFee = feeInput.trim();
+  if (!/^\d+$/.test(trimmedFee)) {
+    return { valid: false, error: "هزینه افزودنی باید عدد صحیح نامنفی (به تومان) باشد." };
+  }
+  const fee = Number(trimmedFee);
+  if (!Number.isSafeInteger(fee) || fee < 0) {
+    return { valid: false, error: "هزینه افزودنی باید عدد صحیح نامنفی (به تومان) باشد." };
+  }
+  return { valid: true, title, fee };
+}
+
+function mapAddonErrorToPersian(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    if (err.status === 409 || err.errorCode === "ADDON_IN_USE") {
+      return "این افزودنی در رزروهای ثبت‌شده استفاده شده و قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.";
+    }
+    if (err.errorCode === "VALIDATION_ERROR") {
+      return "اطلاعات واردشده معتبر نیست؛ لطفاً عنوان و هزینه را بررسی کنید.";
+    }
+    if (err.status === 403 || err.errorCode === "FORBIDDEN") {
+      return "شما دسترسی لازم برای مدیریت افزودنی‌های این مجموعه را ندارید.";
+    }
+    if (err.status === 404 || err.errorCode === "NOT_FOUND") {
+      return "افزودنی مورد نظر یافت نشد.";
+    }
+  }
+  return fallback;
+}
+
 export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -58,6 +103,7 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
   const [subscription, setSubscription] = useState<VenueSubscriptionOut | null>(null);
   const [spaces, setSpaces] = useState<SpaceOut[]>([]);
   const [pins, setPins] = useState<TablePinOut[]>([]);
+  const [addons, setAddons] = useState<DesignAddonOut[]>([]);
   const [bookings, setBookings] = useState<OwnerBookingOut[]>([]);
 
   // Section (b): Pin edit state
@@ -68,6 +114,23 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
   const [savingPin, setSavingPin] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccess, setPinSuccess] = useState<string | null>(null);
+
+  // Section (b2): Design add-ons manager state
+  const [showCreateAddon, setShowCreateAddon] = useState(false);
+  const [newAddonTitle, setNewAddonTitle] = useState("");
+  const [newAddonFee, setNewAddonFee] = useState("");
+  const [newAddonActive, setNewAddonActive] = useState(true);
+  const [creatingAddon, setCreatingAddon] = useState(false);
+  const [editingAddonId, setEditingAddonId] = useState<number | null>(null);
+  const [editAddonTitle, setEditAddonTitle] = useState("");
+  const [editAddonFee, setEditAddonFee] = useState("");
+  const [editAddonActive, setEditAddonActive] = useState(true);
+  const [savingAddon, setSavingAddon] = useState(false);
+  const [confirmDeleteAddonId, setConfirmDeleteAddonId] = useState<number | null>(null);
+  const [deletingAddonId, setDeletingAddonId] = useState<number | null>(null);
+  const [inUseAddonId, setInUseAddonId] = useState<number | null>(null);
+  const [addonError, setAddonError] = useState<string | null>(null);
+  const [addonSuccess, setAddonSuccess] = useState<string | null>(null);
 
   // Section (c): BlockedSlot manager state
   const dateOptions = useMemo(
@@ -114,8 +177,9 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
       getOwnerVenueSubscription(venueId),
       listOwnerVenueSpaces(venueId),
       listOwnerVenueBookings(venueId),
+      listVenueAddons(venueId),
     ])
-      .then(async ([venueData, subData, spaceList, bookingList]) => {
+      .then(async ([venueData, subData, spaceList, bookingList, addonList]) => {
         const pinLists = await Promise.all(
           spaceList.map((space) => listSpaceTablePins(space.id).catch(() => [] as TablePinOut[]))
         );
@@ -126,6 +190,7 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
         setSubscription(subData);
         setSpaces(spaceList);
         setPins(flatPins);
+        setAddons(addonList);
         setBookings(bookingList);
         setSelectedPinId((prev) =>
           prev && flatPins.some((p) => p.id === prev) ? prev : (flatPins[0]?.id ?? null)
@@ -222,6 +287,118 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
       setPinError("ذخیره تغییرات میز با خطا مواجه شد.");
     } finally {
       setSavingPin(false);
+    }
+  }
+
+  function startEditAddon(addon: DesignAddonOut) {
+    setEditingAddonId(addon.id);
+    setEditAddonTitle(addon.title);
+    setEditAddonFee(String(addon.fee));
+    setEditAddonActive(addon.is_active);
+    setConfirmDeleteAddonId(null);
+    setInUseAddonId(null);
+    setAddonError(null);
+    setAddonSuccess(null);
+  }
+
+  async function handleCreateAddon(e: React.FormEvent) {
+    e.preventDefault();
+    setAddonError(null);
+    setAddonSuccess(null);
+    const validation = validateAddonInput(newAddonTitle, newAddonFee);
+    if (!validation.valid) {
+      setAddonError(validation.error);
+      return;
+    }
+
+    setCreatingAddon(true);
+    try {
+      const created = await createVenueAddon(venueId, {
+        title: validation.title,
+        fee: validation.fee,
+        is_active: newAddonActive,
+      });
+      const refreshed = await listVenueAddons(venueId).catch(() =>
+        [...addons, created].sort((a, b) => a.title.localeCompare(b.title))
+      );
+      setAddons(refreshed);
+      setNewAddonTitle("");
+      setNewAddonFee("");
+      setNewAddonActive(true);
+      setShowCreateAddon(false);
+      setAddonSuccess(`افزودنی «${created.title}» با موفقیت ایجاد شد.`);
+    } catch (err) {
+      setAddonError(mapAddonErrorToPersian(err, "ایجاد افزودنی طراحی با خطا مواجه شد."));
+    } finally {
+      setCreatingAddon(false);
+    }
+  }
+
+  async function handleSaveAddon(addonId: number) {
+    setAddonError(null);
+    setAddonSuccess(null);
+    const validation = validateAddonInput(editAddonTitle, editAddonFee);
+    if (!validation.valid) {
+      setAddonError(validation.error);
+      return;
+    }
+
+    setSavingAddon(true);
+    try {
+      const updated = await updateVenueAddon(venueId, addonId, {
+        title: validation.title,
+        fee: validation.fee,
+        is_active: editAddonActive,
+      });
+      setAddons((prev) => prev.map((a) => (a.id === addonId ? updated : a)));
+      setEditingAddonId(null);
+      setInUseAddonId(null);
+      setAddonSuccess(`تغییرات افزودنی «${updated.title}» ذخیره شد.`);
+    } catch (err) {
+      setAddonError(mapAddonErrorToPersian(err, "ذخیره تغییرات افزودنی با خطا مواجه شد."));
+    } finally {
+      setSavingAddon(false);
+    }
+  }
+
+  async function handleDeleteAddon(addon: DesignAddonOut) {
+    setAddonError(null);
+    setAddonSuccess(null);
+    setInUseAddonId(null);
+    setDeletingAddonId(addon.id);
+    try {
+      await deleteVenueAddon(venueId, addon.id);
+      setAddons((prev) => prev.filter((a) => a.id !== addon.id));
+      setConfirmDeleteAddonId(null);
+      setAddonSuccess(`افزودنی «${addon.title}» حذف شد.`);
+    } catch (err) {
+      setConfirmDeleteAddonId(null);
+      if (err instanceof ApiError && (err.status === 409 || err.errorCode === "ADDON_IN_USE")) {
+        setInUseAddonId(addon.id);
+      }
+      setAddonError(mapAddonErrorToPersian(err, "حذف افزودنی طراحی با خطا مواجه شد."));
+    } finally {
+      setDeletingAddonId(null);
+    }
+  }
+
+  async function handleDeactivateAddon(addon: DesignAddonOut) {
+    setAddonError(null);
+    setAddonSuccess(null);
+    setSavingAddon(true);
+    try {
+      const updated = await updateVenueAddon(venueId, addon.id, {
+        title: addon.title,
+        fee: addon.fee,
+        is_active: false,
+      });
+      setAddons((prev) => prev.map((a) => (a.id === addon.id ? updated : a)));
+      setInUseAddonId(null);
+      setAddonSuccess(`افزودنی «${updated.title}» غیرفعال شد.`);
+    } catch (err) {
+      setAddonError(mapAddonErrorToPersian(err, "غیرفعال‌سازی افزودنی با خطا مواجه شد."));
+    } finally {
+      setSavingAddon(false);
     }
   }
 
@@ -538,6 +715,267 @@ export function OwnerVenueDashboard({ venueId }: OwnerVenueDashboardProps) {
                           >
                             ویرایش
                           </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* (b2) Design Add-ons Manager */}
+      <div className="rounded-xl border border-stone-200 bg-white p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-stone-900">مدیریت افزودنی‌های طراحی</h2>
+          {!showCreateAddon ? (
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateAddon(true);
+                setAddonError(null);
+                setAddonSuccess(null);
+              }}
+              className="rounded-lg bg-stone-900 px-3.5 py-2 text-xs font-medium text-white hover:bg-stone-800"
+            >
+              افزودن افزودنی جدید
+            </button>
+          ) : null}
+        </div>
+
+        {addonError ? (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800"
+          >
+            {addonError}
+          </div>
+        ) : null}
+        {addonSuccess ? (
+          <div
+            role="status"
+            className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800"
+          >
+            {addonSuccess}
+          </div>
+        ) : null}
+
+        {showCreateAddon ? (
+          <form
+            onSubmit={(e) => void handleCreateAddon(e)}
+            className="rounded-lg border border-stone-200 bg-stone-50 p-4 space-y-3"
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-stone-700">
+                  عنوان افزودنی
+                </label>
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={newAddonTitle}
+                  onChange={(e) => setNewAddonTitle(e.target.value)}
+                  aria-label="عنوان افزودنی جدید"
+                  placeholder="مثلاً گل‌آرایی میز"
+                  className="w-full rounded border border-stone-300 bg-white px-2.5 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-stone-700">
+                  هزینه (تومان)
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={newAddonFee}
+                  onChange={(e) => setNewAddonFee(e.target.value)}
+                  aria-label="هزینه افزودنی جدید"
+                  placeholder="مثلاً 150000"
+                  className="w-full rounded border border-stone-300 bg-white px-2.5 py-1.5 text-sm"
+                />
+              </div>
+              <div className="flex items-end pb-1.5">
+                <label className="inline-flex items-center gap-2 text-xs text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={newAddonActive}
+                    onChange={(e) => setNewAddonActive(e.target.checked)}
+                    aria-label="وضعیت فعال افزودنی جدید"
+                  />
+                  فعال برای انتخاب مشتری
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={creatingAddon}
+                className="rounded-lg bg-stone-900 px-4 py-2 text-xs font-medium text-white hover:bg-stone-800 disabled:opacity-50"
+              >
+                {creatingAddon ? "در حال ثبت..." : "ثبت افزودنی"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateAddon(false);
+                  setAddonError(null);
+                }}
+                className="rounded-lg border border-stone-300 px-4 py-2 text-xs text-stone-700"
+              >
+                انصراف
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {addons.length === 0 ? (
+          <div className="space-y-2 py-2">
+            <p className="text-sm text-stone-500">
+              هنوز افزودنی طراحی برای این مجموعه ثبت نشده است.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm">
+              <thead>
+                <tr className="border-b border-stone-200 text-xs text-stone-500">
+                  <th className="py-2 pl-3">عنوان</th>
+                  <th className="py-2 pl-3">هزینه (پرداخت در محل)</th>
+                  <th className="py-2 pl-3">وضعیت</th>
+                  <th className="py-2">عملیات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {addons.map((addon) => {
+                  const isEditing = editingAddonId === addon.id;
+                  const isConfirmingDelete = confirmDeleteAddonId === addon.id;
+                  const isInUse = inUseAddonId === addon.id;
+                  return (
+                    <tr key={addon.id}>
+                      <td className="py-3 pl-3 font-medium text-stone-900">
+                        {isEditing ? (
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              maxLength={200}
+                              value={editAddonTitle}
+                              onChange={(e) => setEditAddonTitle(e.target.value)}
+                              aria-label={`عنوان ${addon.title}`}
+                              className="w-44 rounded border border-stone-300 px-2 py-1 text-sm"
+                            />
+                            <p className="text-[11px] text-stone-500">
+                              تغییر هزینه فقط برای رزروهای آینده اعمال می‌شود و مبلغ رزروهای قبلی
+                              تغییر نمی‌کند.
+                            </p>
+                          </div>
+                        ) : (
+                          addon.title
+                        )}
+                      </td>
+                      <td className="py-3 pl-3">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={editAddonFee}
+                            onChange={(e) => setEditAddonFee(e.target.value)}
+                            aria-label={`هزینه ${addon.title}`}
+                            className="w-32 rounded border border-stone-300 px-2 py-1 text-sm"
+                          />
+                        ) : (
+                          formatToman(addon.fee)
+                        )}
+                      </td>
+                      <td className="py-3 pl-3">
+                        {isEditing ? (
+                          <label className="inline-flex items-center gap-1.5 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={editAddonActive}
+                              onChange={(e) => setEditAddonActive(e.target.checked)}
+                              aria-label={`وضعیت فعال ${addon.title}`}
+                            />
+                            فعال
+                          </label>
+                        ) : addon.is_active ? (
+                          "فعال"
+                        ) : (
+                          "غیرفعال"
+                        )}
+                      </td>
+                      <td className="py-3">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={savingAddon}
+                              onClick={() => void handleSaveAddon(addon.id)}
+                              className="rounded bg-stone-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-800 disabled:opacity-50"
+                            >
+                              {savingAddon ? "در حال ذخیره..." : "ذخیره"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingAddonId(null)}
+                              className="rounded border border-stone-300 px-3 py-1.5 text-xs text-stone-700"
+                            >
+                              انصراف
+                            </button>
+                          </div>
+                        ) : isConfirmingDelete ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-stone-700">حذف شود؟</span>
+                            <button
+                              type="button"
+                              disabled={deletingAddonId === addon.id}
+                              onClick={() => void handleDeleteAddon(addon)}
+                              className="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                            >
+                              {deletingAddonId === addon.id ? "در حال حذف..." : "تایید حذف"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteAddonId(null)}
+                              className="rounded border border-stone-300 px-2.5 py-1 text-xs text-stone-700"
+                            >
+                              انصراف
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => startEditAddon(addon)}
+                              className="rounded border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-800 hover:bg-stone-100"
+                            >
+                              ویرایش
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmDeleteAddonId(addon.id);
+                                setEditingAddonId(null);
+                                setInUseAddonId(null);
+                                setAddonError(null);
+                                setAddonSuccess(null);
+                              }}
+                              className="rounded border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                            >
+                              حذف
+                            </button>
+                            {isInUse && addon.is_active ? (
+                              <button
+                                type="button"
+                                disabled={savingAddon}
+                                onClick={() => void handleDeactivateAddon(addon)}
+                                className="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                              >
+                                غیرفعال کردن افزودنی
+                              </button>
+                            ) : null}
+                          </div>
                         )}
                       </td>
                     </tr>

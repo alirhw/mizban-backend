@@ -2,13 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  createVenueAddon,
+  deleteVenueAddon,
   getMe,
   listPublicVenues,
+  listVenueAddons,
   logout,
   otpRequest,
   otpVerify,
   payBookingWithWallet,
   resetCsrfTokenCache,
+  updateVenueAddon,
+  type DesignAddonOut,
   type PaymentTransactionOut,
 } from "../api";
 
@@ -233,6 +238,144 @@ describe("api client (TD-006 session + CSRF contract)", () => {
       status: 400,
       errorCode: "WALLET_INSUFFICIENT_BALANCE",
       message: "Wallet balance is insufficient.",
+    });
+  });
+
+  it("listVenueAddons calls GET /api/v1/venues/owner/venues/{venueId}/addons/ with no-store", async () => {
+    const addons: DesignAddonOut[] = [
+      { id: 1, title: "گل‌آرایی", fee: 120_000, is_active: true },
+    ];
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(addons), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const result = await listVenueAddons(9);
+
+    expect(result).toEqual(addons);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain("/api/v1/venues/owner/venues/9/addons/");
+    expect(init?.method).toBe("GET");
+    expect(init?.cache).toBe("no-store");
+  });
+
+  it("createVenueAddon calls POST /api/v1/venues/owner/venues/{venueId}/addons/ with payload", async () => {
+    const created: DesignAddonOut = {
+      id: 12,
+      title: "شمع‌آرایی",
+      fee: 85_000,
+      is_active: true,
+    };
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-addon-create" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(created), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+    const result = await createVenueAddon(9, {
+      title: "شمع‌آرایی",
+      fee: 85_000,
+      is_active: true,
+    });
+
+    expect(result).toEqual(created);
+    const [postUrl, postInit] = fetchMock.mock.calls[1]!;
+    expect(String(postUrl)).toContain("/api/v1/venues/owner/venues/9/addons/");
+    expect(postInit?.method).toBe("POST");
+    expect(postInit?.body).toBe(
+      JSON.stringify({ title: "شمع‌آرایی", fee: 85_000, is_active: true })
+    );
+  });
+
+  it("updateVenueAddon calls PUT /api/v1/venues/owner/venues/{venueId}/addons/{addonId}/ with full payload", async () => {
+    const updated: DesignAddonOut = {
+      id: 12,
+      title: "شمع‌آرایی ویژه",
+      fee: 110_000,
+      is_active: false,
+    };
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-addon-put" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(updated), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+    const result = await updateVenueAddon(9, 12, {
+      title: "شمع‌آرایی ویژه",
+      fee: 110_000,
+      is_active: false,
+    });
+
+    expect(result).toEqual(updated);
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(String(putUrl)).toContain("/api/v1/venues/owner/venues/9/addons/12/");
+    expect(putInit?.method).toBe("PUT");
+    expect(putInit?.body).toBe(
+      JSON.stringify({ title: "شمع‌آرایی ویژه", fee: 110_000, is_active: false })
+    );
+  });
+
+  it("deleteVenueAddon calls DELETE and handles 204 No Content empty body", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-addon-del" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(deleteVenueAddon(9, 12)).resolves.toBeUndefined();
+    const [delUrl, delInit] = fetchMock.mock.calls[1]!;
+    expect(String(delUrl)).toContain("/api/v1/venues/owner/venues/9/addons/12/");
+    expect(delInit?.method).toBe("DELETE");
+  });
+
+  it("deleteVenueAddon surfaces ApiError(409, ADDON_IN_USE) when add-on is referenced by bookings", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-addon-409" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error_code: "ADDON_IN_USE",
+            message: "Design add-on is referenced by existing bookings.",
+            details: {},
+          }),
+          {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      );
+
+    await expect(deleteVenueAddon(9, 12)).rejects.toMatchObject({
+      name: "ApiError",
+      status: 409,
+      errorCode: "ADDON_IN_USE",
+      message: "Design add-on is referenced by existing bookings.",
     });
   });
 });
