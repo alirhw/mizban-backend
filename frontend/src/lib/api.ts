@@ -866,3 +866,75 @@ export async function markAllNotificationsRead(): Promise<MarkAllReadOut> {
     method: "POST",
   });
 }
+
+export interface FinancialReportPaymentRowOut {
+  id: number;
+  booking_id: number;
+  customer_id: number;
+  provider_name: string;
+  amount_toman: number;
+  status: string;
+  created_at: string;
+}
+
+export interface FinancialReportPaymentsSectionOut {
+  total_toman: number;
+  count: number;
+  counts_by_status: Record<string, number>;
+  rows: FinancialReportPaymentRowOut[];
+}
+
+export interface FinancialReportWalletRowOut {
+  id: number;
+  user_id: number;
+  type: string;
+  amount_toman: number;
+  balance_after_toman: number;
+  reason: string;
+  booking_id: number | null;
+  created_at: string;
+}
+
+export interface FinancialReportWalletSectionOut {
+  total_credit_toman: number;
+  total_debit_toman: number;
+  count: number;
+  rows: FinancialReportWalletRowOut[];
+}
+
+export interface FinancialReportSubscriptionsSectionOut {
+  total_toman: number;
+  count: number;
+  rows: unknown[];
+}
+
+export interface FinancialReportOut {
+  payments: FinancialReportPaymentsSectionOut;
+  wallet: FinancialReportWalletSectionOut;
+  subscriptions: FinancialReportSubscriptionsSectionOut;
+}
+
+export async function getFinancialReport(
+  params: {
+    from_date?: string;
+    to_date?: string;
+    payment_status?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<FinancialReportOut> {
+  const search = new URLSearchParams();
+  if (params.from_date) search.set("from_date", params.from_date);
+  if (params.to_date) search.set("to_date", params.to_date);
+  if (params.payment_status) search.set("payment_status", params.payment_status);
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  return apiFetch<FinancialReportOut>(
+    `/billing/admin/financial-report/${qs ? `?${qs}` : ""}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    }
+  );
+}

@@ -5,6 +5,7 @@ import {
   createReview,
   createVenueAddon,
   deleteVenueAddon,
+  getFinancialReport,
   getMe,
   getUnreadCount,
   hideReview,
@@ -26,6 +27,7 @@ import {
   submitVenueForReview,
   updateVenueAddon,
   type DesignAddonOut,
+  type FinancialReportOut,
   type MarkAllReadOut,
   type NotificationOut,
   type PaymentTransactionOut,
@@ -834,6 +836,76 @@ describe("api client (TD-006 session + CSRF contract)", () => {
         )
       );
     await expect(markNotificationRead(1)).rejects.toMatchObject({
+      name: "ApiError",
+      status: 403,
+      errorCode: "FORBIDDEN",
+    });
+  });
+
+  it("getFinancialReport sends GET /api/v1/billing/admin/financial-report/ with set params, omits unset bounds, and returns FinancialReportOut", async () => {
+    const reportOut: FinancialReportOut = {
+      payments: {
+        total_toman: 300_000,
+        count: 3,
+        counts_by_status: { INITIATED: 0, PENDING: 0, SUCCESS: 2, FAILED: 1, TIMEOUT: 0 },
+        rows: [
+          {
+            id: 1,
+            booking_id: 10,
+            customer_id: 5,
+            provider_name: "sandbox",
+            amount_toman: 50_000,
+            status: "FAILED",
+            created_at: "2026-11-28T08:00:00Z",
+          },
+        ],
+      },
+      wallet: {
+        total_credit_toman: 150_000,
+        total_debit_toman: 40_000,
+        count: 2,
+        rows: [],
+      },
+      subscriptions: {
+        total_toman: 0,
+        count: 0,
+        rows: [],
+      },
+    };
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(reportOut), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await getFinancialReport({
+      from_date: "2026-11-01",
+      payment_status: "FAILED",
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(res).toEqual(reportOut);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain(
+      "/api/v1/billing/admin/financial-report/?from_date=2026-11-01&payment_status=FAILED&limit=50&offset=0"
+    );
+    expect(String(url)).not.toContain("to_date");
+    expect(init?.method).toBe("GET");
+    expect(init?.cache).toBe("no-store");
+  });
+
+  it("getFinancialReport surfaces ApiError(403, FORBIDDEN)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error_code: "FORBIDDEN", message: "Forbidden", details: {} }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await expect(getFinancialReport()).rejects.toMatchObject({
       name: "ApiError",
       status: 403,
       errorCode: "FORBIDDEN",

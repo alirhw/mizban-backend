@@ -18,9 +18,14 @@ export function Header() {
             کافه‌ها
           </Link>
           {!loading && user?.role === "ADMIN" ? (
-            <Link href="/admin/reviews" className="hover:text-stone-900">
-              مدیریت نظرها
-            </Link>
+            <>
+              <Link href="/admin/reviews" className="hover:text-stone-900">
+                مدیریت نظرها
+              </Link>
+              <Link href="/admin/financial-report" className="hover:text-stone-900">
+                گزارش مالی
+              </Link>
+            </>
           ) : null}
           {!loading && user?.role === "VENUE_OWNER" ? <NotificationsBell /> : null}
           {loading ? (

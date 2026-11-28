@@ -134,3 +134,13 @@ Scenario: 4. Privacy — PII and sensitive payment fields are excluded
 
 ## 9. Open questions
 - None; all G1/G2 project decisions (role rule, Tehran date range, totals rule, subscriptions stub, pagination `50`/`100`, privacy exclusions, conditional indexes) are fixed for T-040.
+
+## 10. Frontend Admin Financial Report Page (Follow-up (g))
+- **Route & Navigation:** New client page `frontend/src/app/admin/financial-report/page.tsx` and Header link `"گزارش مالی"` in `frontend/src/components/Header.tsx` rendered only when `!loading && user?.role === "ADMIN"` (alongside `"مدیریت نظرها"`).
+- **API Client (`frontend/src/lib/api.ts`):** Hand-written `FinancialReportOut`, `FinancialReportPaymentsSectionOut`, `FinancialReportPaymentRowOut`, `FinancialReportWalletSectionOut`, `FinancialReportWalletRowOut`, `FinancialReportSubscriptionsSectionOut`, and `getFinancialReport({ from_date?, to_date?, payment_status?, limit?, offset? })` (omits unset bounds).
+- **Totals, Filters & Privacy Rules:**
+  - `from_date` / `to_date` date inputs send Tehran `YYYY-MM-DD` values as picked and omit unset bounds (no client-side defaults or UTC conversion).
+  - `payment_status` filters rows only; `payments.total_toman`, `payments.count`, and `payments.counts_by_status` always render server totals directly (never client-computed sums).
+  - `wallet` renders `total_credit_toman`, `total_debit_toman`, `count`, and rows; `subscriptions` renders server values and empty state until FR-27 without invented data.
+  - Zero phone, email, card, or tracking fields; `403 FORBIDDEN` renders a Persian admin-only message without raw `error_code`.
+- **Tests:** `frontend/src/lib/__tests__/api.test.ts` and `frontend/src/lib/__tests__/AdminFinancialReport.test.tsx`.
