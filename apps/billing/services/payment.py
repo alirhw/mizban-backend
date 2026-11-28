@@ -107,15 +107,22 @@ def initiate_payment_for_booking(
         if booking.customer_id != user.id and not getattr(user, "is_staff", False):
             raise PermissionDenied("You do not have permission to pay for this booking.")
 
+        # In-transaction idempotency re-check under Booking row lock (prevents concurrent IntegrityError)
+        existing_in_tx = PaymentTransaction.objects.filter(idempotency_key=idempotency_key).first()
+        if existing_in_tx:
+            if existing_in_tx.customer_id != user.id and not getattr(user, "is_staff", False):
+                raise PermissionDenied("You do not have permission to access this payment transaction.")
+            return existing_in_tx, existing_in_tx.redirect_url
+
         # Booking state check
         if booking.status not in {BookingStatus.INITIATED, BookingStatus.PENDING_PAYMENT}:
             raise InvalidStatusTransitionError(
                 f"Booking is in state {booking.status} and cannot accept payment."
             )
 
-        # Lock expiration check (TD-004)
+        # Lock expiration check (TD-004, fail-closed on None)
         now = timezone.now()
-        if booking.lock_expires_at and booking.lock_expires_at <= now:
+        if booking.lock_expires_at is None or booking.lock_expires_at <= now:
             raise InvalidStatusTransitionError("Booking reservation lock has expired.")
 
         # Amount split check (BR-003 / ARCH-005): online payment is table fee only
@@ -296,6 +303,15 @@ def handle_payment_callback(
 
     # Idempotency fast-path: if already terminal and confirmed or flagged
     if tx.status == PaymentStatus.SUCCESS:
+        if tx.refund_required:
+            return PaymentCallbackResult(
+                booking_id=tx.booking.id,
+                booking_status=tx.booking.status,
+                payment_status=PaymentStatus.SUCCESS,
+                refund_required=True,
+                tracking_code=tx.tracking_code,
+                message="Payment verified; refund required to bank card.",
+            )
         if tx.booking.status == BookingStatus.CONFIRMED:
             return PaymentCallbackResult(
                 booking_id=tx.booking.id,
@@ -304,15 +320,6 @@ def handle_payment_callback(
                 refund_required=False,
                 tracking_code=tx.tracking_code,
                 message="Payment already verified and booking confirmed.",
-            )
-        if tx.refund_required:
-            return PaymentCallbackResult(
-                booking_id=tx.booking.id,
-                booking_status=tx.booking.status,
-                payment_status=PaymentStatus.SUCCESS,
-                refund_required=True,
-                tracking_code=tx.tracking_code,
-                message="Payment verified but slot was occupied; refund required to bank card.",
             )
 
     if tx.status in (PaymentStatus.FAILED, PaymentStatus.TIMEOUT):
@@ -391,6 +398,26 @@ def handle_payment_callback(
 
         # Concurrency safety: check if another thread confirmed or updated while we waited for lock
         if booking.status == BookingStatus.CONFIRMED:
+            has_other_success = (
+                PaymentTransaction.objects.filter(
+                    booking_id=booking.id,
+                    status=PaymentStatus.SUCCESS,
+                )
+                .exclude(pk=tx_locked.pk)
+                .exists()
+            )
+            if has_other_success:
+                if not tx_locked.refund_required:
+                    tx_locked.refund_required = True
+                    tx_locked.save(update_fields=["refund_required", "updated_at"])
+                return PaymentCallbackResult(
+                    booking_id=booking.id,
+                    booking_status=BookingStatus.CONFIRMED,
+                    payment_status=PaymentStatus.SUCCESS,
+                    refund_required=True,
+                    tracking_code=tx_locked.tracking_code,
+                    message="Booking was already confirmed by another payment; refund required to bank card.",
+                )
             return PaymentCallbackResult(
                 booking_id=booking.id,
                 booking_status=BookingStatus.CONFIRMED,

@@ -120,10 +120,11 @@ Configurable simulation modes:
      * **Case B (Late Callback — Slot Still Free):** Lock expired or booking lazily marked `EXPIRED`, but slot is free $\to$ transition booking to `CONFIRMED` via the ADR-006 guarded transition. `refund_required = False`.
      * **Case C (Late Callback — Slot Occupied):** Slot held by another `CONFIRMED` booking or active `PENDING_PAYMENT` hold $\to$ booking marked `EXPIRED`. Transaction remains `SUCCESS` with `refund_required = True`.
      * **Case D (Customer Cancelled):** Booking was `CANCELLED` $\to$ never resurrected. Booking remains `CANCELLED`, transaction has `refund_required = True`.
+     * **Case E (Booking Already CONFIRMED — Duplicate Payment, T-045):** Booking is already `CONFIRMED` and another `SUCCESS` `PaymentTransaction` exists for the same booking (excluding this transaction) $\to$ booking remains `CONFIRMED`, this transaction remains `SUCCESS` and persists `refund_required = True`. (If no other `SUCCESS` transaction exists, `refund_required = False`.)
 
 ### 5.2 Mandatory Bank Card Refund Policy
 
-When `refund_required = True` (Cases C and D), the refund **must return to the customer's original bank card/account**, never to the in-app wallet. The in-app wallet under BR-004 and TD-005 is strictly reserved for voluntary customer cancellations initiated at least 36 hours before slot time. In this Sandbox phase, `refund_required = True` is recorded as an auditable flag on `PaymentTransaction`.
+When `refund_required = True` (Cases C, D, and E), the refund **must return to the customer's original bank card/account**, never to the in-app wallet. The in-app wallet under BR-004 and TD-005 is strictly reserved for voluntary customer cancellations initiated at least 36 hours before slot time. In this Sandbox phase, `refund_required = True` is recorded as an auditable flag on `PaymentTransaction`.
 
 ---
 
