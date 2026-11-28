@@ -7,7 +7,9 @@ import {
   logout,
   otpRequest,
   otpVerify,
+  payBookingWithWallet,
   resetCsrfTokenCache,
+  type PaymentTransactionOut,
 } from "../api";
 
 describe("api client (TD-006 session + CSRF contract)", () => {
@@ -149,5 +151,88 @@ describe("api client (TD-006 session + CSRF contract)", () => {
 
     const postHeaders = new Headers(fetchMock.mock.calls[3]![1]?.headers);
     expect(postHeaders.get("X-CSRFToken")).toBe("tok-2");
+  });
+
+  it("payBookingWithWallet calls POST /api/v1/billing/wallet-pay/ with { booking_id, idempotency_key } and returns PaymentTransactionOut", async () => {
+    const mockTx: PaymentTransactionOut = {
+      id: 901,
+      booking_id: 42,
+      amount_toman: 150_000,
+      currency: "TOMAN",
+      status: "SUCCESS",
+      provider_name: "wallet",
+      provider_reference: "wallet-ref-901",
+      tracking_code: "TRK-901",
+      card_pan_masked: "",
+      created_at: "2026-11-27T12:00:00Z",
+      verified_at: "2026-11-27T12:00:00Z",
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-wallet" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(mockTx), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+    const tx = await payBookingWithWallet({
+      booking_id: 42,
+      idempotency_key: "wallet-idem-42",
+    });
+
+    expect(tx).toEqual(mockTx);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const [postUrl, postInit] = fetchMock.mock.calls[1]!;
+    expect(String(postUrl)).toContain("/api/v1/billing/wallet-pay/");
+    expect(postInit?.method).toBe("POST");
+    expect(postInit?.credentials).toBe("include");
+    expect(postInit?.body).toBe(
+      JSON.stringify({ booking_id: 42, idempotency_key: "wallet-idem-42" })
+    );
+    const postHeaders = new Headers(postInit?.headers);
+    expect(postHeaders.get("X-CSRFToken")).toBe("tok-wallet");
+  });
+
+  it("payBookingWithWallet surfaces ApiError(400, WALLET_INSUFFICIENT_BALANCE) on insufficient balance", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-wallet-err" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error_code: "WALLET_INSUFFICIENT_BALANCE",
+            message: "Wallet balance is insufficient.",
+            details: {},
+          }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      );
+
+    await expect(
+      payBookingWithWallet({
+        booking_id: 42,
+        idempotency_key: "wallet-idem-42",
+      })
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      status: 400,
+      errorCode: "WALLET_INSUFFICIENT_BALANCE",
+      message: "Wallet balance is insufficient.",
+    });
   });
 });

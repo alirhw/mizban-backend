@@ -161,3 +161,79 @@ Scenario: 12. Read-model visibility and zero PII in logs
 
 ## 8. Open questions
 - None. All business rules (**FR-17**, **BR-003**, **BR-004**, **TD-005**) and architectural constraints (**ARCH-001**, **ARCH-002**, **ARCH-005**, **ARCH-006**) are resolved.
+
+---
+
+## 9. Frontend Payment Choice (`BookingFlow`) — Follow-up (a)
+
+### 9.1 Scope & Existing Backend Contract
+This section specifies the **T-034 Frontend Follow-up (a)** in `frontend/`, integrating `BookingFlow` (`frontend/src/components/BookingFlow.tsx`) with the existing wallet and wallet-pay backend endpoints (no backend or OpenAPI snapshot changes):
+- **Wallet balance endpoint:** `GET /api/v1/wallets/me/` (`getMyWallet()` -> `WalletMeOut` `{ balance_toman, ... }`, already present in `frontend/src/lib/api.ts`).
+- **Wallet payment endpoint:** `POST /api/v1/billing/wallet-pay/`:
+  - Request body: `WalletPayIn` `{ booking_id: number, idempotency_key: string }`
+  - Success response (`200`): `PaymentTransactionOut` `{ id, booking_id, amount_toman, currency, status, provider_name, provider_reference, tracking_code, card_pan_masked, created_at, verified_at }`
+  - Insufficient balance error (`400`): `error_code: "WALLET_INSUFFICIENT_BALANCE"`
+
+### 9.2 Frontend Requirements (EARS)
+- **REQ-WPAY-FE-001** **Typed API client (`frontend/src/lib/api.ts`):** `frontend/src/lib/api.ts` shall define `WalletPayIn` and `PaymentTransactionOut` interfaces matching `api/openapi.snapshot.json` and export `payBookingWithWallet(payload: WalletPayIn): Promise<PaymentTransactionOut>` calling `POST /billing/wallet-pay/`.
+- **REQ-WPAY-FE-002** **Wallet balance fetch on active lock:** When `BookingFlow` (`frontend/src/components/BookingFlow.tsx`) enters or is in an active lock payment step (`state.step === "locked"` or `state.step === "failed"`), the component shall fetch `getMyWallet()` to retrieve `balance_toman` and determine whether the Wallet payment option is enabled.
+- **REQ-WPAY-FE-003** **Payment method presentation & ordering:** In the payment step (`locked` / `paying` / `failed`), `BookingFlow` shall present two payment options with **Wallet** shown **first** and **Online Gateway** shown **second**:
+  1. **Wallet:** Displays the customer's current wallet balance (`balance_toman`). Enabled **only** when `getMyWallet()` succeeded and `balance_toman >= selectedPin.reservation_fee_toman` (table reservation fee only per **BR-003 / BR-04**; design add-ons remain payable in person).
+     - If `balance_toman < selectedPin.reservation_fee_toman`, the Wallet option shall be disabled with a clear Persian insufficient-balance note.
+     - If `getMyWallet()` fails, the Wallet option shall be disabled with a clear Persian unavailable note while keeping **Online Gateway** usable.
+  2. **Online Gateway:** Uses the existing `initiatePayment` flow (`handleStartPayment`) and remains selectable whenever the lock has not expired.
+- **REQ-WPAY-FE-004** **Wallet payment submission & immediate confirmation:** When the customer submits payment with **Wallet** selected:
+  - `BookingFlow` shall call `payBookingWithWallet({ booking_id, idempotency_key })`.
+  - On `200 PaymentTransactionOut`, `BookingFlow` shall transition immediately to `"confirmed"` (`PAYMENT_SUCCEEDED`) with **no** external redirect, and render confirmation details including tracking/receipt info (`PaymentTransactionOut` / booking summary) and a link to `/bookings`.
+- **REQ-WPAY-FE-005** **Insufficient-balance error handling & fallback:** If `payBookingWithWallet` returns `400` with `WALLET_INSUFFICIENT_BALANCE`, `BookingFlow` shall display a user-friendly Persian error message (never exposing raw `error_code` strings) and automatically switch the selected payment method to **Online Gateway** so the customer can retry immediately.
+- **REQ-WPAY-FE-006** **Control disabling during submission / expiry:** Both payment method options and the submit button shall be disabled whenever `submittingPayment` is `true`, `state.step === "paying"`, or `remainingSeconds <= 0`.
+- **REQ-WPAY-FE-007** **Zero raw error codes or PII in UI:** User-facing error banners in `BookingFlow` shall render Persian copy only and never expose raw backend `error_code` identifiers or sensitive customer PII.
+
+### 9.3 Frontend Acceptance Criteria (Gherkin)
+```gherkin
+Scenario: FE-1. Wallet option enabled first when wallet balance covers table reservation fee
+  Given a customer is on the locked payment step in BookingFlow with selectedPin.reservation_fee_toman = 150000
+    And GET /api/v1/wallets/me/ returns balance_toman = 200000
+  Then Wallet is displayed first and Online Gateway second
+    And Wallet shows balance 200000 Toman and is enabled.
+
+Scenario: FE-2. Wallet option disabled with Persian note when balance is insufficient
+  Given a customer is on the locked payment step with selectedPin.reservation_fee_toman = 150000
+    And GET /api/v1/wallets/me/ returns balance_toman = 90000
+  Then Wallet is disabled with a clear Persian insufficient-balance note
+    And Online Gateway remains enabled and usable.
+
+Scenario: FE-3. Wallet option disabled with Persian note when getMyWallet() fails
+  Given a customer is on the locked payment step
+    And GET /api/v1/wallets/me/ fails with a network or server error
+  Then Wallet is disabled with a clear Persian unavailable note
+    And Online Gateway remains enabled and usable.
+
+Scenario: FE-4. Successful wallet payment confirms immediately without redirect
+  Given Wallet is selected and enabled in BookingFlow
+  When the customer submits payment and POST /api/v1/billing/wallet-pay/ returns 200 PaymentTransactionOut
+  Then BookingFlow transitions immediately to "confirmed" with no redirect
+    And displays confirmation and tracking/receipt details with a link to /bookings.
+
+Scenario: FE-5. 400 WALLET_INSUFFICIENT_BALANCE shows Persian message and switches to Online Gateway
+  Given Wallet is selected and the customer submits payment
+  When POST /api/v1/billing/wallet-pay/ returns 400 with error_code "WALLET_INSUFFICIENT_BALANCE"
+  Then BookingFlow displays a user-friendly Persian message without raw "WALLET_INSUFFICIENT_BALANCE"
+    And automatically switches the selected payment option to Online Gateway.
+
+Scenario: FE-6. Controls disabled during submission or lock expiry
+  Given BookingFlow is in the payment step
+  When submittingPayment is true, state.step === "paying", or remainingSeconds <= 0
+  Then both Wallet and Online Gateway options and the submit button are disabled.
+```
+
+### 9.4 Frontend Out of Scope (explicit)
+- Wallet top-up / deposit UI
+- Gateway callback page (`frontend/src/app/bookings/callback/`) edits
+- Lock countdown timer mechanics edits
+- Admin or venue-owner UI edits
+- Backend Python code, migrations, or `api/openapi.snapshot.json` edits
+
+### 9.5 Component Test Infrastructure & Coverage (Follow-up (a) Part 2)
+- **Vitest jsdom setup:** `frontend/vitest.config.ts` adds `src/**/*.test.tsx` while keeping `environment: "node"` as the default so existing lib tests stay on Node; `frontend/src/lib/__tests__/BookingFlow.test.tsx` uses `// @vitest-environment jsdom` with `@testing-library/react`, `@testing-library/jest-dom/vitest`, and `@testing-library/user-event` (`@/lib/api`, `next/navigation`, `next/link`, and `@/lib/auth` mocked).
+- **Covered cases (`BookingFlow.test.tsx`):** Wallet-first / Gateway-second rendering, insufficient balance (`balance_toman < fee`) disabled note vs `balance_toman === fee` enabled, `getMyWallet()` load failure fallback to gateway, wallet payment 200 immediate `confirmed` state without redirect, `400 WALLET_INSUFFICIENT_BALANCE` Persian alert + auto-switch to gateway, unchanged gateway `initiatePayment` redirect, double-click in-flight guard, and lock countdown `00:00` disabling both options.

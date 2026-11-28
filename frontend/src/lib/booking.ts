@@ -316,6 +316,10 @@ export function mapBookingErrorToPersian(err: unknown): string {
     return "زمان قفل رزرو به پایان رسید؛ لطفاً دوباره اسلات را انتخاب کنید.";
   }
 
+  if (code === "WALLET_INSUFFICIENT_BALANCE") {
+    return "موجودی کیف پول برای پرداخت هزینه رزرو میز کافی نیست؛ می‌توانید از درگاه پرداخت آنلاین استفاده کنید.";
+  }
+
   if (
     code &&
     (code.startsWith("PAYMENT_") || code === "GATEWAY_ERROR" || code === "BILLING_ERROR")
@@ -324,6 +328,53 @@ export function mapBookingErrorToPersian(err: unknown): string {
   }
 
   return "خطایی در پردازش رزرو رخ داد؛ لطفاً دوباره تلاش کنید.";
+}
+
+export type PaymentMethodChoice = "wallet" | "gateway";
+
+export interface WalletOptionAvailability {
+  enabled: boolean;
+  reason: "loading" | "unavailable" | "insufficient_balance" | "ready";
+  note: string | null;
+}
+
+export function resolveWalletOptionAvailability(params: {
+  loading: boolean;
+  error: boolean;
+  balanceToman: number | null;
+  reservationFeeToman: number;
+  forceInsufficient?: boolean;
+}): WalletOptionAvailability {
+  if (params.loading) {
+    return {
+      enabled: false,
+      reason: "loading",
+      note: "در حال بررسی موجودی کیف پول...",
+    };
+  }
+  if (params.error || params.balanceToman === null) {
+    return {
+      enabled: false,
+      reason: "unavailable",
+      note: "امکان دریافت موجودی کیف پول وجود ندارد؛ می‌توانید از درگاه پرداخت آنلاین استفاده کنید.",
+    };
+  }
+  if (params.forceInsufficient || params.balanceToman < params.reservationFeeToman) {
+    return {
+      enabled: false,
+      reason: "insufficient_balance",
+      note: "موجودی کیف پول برای پرداخت هزینه رزرو میز کافی نیست.",
+    };
+  }
+  return {
+    enabled: true,
+    reason: "ready",
+    note: null,
+  };
+}
+
+export function isInsufficientWalletBalanceError(err: unknown): boolean {
+  return extractErrorCode(err) === "WALLET_INSUFFICIENT_BALANCE";
 }
 
 export interface BookingResumeParams {

@@ -1,16 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
   ApiError,
+  getMyWallet,
   initiateBooking,
   initiatePayment,
   listVenueSlots,
+  payBookingWithWallet,
   type DesignAddonOut,
+  type PaymentTransactionOut,
   type PublicTablePinOut,
   type SlotOut,
+  type WalletMeOut,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import {
@@ -21,8 +26,11 @@ import {
   formatCountdownMmSs,
   getOrCreateBookingIdempotencyKey,
   INITIAL_BOOKING_STATE,
+  isInsufficientWalletBalanceError,
   mapBookingErrorToPersian,
+  resolveWalletOptionAvailability,
   type BookingResumeParams,
+  type PaymentMethodChoice,
 } from "@/lib/booking";
 import {
   formatJalaliDate,
@@ -126,6 +134,26 @@ export function BookingFlow({
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const paymentIdempotencyRef = useRef<{ bookingId: number; key: string } | null>(null);
+  const walletIdempotencyRef = useRef<{ bookingId: number; key: string } | null>(null);
+  const walletFetchedBookingRef = useRef<number | null>(null);
+  const paymentInFlightRef = useRef(false);
+
+  const [walletState, setWalletState] = useState<{
+    bookingId: number | null;
+    loading: boolean;
+    wallet: WalletMeOut | null;
+    error: boolean;
+    forceInsufficient: boolean;
+  }>({
+    bookingId: null,
+    loading: false,
+    wallet: null,
+    error: false,
+    forceInsufficient: false,
+  });
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<PaymentMethodChoice>("gateway");
+  const [walletConfirmedTx, setWalletConfirmedTx] = useState<PaymentTransactionOut | null>(null);
 
   const loadingSlots = state.step === "slot" && slotsState.requestKey !== currentRequestKey;
   const slots = slotsState.requestKey === currentRequestKey ? slotsState.slots : [];
@@ -174,6 +202,63 @@ export function BookingFlow({
     }, 1000);
     return () => window.clearInterval(timer);
   }, [state.step, state.lockExpiresAt]);
+
+  useEffect(() => {
+    if ((state.step !== "locked" && state.step !== "failed") || !state.bookingId) {
+      return;
+    }
+    if (walletFetchedBookingRef.current === state.bookingId) {
+      return;
+    }
+
+    const targetBookingId = state.bookingId;
+    walletFetchedBookingRef.current = targetBookingId;
+    let active = true;
+    setWalletState({
+      bookingId: targetBookingId,
+      loading: true,
+      wallet: null,
+      error: false,
+      forceInsufficient: false,
+    });
+
+    getMyWallet()
+      .then((wallet) => {
+        if (!active) return;
+        const canUseWallet = wallet.balance_toman >= selectedPin.reservation_fee_toman;
+        setWalletState({
+          bookingId: targetBookingId,
+          loading: false,
+          wallet,
+          error: false,
+          forceInsufficient: false,
+        });
+        setSelectedPaymentMethod(canUseWallet ? "wallet" : "gateway");
+      })
+      .catch(() => {
+        if (!active) return;
+        setWalletState({
+          bookingId: targetBookingId,
+          loading: false,
+          wallet: null,
+          error: true,
+          forceInsufficient: false,
+        });
+        setSelectedPaymentMethod("gateway");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [state.step, state.bookingId, selectedPin.reservation_fee_toman]);
+
+  const walletAvailability = resolveWalletOptionAvailability({
+    loading: walletState.loading,
+    error: walletState.error,
+    balanceToman: walletState.wallet?.balance_toman ?? null,
+    reservationFeeToman: selectedPin.reservation_fee_toman,
+    forceInsufficient: walletState.forceInsufficient,
+  });
 
   const remainingSeconds =
     state.step === "locked" || state.step === "failed"
@@ -252,14 +337,19 @@ export function BookingFlow({
     }
   }
 
-  async function handleStartPayment() {
-    if (!state.bookingId) return;
-
+  function beginPaymentAttempt() {
     if (state.step === "failed") {
       dispatch({ type: "RETRY_PAYMENT" });
     }
     dispatch({ type: "START_PAYMENT" });
     setSubmittingPayment(true);
+    paymentInFlightRef.current = true;
+  }
+
+  async function handleStartPayment() {
+    if (!state.bookingId) return;
+
+    beginPaymentAttempt();
 
     try {
       const bookingId = state.bookingId;
@@ -279,14 +369,75 @@ export function BookingFlow({
     } catch (err) {
       dispatch({ type: "PAYMENT_FAILED", error: err });
       setSubmittingPayment(false);
+      paymentInFlightRef.current = false;
+    }
+  }
+
+  async function handlePayWithWallet() {
+    if (!state.bookingId || !walletAvailability.enabled) return;
+
+    beginPaymentAttempt();
+
+    try {
+      const bookingId = state.bookingId;
+      const nextKey = getOrCreateBookingIdempotencyKey(
+        walletIdempotencyRef.current,
+        bookingId,
+        () => generateIdempotencyKey(bookingId)
+      );
+      walletIdempotencyRef.current = nextKey;
+      const tx = await payBookingWithWallet({
+        booking_id: bookingId,
+        idempotency_key: nextKey.key,
+      });
+      setWalletConfirmedTx(tx);
+      dispatch({ type: "PAYMENT_SUCCEEDED" });
+      setSubmittingPayment(false);
+      paymentInFlightRef.current = false;
+    } catch (err) {
+      dispatch({ type: "PAYMENT_FAILED", error: err });
+      setSubmittingPayment(false);
+      paymentInFlightRef.current = false;
+      if (isInsufficientWalletBalanceError(err)) {
+        setWalletState((prev) => ({ ...prev, forceInsufficient: true }));
+        setSelectedPaymentMethod("gateway");
+      }
+    }
+  }
+
+  function handleSubmitPayment() {
+    if (
+      paymentInFlightRef.current ||
+      submittingPayment ||
+      state.step === "paying" ||
+      remainingSeconds <= 0
+    ) {
+      return;
+    }
+    if (selectedPaymentMethod === "wallet") {
+      void handlePayWithWallet();
+    } else {
+      void handleStartPayment();
     }
   }
 
   function handleRestartBooking() {
     paymentIdempotencyRef.current = null;
+    walletIdempotencyRef.current = null;
+    walletFetchedBookingRef.current = null;
+    paymentInFlightRef.current = false;
     setSlotConflictNotice(null);
     setSubmitError(null);
     setSelectedSlotLabel(null);
+    setWalletConfirmedTx(null);
+    setWalletState({
+      bookingId: null,
+      loading: false,
+      wallet: null,
+      error: false,
+      forceInsufficient: false,
+    });
+    setSelectedPaymentMethod("gateway");
     dispatch({ type: "RESTART" });
     dispatch({ type: "START" });
     dispatch({ type: "SELECT_TABLE", tablePinId: selectedPin.id });
@@ -644,16 +795,170 @@ export function BookingFlow({
             </div>
           ) : null}
 
+          <fieldset
+            disabled={submittingPayment || state.step === "paying" || remainingSeconds <= 0}
+            className="space-y-2.5"
+          >
+            <legend className="mb-1 text-xs font-medium text-stone-700">روش پرداخت</legend>
+
+            <label
+              className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 text-sm transition ${
+                selectedPaymentMethod === "wallet" && walletAvailability.enabled
+                  ? "border-stone-900 bg-stone-50"
+                  : "border-stone-200 bg-white"
+              } ${
+                !walletAvailability.enabled ||
+                submittingPayment ||
+                state.step === "paying" ||
+                remainingSeconds <= 0
+                  ? "cursor-not-allowed opacity-65"
+                  : "hover:border-stone-400"
+              }`}
+            >
+              <input
+                type="radio"
+                name="booking-payment-method"
+                value="wallet"
+                checked={selectedPaymentMethod === "wallet"}
+                disabled={
+                  !walletAvailability.enabled ||
+                  submittingPayment ||
+                  state.step === "paying" ||
+                  remainingSeconds <= 0
+                }
+                onChange={() => setSelectedPaymentMethod("wallet")}
+                className="mt-1 h-4 w-4 accent-stone-900"
+              />
+              <div className="flex-1 space-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-stone-900">پرداخت با کیف پول</span>
+                  {walletState.wallet ? (
+                    <span className="text-xs font-medium text-stone-700">
+                      موجودی فعلی: {formatToman(walletState.wallet.balance_toman)}
+                    </span>
+                  ) : null}
+                </div>
+                {walletAvailability.note ? (
+                  <p className="text-xs text-amber-800">{walletAvailability.note}</p>
+                ) : (
+                  <p className="text-xs text-stone-600">
+                    پرداخت آنی از موجودی کیف پول بدون نیاز به انتقال به درگاه بانکی.
+                  </p>
+                )}
+              </div>
+            </label>
+
+            <label
+              className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 text-sm transition ${
+                selectedPaymentMethod === "gateway"
+                  ? "border-stone-900 bg-stone-50"
+                  : "border-stone-200 bg-white"
+              } ${
+                submittingPayment || state.step === "paying" || remainingSeconds <= 0
+                  ? "cursor-not-allowed opacity-65"
+                  : "hover:border-stone-400"
+              }`}
+            >
+              <input
+                type="radio"
+                name="booking-payment-method"
+                value="gateway"
+                checked={selectedPaymentMethod === "gateway"}
+                disabled={submittingPayment || state.step === "paying" || remainingSeconds <= 0}
+                onChange={() => setSelectedPaymentMethod("gateway")}
+                className="mt-1 h-4 w-4 accent-stone-900"
+              />
+              <div className="flex-1 space-y-1">
+                <div className="font-semibold text-stone-900">پرداخت آنلاین (درگاه آزمایشی)</div>
+                <p className="text-xs text-stone-600">
+                  انتقال به درگاه پرداخت آنلاین و بازگشت خودکار پس از تایید.
+                </p>
+              </div>
+            </label>
+          </fieldset>
+
           <button
             type="button"
-            disabled={submittingPayment || state.step === "paying" || remainingSeconds <= 0}
-            onClick={() => void handleStartPayment()}
+            disabled={
+              submittingPayment ||
+              state.step === "paying" ||
+              remainingSeconds <= 0 ||
+              (selectedPaymentMethod === "wallet" && !walletAvailability.enabled)
+            }
+            onClick={handleSubmitPayment}
             className="min-h-[44px] w-full rounded-lg bg-stone-900 px-5 py-3 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-50"
           >
             {submittingPayment || state.step === "paying"
-              ? "در حال انتقال به درگاه پرداخت..."
-              : "پرداخت آنلاین (درگاه آزمایشی)"}
+              ? selectedPaymentMethod === "wallet"
+                ? "در حال پرداخت با کیف پول..."
+                : "در حال انتقال به درگاه پرداخت..."
+              : selectedPaymentMethod === "wallet"
+                ? "پرداخت با کیف پول"
+                : "پرداخت آنلاین (درگاه آزمایشی)"}
           </button>
+        </div>
+      ) : null}
+
+      {/* Confirmed state (immediate wallet payment success) */}
+      {state.step === "confirmed" ? (
+        <div className="space-y-4">
+          <div
+            role="status"
+            className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950"
+          >
+            <div className="font-bold">رزرو شما با موفقیت تایید شد</div>
+            <p className="mt-1 text-xs text-emerald-800">
+              پرداخت از کیف پول با موفقیت انجام شد و میز برای شما ثبت گردید.
+            </p>
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm">
+            <div className="flex justify-between gap-2">
+              <span className="text-stone-600">کافه:</span>
+              <span className="font-medium text-stone-900">{venueName}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-stone-600">میز:</span>
+              <span className="font-medium text-stone-900">
+                میز {selectedPin.table_number}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-stone-600">مبلغ پرداخت‌شده:</span>
+              <span className="font-bold text-stone-900">
+                {formatToman(
+                  walletConfirmedTx?.amount_toman ??
+                    state.amountOnlineToman ??
+                    selectedPin.reservation_fee_toman
+                )}
+              </span>
+            </div>
+            {walletConfirmedTx?.tracking_code ? (
+              <div className="flex justify-between gap-2">
+                <span className="text-stone-600">کد پیگیری:</span>
+                <span dir="ltr" className="font-mono font-medium text-stone-900">
+                  {walletConfirmedTx.tracking_code}
+                </span>
+              </div>
+            ) : null}
+            {(state.amountInPersonToman ?? summary.inPersonTotalToman) > 0 ? (
+              <div className="flex justify-between gap-2 text-xs text-stone-600">
+                <span>پرداخت حضوری در کافه:</span>
+                <span>
+                  {formatToman(state.amountInPersonToman ?? summary.inPersonTotalToman)}
+                </span>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/bookings"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-stone-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800"
+            >
+              مشاهده رزروهای من
+            </Link>
+          </div>
         </div>
       ) : null}
 

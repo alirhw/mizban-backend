@@ -9,9 +9,11 @@ import {
   formatCountdownMmSs,
   getOrCreateBookingIdempotencyKey,
   INITIAL_BOOKING_STATE,
+  isInsufficientWalletBalanceError,
   mapBookingErrorToPersian,
   parseBookingResumeParams,
   resolveCallbackReceiptConfirmed,
+  resolveWalletOptionAvailability,
 } from "../booking";
 import { formatJalaliFromIsoDate, getTehranDateIso, isSlotAtLeast24HoursAhead } from "../jalali";
 
@@ -248,5 +250,160 @@ describe("T-028-FIX regression helpers (B2, B3, B4)", () => {
 
     const nextBooking = getOrCreateBookingIdempotencyKey(retry, 43, mint);
     expect(nextBooking.key).toBe("idem-2");
+  });
+});
+
+describe("T-034 frontend: BookingFlow wallet payment choice", () => {
+  it("maps WALLET_INSUFFICIENT_BALANCE to a Persian message without exposing the raw error code", () => {
+    const err = new ApiError(400, "WALLET_INSUFFICIENT_BALANCE", "Raw insufficient balance");
+    const msg = mapBookingErrorToPersian(err);
+
+    expect(msg).toContain("موجودی کیف پول");
+    expect(msg).not.toContain("WALLET_INSUFFICIENT_BALANCE");
+    expect(msg).not.toContain("Raw insufficient balance");
+  });
+
+  it("isInsufficientWalletBalanceError returns true only for WALLET_INSUFFICIENT_BALANCE", () => {
+    expect(
+      isInsufficientWalletBalanceError(
+        new ApiError(400, "WALLET_INSUFFICIENT_BALANCE", "Insufficient balance")
+      )
+    ).toBe(true);
+
+    expect(
+      isInsufficientWalletBalanceError(new ApiError(502, "PAYMENT_GATEWAY_ERROR", "Timeout"))
+    ).toBe(false);
+    expect(isInsufficientWalletBalanceError(new Error("WALLET_INSUFFICIENT_BALANCE"))).toBe(false);
+    expect(isInsufficientWalletBalanceError(null)).toBe(false);
+  });
+
+  it("resolveWalletOptionAvailability returns loading state while wallet balance is loading", () => {
+    expect(
+      resolveWalletOptionAvailability({
+        loading: true,
+        error: false,
+        balanceToman: null,
+        reservationFeeToman: 150_000,
+      })
+    ).toEqual({
+      enabled: false,
+      reason: "loading",
+      note: "در حال بررسی موجودی کیف پول...",
+    });
+  });
+
+  it("resolveWalletOptionAvailability returns unavailable when error is true or balanceToman is null", () => {
+    const onError = resolveWalletOptionAvailability({
+      loading: false,
+      error: true,
+      balanceToman: 200_000,
+      reservationFeeToman: 150_000,
+    });
+    expect(onError.enabled).toBe(false);
+    expect(onError.reason).toBe("unavailable");
+    expect(onError.note).toContain("درگاه پرداخت آنلاین");
+
+    const onNull = resolveWalletOptionAvailability({
+      loading: false,
+      error: false,
+      balanceToman: null,
+      reservationFeeToman: 150_000,
+    });
+    expect(onNull.enabled).toBe(false);
+    expect(onNull.reason).toBe("unavailable");
+    expect(onNull.note).toContain("درگاه پرداخت آنلاین");
+  });
+
+  it("resolveWalletOptionAvailability returns insufficient_balance when balance < table fee or forceInsufficient is true", () => {
+    const belowFee = resolveWalletOptionAvailability({
+      loading: false,
+      error: false,
+      balanceToman: 149_999,
+      reservationFeeToman: 150_000,
+    });
+    expect(belowFee.enabled).toBe(false);
+    expect(belowFee.reason).toBe("insufficient_balance");
+    expect(belowFee.note).toContain("کافی نیست");
+
+    const forced = resolveWalletOptionAvailability({
+      loading: false,
+      error: false,
+      balanceToman: 500_000,
+      reservationFeeToman: 150_000,
+      forceInsufficient: true,
+    });
+    expect(forced.enabled).toBe(false);
+    expect(forced.reason).toBe("insufficient_balance");
+    expect(forced.note).toContain("کافی نیست");
+  });
+
+  it("resolveWalletOptionAvailability returns ready when balance >= reservationFeeToman including exact equality", () => {
+    expect(
+      resolveWalletOptionAvailability({
+        loading: false,
+        error: false,
+        balanceToman: 150_000,
+        reservationFeeToman: 150_000,
+      })
+    ).toEqual({
+      enabled: true,
+      reason: "ready",
+      note: null,
+    });
+
+    expect(
+      resolveWalletOptionAvailability({
+        loading: false,
+        error: false,
+        balanceToman: 250_000,
+        reservationFeeToman: 150_000,
+      })
+    ).toEqual({
+      enabled: true,
+      reason: "ready",
+      note: null,
+    });
+  });
+
+  it("bookingReducer transitions locked -> START_PAYMENT -> PAYMENT_SUCCEEDED -> confirmed", () => {
+    const lockedState = {
+      ...INITIAL_BOOKING_STATE,
+      step: "locked" as const,
+      bookingId: 501,
+      lockExpiresAt: "2099-05-01T10:10:00Z",
+    };
+
+    const payingState = bookingReducer(lockedState, { type: "START_PAYMENT" });
+    expect(payingState.step).toBe("paying");
+
+    const confirmedState = bookingReducer(payingState, { type: "PAYMENT_SUCCEEDED" });
+    expect(confirmedState.step).toBe("confirmed");
+  });
+
+  it("bookingReducer transitions locked -> START_PAYMENT -> PAYMENT_FAILED -> RETRY_PAYMENT -> START_PAYMENT", () => {
+    const lockedState = {
+      ...INITIAL_BOOKING_STATE,
+      step: "locked" as const,
+      bookingId: 502,
+      lockExpiresAt: "2099-05-01T10:10:00Z",
+    };
+
+    const payingState = bookingReducer(lockedState, { type: "START_PAYMENT" });
+    expect(payingState.step).toBe("paying");
+
+    const failedState = bookingReducer(payingState, {
+      type: "PAYMENT_FAILED",
+      error: new ApiError(400, "WALLET_INSUFFICIENT_BALANCE", "Insufficient balance"),
+    });
+    expect(failedState.step).toBe("failed");
+    expect(failedState.errorMessage).toContain("موجودی کیف پول");
+    expect(failedState.errorMessage).not.toContain("WALLET_INSUFFICIENT_BALANCE");
+
+    const retriedState = bookingReducer(failedState, { type: "RETRY_PAYMENT" });
+    expect(retriedState.step).toBe("locked");
+    expect(retriedState.errorMessage).toBeNull();
+
+    const restartedPaying = bookingReducer(retriedState, { type: "START_PAYMENT" });
+    expect(restartedPaying.step).toBe("paying");
   });
 });

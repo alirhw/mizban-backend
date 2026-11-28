@@ -261,6 +261,25 @@ export interface PaymentInitiateOut {
   redirect_url: string;
 }
 
+export interface WalletPayIn {
+  booking_id: number;
+  idempotency_key: string;
+}
+
+export interface PaymentTransactionOut {
+  id: number;
+  booking_id: number;
+  amount_toman: number;
+  currency: string;
+  status: string;
+  provider_name: string;
+  provider_reference: string | null;
+  tracking_code: string;
+  card_pan_masked: string;
+  created_at: string;
+  verified_at: string | null;
+}
+
 export interface SplitReceiptOnlineSectionOut {
   label: string;
   description: string;
@@ -615,5 +634,14 @@ export async function getMyWallet(): Promise<WalletMeOut> {
   return apiFetch<WalletMeOut>("/wallets/me/", {
     method: "GET",
     cache: "no-store",
+  });
+}
+
+export async function payBookingWithWallet(
+  payload: WalletPayIn
+): Promise<PaymentTransactionOut> {
+  return apiFetch<PaymentTransactionOut>("/billing/wallet-pay/", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
