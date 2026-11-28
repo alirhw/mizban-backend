@@ -23,6 +23,7 @@ import {
   buildBookingReturnUrl,
   computeBookingSummary,
   computeLockRemainingSeconds,
+  computeSlotEndIso,
   formatCountdownMmSs,
   getOrCreateBookingIdempotencyKey,
   INITIAL_BOOKING_STATE,
@@ -92,7 +93,7 @@ export function BookingFlow({
           type: "SELECT_SLOT",
           slotDate: resume.slotDate,
           slotStartIso: resume.slotStartIso,
-          slotEndIso: resume.slotStartIso,
+          slotEndIso: computeSlotEndIso(resume.slotStartIso),
         });
         for (const addonId of resume.addonIds) {
           next = bookingReducer(next, { type: "TOGGLE_ADDON", addonId });
@@ -137,6 +138,10 @@ export function BookingFlow({
   const walletIdempotencyRef = useRef<{ bookingId: number; key: string } | null>(null);
   const walletFetchedBookingRef = useRef<number | null>(null);
   const paymentInFlightRef = useRef(false);
+  const lockInFlightRef = useRef(false);
+  const userSelectedPaymentMethodRef = useRef(false);
+  const stepRef = useRef(state.step);
+  stepRef.current = state.step;
 
   const [walletState, setWalletState] = useState<{
     bookingId: number | null;
@@ -158,6 +163,12 @@ export function BookingFlow({
   const loadingSlots = state.step === "slot" && slotsState.requestKey !== currentRequestKey;
   const slots = slotsState.requestKey === currentRequestKey ? slotsState.slots : [];
   const slotsError = slotsState.requestKey === currentRequestKey ? slotsState.error : null;
+
+  useEffect(() => {
+    if (state.step !== "slot") {
+      setSlotsState((prev) => (prev.requestKey ? { ...prev, requestKey: "" } : prev));
+    }
+  }, [state.step]);
 
   useEffect(() => {
     if (state.step !== "slot") return;
@@ -189,7 +200,7 @@ export function BookingFlow({
   }, [state.step, venueId, activeDate, selectedPin.id, currentRequestKey]);
 
   useEffect(() => {
-    if (state.step !== "locked" && state.step !== "failed") {
+    if (state.step !== "locked" && state.step !== "paying" && state.step !== "failed") {
       return;
     }
 
@@ -203,6 +214,8 @@ export function BookingFlow({
     return () => window.clearInterval(timer);
   }, [state.step, state.lockExpiresAt]);
 
+  const authoritativeOnlineToman = state.amountOnlineToman ?? selectedPin.reservation_fee_toman;
+
   useEffect(() => {
     if ((state.step !== "locked" && state.step !== "failed") || !state.bookingId) {
       return;
@@ -213,6 +226,7 @@ export function BookingFlow({
 
     const targetBookingId = state.bookingId;
     walletFetchedBookingRef.current = targetBookingId;
+    userSelectedPaymentMethodRef.current = false;
     let active = true;
     setWalletState({
       bookingId: targetBookingId,
@@ -225,7 +239,7 @@ export function BookingFlow({
     getMyWallet()
       .then((wallet) => {
         if (!active) return;
-        const canUseWallet = wallet.balance_toman >= selectedPin.reservation_fee_toman;
+        const canUseWallet = wallet.balance_toman >= authoritativeOnlineToman;
         setWalletState({
           bookingId: targetBookingId,
           loading: false,
@@ -233,7 +247,9 @@ export function BookingFlow({
           error: false,
           forceInsufficient: false,
         });
-        setSelectedPaymentMethod(canUseWallet ? "wallet" : "gateway");
+        if (!userSelectedPaymentMethodRef.current) {
+          setSelectedPaymentMethod(canUseWallet ? "wallet" : "gateway");
+        }
       })
       .catch(() => {
         if (!active) return;
@@ -244,24 +260,26 @@ export function BookingFlow({
           error: true,
           forceInsufficient: false,
         });
-        setSelectedPaymentMethod("gateway");
+        if (!userSelectedPaymentMethodRef.current) {
+          setSelectedPaymentMethod("gateway");
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [state.step, state.bookingId, selectedPin.reservation_fee_toman]);
+  }, [state.step, state.bookingId, authoritativeOnlineToman]);
 
   const walletAvailability = resolveWalletOptionAvailability({
     loading: walletState.loading,
     error: walletState.error,
     balanceToman: walletState.wallet?.balance_toman ?? null,
-    reservationFeeToman: selectedPin.reservation_fee_toman,
+    reservationFeeToman: authoritativeOnlineToman,
     forceInsufficient: walletState.forceInsufficient,
   });
 
   const remainingSeconds =
-    state.step === "locked" || state.step === "failed"
+    state.step === "locked" || state.step === "paying" || state.step === "failed"
       ? computeLockRemainingSeconds(state.lockExpiresAt, nowMs)
       : 0;
 
@@ -285,7 +303,7 @@ export function BookingFlow({
   }
 
   async function handleConfirmAndLock() {
-    if (authLoading) return;
+    if (authLoading || lockInFlightRef.current) return;
     setSubmitError(null);
 
     if (!user) {
@@ -306,6 +324,7 @@ export function BookingFlow({
       return;
     }
 
+    lockInFlightRef.current = true;
     setSubmittingLock(true);
     try {
       const res = await initiateBooking({
@@ -333,6 +352,7 @@ export function BookingFlow({
         setSubmitError(mapBookingErrorToPersian(err));
       }
     } finally {
+      lockInFlightRef.current = false;
       setSubmittingLock(false);
     }
   }
@@ -365,9 +385,16 @@ export function BookingFlow({
         idempotency_key: nextKey.key,
         callback_url: callbackUrl,
       });
+      if (stepRef.current === "expired") {
+        setSubmittingPayment(false);
+        paymentInFlightRef.current = false;
+        return;
+      }
       window.location.assign(res.redirect_url);
     } catch (err) {
-      dispatch({ type: "PAYMENT_FAILED", error: err });
+      if (stepRef.current !== "expired") {
+        dispatch({ type: "PAYMENT_FAILED", error: err });
+      }
       setSubmittingPayment(false);
       paymentInFlightRef.current = false;
     }
@@ -390,15 +417,22 @@ export function BookingFlow({
         booking_id: bookingId,
         idempotency_key: nextKey.key,
       });
+      if (stepRef.current === "expired") {
+        setSubmittingPayment(false);
+        paymentInFlightRef.current = false;
+        return;
+      }
       setWalletConfirmedTx(tx);
       dispatch({ type: "PAYMENT_SUCCEEDED" });
       setSubmittingPayment(false);
       paymentInFlightRef.current = false;
     } catch (err) {
-      dispatch({ type: "PAYMENT_FAILED", error: err });
+      if (stepRef.current !== "expired") {
+        dispatch({ type: "PAYMENT_FAILED", error: err });
+      }
       setSubmittingPayment(false);
       paymentInFlightRef.current = false;
-      if (isInsufficientWalletBalanceError(err)) {
+      if (stepRef.current !== "expired" && isInsufficientWalletBalanceError(err)) {
         setWalletState((prev) => ({ ...prev, forceInsufficient: true }));
         setSelectedPaymentMethod("gateway");
       }
@@ -426,6 +460,8 @@ export function BookingFlow({
     walletIdempotencyRef.current = null;
     walletFetchedBookingRef.current = null;
     paymentInFlightRef.current = false;
+    lockInFlightRef.current = false;
+    userSelectedPaymentMethodRef.current = false;
     setSlotConflictNotice(null);
     setSubmitError(null);
     setSelectedSlotLabel(null);
@@ -541,6 +577,7 @@ export function BookingFlow({
                 {slots.map((slot) => {
                   const meetsLeadTime = isSlotAtLeast24HoursAhead(slot.start);
                   const selectable = slot.is_bookable && meetsLeadTime;
+                  const isSelected = state.slotStartIso === slot.start;
                   const jalaliDateLabel = formatJalaliFromIsoDate(activeDate);
                   const timeRangeLabel = `${slot.start_jalali} تا ${slot.end_jalali}`;
 
@@ -549,6 +586,7 @@ export function BookingFlow({
                       key={slot.start}
                       type="button"
                       disabled={!selectable}
+                      aria-pressed={isSelected}
                       onClick={() => {
                         setSelectedSlotLabel(`${jalaliDateLabel} — ${timeRangeLabel}`);
                         setSlotConflictNotice(null);
@@ -560,9 +598,11 @@ export function BookingFlow({
                         });
                       }}
                       className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-right transition ${
-                        selectable
-                          ? "border-stone-300 bg-white text-stone-900 hover:border-stone-900 hover:bg-stone-50"
-                          : "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400"
+                        isSelected
+                          ? "border-stone-900 bg-stone-900 text-white"
+                          : selectable
+                            ? "border-stone-300 bg-white text-stone-900 hover:border-stone-900 hover:bg-stone-50"
+                            : "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400"
                       }`}
                     >
                       <span className="text-sm font-semibold">{timeRangeLabel}</span>
@@ -826,7 +866,13 @@ export function BookingFlow({
                   state.step === "paying" ||
                   remainingSeconds <= 0
                 }
-                onChange={() => setSelectedPaymentMethod("wallet")}
+                onClick={() => {
+                  userSelectedPaymentMethodRef.current = true;
+                }}
+                onChange={() => {
+                  userSelectedPaymentMethodRef.current = true;
+                  setSelectedPaymentMethod("wallet");
+                }}
                 className="mt-1 h-4 w-4 accent-stone-900"
               />
               <div className="flex-1 space-y-1">
@@ -865,7 +911,13 @@ export function BookingFlow({
                 value="gateway"
                 checked={selectedPaymentMethod === "gateway"}
                 disabled={submittingPayment || state.step === "paying" || remainingSeconds <= 0}
-                onChange={() => setSelectedPaymentMethod("gateway")}
+                onClick={() => {
+                  userSelectedPaymentMethodRef.current = true;
+                }}
+                onChange={() => {
+                  userSelectedPaymentMethodRef.current = true;
+                  setSelectedPaymentMethod("gateway");
+                }}
                 className="mt-1 h-4 w-4 accent-stone-900"
               />
               <div className="flex-1 space-y-1">
@@ -953,7 +1005,7 @@ export function BookingFlow({
 
           <div className="flex flex-wrap items-center gap-3">
             <Link
-              href="/bookings"
+              href="/my-bookings"
               className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-stone-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800"
             >
               مشاهده رزروهای من

@@ -6,6 +6,7 @@ import {
   buildBookingReturnUrl,
   computeBookingSummary,
   computeLockRemainingSeconds,
+  computeSlotEndIso,
   formatCountdownMmSs,
   getOrCreateBookingIdempotencyKey,
   INITIAL_BOOKING_STATE,
@@ -405,5 +406,56 @@ describe("T-034 frontend: BookingFlow wallet payment choice", () => {
 
     const restartedPaying = bookingReducer(retriedState, { type: "START_PAYMENT" });
     expect(restartedPaying.step).toBe("paying");
+  });
+});
+
+describe("parseBookingResumeParams & computeSlotEndIso (m8, m27)", () => {
+  it("m27: defaults missing or invalid step to addons when a valid slot is present", () => {
+    const missingStep = new URLSearchParams("pin=10&date=2099-01-01&slot=2099-01-01T10:00:00Z");
+    expect(parseBookingResumeParams(missingStep, [10], [1, 2])?.step).toBe("addons");
+
+    const invalidStep = new URLSearchParams(
+      "pin=10&date=2099-01-01&slot=2099-01-01T10:00:00Z&step=bogus"
+    );
+    expect(parseBookingResumeParams(invalidStep, [10], [1, 2])?.step).toBe("addons");
+
+    const explicitReview = new URLSearchParams(
+      "pin=10&date=2099-01-01&slot=2099-01-01T10:00:00Z&step=review"
+    );
+    expect(parseBookingResumeParams(explicitReview, [10], [1, 2])?.step).toBe("review");
+  });
+
+  it("m27: rejects impossible calendar dates and invalid slot timestamps", () => {
+    expect(
+      parseBookingResumeParams(
+        new URLSearchParams("pin=10&date=2026-13-45&slot=2099-01-01T10:00:00Z"),
+        [10],
+        []
+      )
+    ).toBeNull();
+
+    expect(
+      parseBookingResumeParams(
+        new URLSearchParams("pin=10&date=2026-02-30&slot=2099-01-01T10:00:00Z"),
+        [10],
+        []
+      )
+    ).toBeNull();
+
+    expect(
+      parseBookingResumeParams(
+        new URLSearchParams("pin=10&date=2026-05-01&slot=not-a-timestamp"),
+        [10],
+        []
+      )
+    ).toBeNull();
+
+    expect(parseBookingResumeParams(new URLSearchParams("pin=10"), [10], [])).toBeNull();
+  });
+
+  it("m8: computeSlotEndIso adds 90 minutes to slotStartIso", () => {
+    const start = "2099-01-01T10:00:00.000Z";
+    const end = computeSlotEndIso(start);
+    expect(Date.parse(end) - Date.parse(start)).toBe(90 * 60 * 1000);
   });
 });

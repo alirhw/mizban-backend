@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useReducer, useState } from "react";
+import React, { useEffect, useReducer, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -30,6 +30,9 @@ import {
 } from "@/lib/my-bookings";
 import { formatToman } from "@/lib/panorama";
 
+const BOOKINGS_PAGE_SIZE = 50;
+const REVIEWS_PAGE_SIZE = 20;
+
 export default function MyBookingsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -38,15 +41,23 @@ export default function MyBookingsPage() {
   const [wallet, setWallet] = useState<WalletMeOut | null>(null);
   const [loadedUserId, setLoadedUserId] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [hasMoreBookings, setHasMoreBookings] = useState(false);
+  const [loadingMoreBookings, setLoadingMoreBookings] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const [selectedBookingId, setSelectedBookingId] = useState<number | null>(null);
   const [receipt, setReceipt] = useState<SplitReceiptOut | null>(null);
   const [loadingReceipt, setLoadingReceipt] = useState(false);
   const [receiptError, setReceiptError] = useState<string | null>(null);
+  const receiptRequestIdRef = useRef(0);
 
   const [cancelState, dispatchCancel] = useReducer(cancelReducer, INITIAL_CANCEL_STATE);
 
   const [reviewsByBookingId, setReviewsByBookingId] = useState<Record<number, ReviewMineOut>>({});
+  const [reviewsOffset, setReviewsOffset] = useState(0);
+  const [hasMoreReviews, setHasMoreReviews] = useState(false);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
   const [reviewFormBookingId, setReviewFormBookingId] = useState<number | null>(null);
   const [reviewRating, setReviewRating] = useState<number>(0);
   const [reviewText, setReviewText] = useState<string>("");
@@ -66,11 +77,24 @@ export default function MyBookingsPage() {
 
     let active = true;
     const targetUserId = user.id;
+    receiptRequestIdRef.current += 1;
+    setBookings([]);
+    setWallet(null);
+    setReviewsByBookingId({});
+    setHasMoreBookings(false);
+    setReviewsOffset(0);
+    setHasMoreReviews(false);
+    setSelectedBookingId(null);
+    setReceipt(null);
+    setReceiptError(null);
+    setRefreshError(null);
+    setLoadError(null);
+    setLoadedUserId(null);
 
     Promise.all([
-      listMyBookings(),
+      listMyBookings({ limit: BOOKINGS_PAGE_SIZE, offset: 0 }),
       getMyWallet(),
-      listMyReviews().catch(() => [] as ReviewMineOut[]),
+      listMyReviews({ limit: REVIEWS_PAGE_SIZE, offset: 0 }).catch(() => [] as ReviewMineOut[]),
     ])
       .then(([bookingList, walletData, myReviews]) => {
         if (!active) return;
@@ -79,8 +103,11 @@ export default function MyBookingsPage() {
           reviewMap[r.booking_id] = r;
         }
         setBookings(bookingList);
+        setHasMoreBookings(bookingList.length >= BOOKINGS_PAGE_SIZE);
         setWallet(walletData);
         setReviewsByBookingId(reviewMap);
+        setReviewsOffset(myReviews.length);
+        setHasMoreReviews(myReviews.length >= REVIEWS_PAGE_SIZE);
         setLoadError(null);
         setLoadedUserId(targetUserId);
       })
@@ -90,26 +117,37 @@ export default function MyBookingsPage() {
           router.replace(`/login?next=${encodeURIComponent("/my-bookings")}`);
           return;
         }
+        setBookings([]);
+        setWallet(null);
+        setReviewsByBookingId({});
+        setHasMoreBookings(false);
+        setReviewsOffset(0);
+        setHasMoreReviews(false);
         setLoadError(mapMyBookingsErrorToPersian(err));
       });
 
     return () => {
       active = false;
     };
-  }, [authLoading, user, isCustomer, router]);
+  }, [authLoading, user, isCustomer, router, reloadNonce]);
 
   async function handleOpenReceipt(bookingId: number) {
+    const requestId = ++receiptRequestIdRef.current;
     setSelectedBookingId(bookingId);
     setReceipt(null);
     setReceiptError(null);
     setLoadingReceipt(true);
     try {
       const data = await getBookingReceipt(bookingId);
+      if (receiptRequestIdRef.current !== requestId) return;
       setReceipt(data);
     } catch (err) {
+      if (receiptRequestIdRef.current !== requestId) return;
       setReceiptError(mapMyBookingsErrorToPersian(err));
     } finally {
-      setLoadingReceipt(false);
+      if (receiptRequestIdRef.current === requestId) {
+        setLoadingReceipt(false);
+      }
     }
   }
 
@@ -183,19 +221,74 @@ export default function MyBookingsPage() {
     }
   }
 
+  async function refreshBookingsAndWallet() {
+    setRefreshError(null);
+    try {
+      const [nextBookings, nextWallet] = await Promise.all([
+        listMyBookings({ limit: BOOKINGS_PAGE_SIZE, offset: 0 }),
+        getMyWallet(),
+      ]);
+      setBookings(nextBookings);
+      setHasMoreBookings(nextBookings.length >= BOOKINGS_PAGE_SIZE);
+      setWallet(nextWallet);
+    } catch (err) {
+      setRefreshError(mapMyBookingsErrorToPersian(err));
+    }
+  }
+
+  async function handleLoadMoreBookings() {
+    if (loadingMoreBookings || !hasMoreBookings) return;
+    setLoadingMoreBookings(true);
+    try {
+      const nextPage = await listMyBookings({
+        limit: BOOKINGS_PAGE_SIZE,
+        offset: bookings.length,
+      });
+      setBookings((prev) => [...prev, ...nextPage]);
+      setHasMoreBookings(nextPage.length >= BOOKINGS_PAGE_SIZE);
+    } catch (err) {
+      setRefreshError(mapMyBookingsErrorToPersian(err));
+    } finally {
+      setLoadingMoreBookings(false);
+    }
+  }
+
+  async function handleLoadMoreReviews() {
+    if (loadingMoreReviews || !hasMoreReviews) return;
+    setLoadingMoreReviews(true);
+    try {
+      const nextReviews = await listMyReviews({
+        limit: REVIEWS_PAGE_SIZE,
+        offset: reviewsOffset,
+      });
+      setReviewsByBookingId((prev) => {
+        const merged = { ...prev };
+        for (const r of nextReviews) {
+          merged[r.booking_id] = r;
+        }
+        return merged;
+      });
+      setReviewsOffset((prev) => prev + nextReviews.length);
+      setHasMoreReviews(nextReviews.length >= REVIEWS_PAGE_SIZE);
+    } catch (err) {
+      setRefreshError(mapMyBookingsErrorToPersian(err));
+    } finally {
+      setLoadingMoreReviews(false);
+    }
+  }
+
   async function handleConfirmCancel() {
     if (!cancelState.targetBooking) return;
     dispatchCancel({ type: "START_CANCEL" });
     try {
       const res = await cancelBooking(cancelState.targetBooking.booking_id);
       dispatchCancel({ type: "CANCEL_SUCCEEDED", result: res });
-
-      const [nextBookings, nextWallet] = await Promise.all([listMyBookings(), getMyWallet()]);
-      setBookings(nextBookings);
-      setWallet(nextWallet);
     } catch (err) {
       dispatchCancel({ type: "CANCEL_FAILED", error: err });
+      return;
     }
+
+    await refreshBookingsAndWallet();
   }
 
   if (authLoading || (!user && !authLoading)) {
@@ -242,13 +335,37 @@ export default function MyBookingsPage() {
       {loadError ? (
         <div
           role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-900"
+          className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-900 space-y-3"
         >
-          {loadError}
+          <p>{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setReloadNonce((prev) => prev + 1)}
+            className="min-h-[40px] rounded-lg bg-red-800 px-4 py-2 text-xs font-semibold text-white hover:bg-red-900"
+          >
+            تلاش مجدد
+          </button>
+        </div>
+      ) : null}
+
+      {refreshError ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900"
+        >
+          <span>به‌روزرسانی فهرست رزروها ناموفق بود: {refreshError}</span>
+          <button
+            type="button"
+            onClick={() => void refreshBookingsAndWallet()}
+            className="min-h-[36px] rounded-lg border border-amber-400 bg-white px-3 py-1.5 font-semibold text-amber-900 hover:bg-amber-100"
+          >
+            تلاش مجدد به‌روزرسانی
+          </button>
         </div>
       ) : null}
 
       {/* Wallet Section (display-only, non-withdrawable) */}
+      {!loadError ? (
       <div className="rounded-xl border border-stone-200 bg-white p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -293,6 +410,7 @@ export default function MyBookingsPage() {
           <p className="text-xs text-stone-500">هنوز تراکنشی در کیف پول شما ثبت نشده است.</p>
         ) : null}
       </div>
+      ) : null}
 
       {/* Cancel confirmation / result banner */}
       {cancelState.step !== "idle" && cancelState.targetBooking ? (
@@ -346,8 +464,9 @@ export default function MyBookingsPage() {
                     </button>
                     <button
                       type="button"
+                      disabled={cancelState.step === "cancelling"}
                       onClick={() => dispatchCancel({ type: "RESET" })}
-                      className="min-h-[44px] rounded-lg border border-stone-300 bg-white px-4 py-2 text-xs font-medium text-stone-700"
+                      className="min-h-[44px] rounded-lg border border-stone-300 bg-white px-4 py-2 text-xs font-medium text-stone-700 disabled:opacity-50"
                     >
                       انصراف
                     </button>
@@ -360,7 +479,7 @@ export default function MyBookingsPage() {
       ) : null}
 
       {/* Bookings List */}
-      {loading ? (
+      {loadError ? null : loading ? (
         <div className="space-y-3">
           <div className="h-28 animate-pulse rounded-xl bg-stone-200" />
           <div className="h-28 animate-pulse rounded-xl bg-stone-200" />
@@ -583,6 +702,35 @@ export default function MyBookingsPage() {
               ) : null}
             </div>
           ))}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600">
+            <div className="flex flex-wrap items-center gap-4">
+              <span>نمایش {bookings.length} رزرو</span>
+              <span>نمایش {Object.keys(reviewsByBookingId).length} نظر</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {hasMoreBookings ? (
+                <button
+                  type="button"
+                  disabled={loadingMoreBookings}
+                  onClick={() => void handleLoadMoreBookings()}
+                  className="min-h-[38px] rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-medium text-stone-800 hover:bg-stone-100 disabled:opacity-50"
+                >
+                  {loadingMoreBookings ? "در حال بارگذاری..." : "نمایش بیشتر رزروها"}
+                </button>
+              ) : null}
+              {hasMoreReviews ? (
+                <button
+                  type="button"
+                  disabled={loadingMoreReviews}
+                  onClick={() => void handleLoadMoreReviews()}
+                  className="min-h-[38px] rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-medium text-stone-800 hover:bg-stone-100 disabled:opacity-50"
+                >
+                  {loadingMoreReviews ? "در حال بارگذاری..." : "نمایش بیشتر نظرها"}
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       )}
     </section>

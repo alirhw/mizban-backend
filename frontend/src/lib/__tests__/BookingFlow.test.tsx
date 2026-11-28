@@ -268,7 +268,10 @@ describe("BookingFlow payment choice (T-034 frontend)", () => {
       idempotency_key: expect.any(String),
     });
     expect(screen.getByText("TRK-901")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "مشاهده رزروهای من" })).toHaveAttribute("href", "/bookings");
+    expect(screen.getByRole("link", { name: "مشاهده رزروهای من" })).toHaveAttribute(
+      "href",
+      "/my-bookings"
+    );
     expect(assignMock).not.toHaveBeenCalled();
   });
 

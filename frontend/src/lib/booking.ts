@@ -415,6 +415,32 @@ export function buildBookingReturnUrl(
   return `/venues/${encodeURIComponent(venueSlug)}?${search.toString()}`;
 }
 
+export const SLOT_DURATION_MINUTES = 90;
+
+export function computeSlotEndIso(slotStartIso: string): string {
+  const startMs = Date.parse(slotStartIso);
+  if (!Number.isFinite(startMs)) {
+    return slotStartIso;
+  }
+  return new Date(startMs + SLOT_DURATION_MINUTES * 60 * 1000).toISOString();
+}
+
+function isValidIsoCalendarDate(dateStr: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) {
+    return false;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return (
+    dt.getUTCFullYear() === year &&
+    dt.getUTCMonth() === month - 1 &&
+    dt.getUTCDate() === day
+  );
+}
+
 export function parseBookingResumeParams(
   searchParams: Pick<URLSearchParams, "get">,
   availablePinIds: number[],
@@ -430,13 +456,13 @@ export function parseBookingResumeParams(
 
   const slotDate = searchParams.get("date") ?? "";
   const slotStartIso = searchParams.get("slot") ?? "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(slotDate) || !slotStartIso) {
+  if (!isValidIsoCalendarDate(slotDate) || !slotStartIso || !Number.isFinite(Date.parse(slotStartIso))) {
     return null;
   }
 
   const rawStep = searchParams.get("step");
   const step: "slot" | "addons" | "review" =
-    rawStep === "addons" || rawStep === "review" ? rawStep : "review";
+    rawStep === "review" ? "review" : "addons";
 
   const rawAddons = searchParams.get("addons") ?? "";
   const addonSet = new Set(availableAddonIds);

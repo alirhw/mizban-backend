@@ -30,24 +30,34 @@ function BookingCallbackContent() {
 
   const parsedBookingId = rawBookingId ? Number(rawBookingId) : NaN;
   const hasValidBookingId = Number.isInteger(parsedBookingId) && parsedBookingId > 0;
-  const isConfirmed = bookingStatus === "CONFIRMED";
+  const hasExplicitFailure =
+    paymentStatus === "FAILED" ||
+    paymentStatus === "TIMEOUT" ||
+    bookingStatus === "PENDING_PAYMENT" ||
+    bookingStatus === "EXPIRED" ||
+    refundRequired === "true" ||
+    refundRequired === "1";
   const restartHref = venueSlug ? `/venues/${encodeURIComponent(venueSlug)}` : "/";
 
   const [receipt, setReceipt] = useState<SplitReceiptOut | null>(null);
-  const [loadingReceipt, setLoadingReceipt] = useState(isConfirmed && hasValidBookingId);
+  const [loadingReceipt, setLoadingReceipt] = useState(hasValidBookingId);
   const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [receiptFetchNonce, setReceiptFetchNonce] = useState(0);
 
   const [retryingPayment, setRetryingPayment] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [lockExpired, setLockExpired] = useState(false);
   const retryIdempotencyRef = useRef<{ bookingId: number; key: string } | null>(null);
+  const retryInFlightRef = useRef(false);
 
   useEffect(() => {
-    if (!isConfirmed || !hasValidBookingId) {
+    if (!hasValidBookingId) {
       return;
     }
 
     let active = true;
+    setLoadingReceipt(true);
+    setReceiptError(null);
 
     getBookingReceipt(parsedBookingId)
       .then((data) => {
@@ -57,7 +67,10 @@ function BookingCallbackContent() {
         }
       })
       .catch((err) => {
-        if (active) setReceiptError(mapBookingErrorToPersian(err));
+        if (active) {
+          setReceipt(null);
+          setReceiptError(mapBookingErrorToPersian(err));
+        }
       })
       .finally(() => {
         if (active) setLoadingReceipt(false);
@@ -66,10 +79,11 @@ function BookingCallbackContent() {
     return () => {
       active = false;
     };
-  }, [isConfirmed, hasValidBookingId, parsedBookingId]);
+  }, [hasValidBookingId, parsedBookingId, receiptFetchNonce]);
 
   async function handleRetryPayment() {
-    if (!hasValidBookingId) return;
+    if (!hasValidBookingId || retryInFlightRef.current) return;
+    retryInFlightRef.current = true;
     setRetryingPayment(true);
     setRetryError(null);
 
@@ -97,6 +111,7 @@ function BookingCallbackContent() {
       }
       setRetryError(mapBookingErrorToPersian(err));
       setRetryingPayment(false);
+      retryInFlightRef.current = false;
     }
   }
 
@@ -117,36 +132,31 @@ function BookingCallbackContent() {
     );
   }
 
-  if (isConfirmed) {
-    if (loadingReceipt) {
-      return (
-        <div className="mx-auto max-w-xl rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-600">
-          در حال دریافت رسید رزرو...
-        </div>
-      );
-    }
-
-    if (receiptError || !receipt) {
-      return (
-        <div className="mx-auto max-w-xl space-y-4 rounded-xl border border-red-200 bg-white p-6">
-          <h1 className="text-lg font-bold text-red-900">دریافت رسید رزرو ناموفق بود</h1>
-          <p className="text-sm text-red-800">
-            {receiptError ?? "دریافت جزئیات رسید با خطا مواجه شد."}
-          </p>
-          <Link
-            href={restartHref}
-            className="inline-block rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
-          >
-            بازگشت به صفحه مجموعه
-          </Link>
-        </div>
-      );
-    }
-
-    const isReceiptConfirmed = resolveCallbackReceiptConfirmed(receipt, receiptError);
-
+  if (loadingReceipt) {
     return (
-      <div className="mx-auto max-w-2xl space-y-5 rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
+      <div className="mx-auto max-w-xl rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-600">
+        در حال بررسی وضعیت پرداخت و دریافت رسید...
+      </div>
+    );
+  }
+
+  const isReceiptConfirmed = resolveCallbackReceiptConfirmed(receipt, receiptError);
+
+  if (receipt && (isReceiptConfirmed || !hasExplicitFailure)) {
+    return (
+      <div
+        className={`mx-auto max-w-2xl space-y-5 rounded-xl border bg-white p-6 shadow-sm ${
+          isReceiptConfirmed ? "border-emerald-200" : "border-amber-300"
+        }`}
+      >
+        {!isReceiptConfirmed ? (
+          <div
+            role="alert"
+            className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          >
+            پرداخت یا تایید نهایی این رزرو هنوز تکمیل نشده است (وضعیت فعلی: {receipt.status}).
+          </div>
+        ) : null}
         <div className="space-y-1 border-b border-stone-200 pb-4">
           {isReceiptConfirmed ? (
             <div className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
@@ -246,6 +256,38 @@ function BookingCallbackContent() {
             className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100"
           >
             صفحه اصلی
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if ((receiptError || !receipt) && !hasExplicitFailure) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4 rounded-xl border border-red-200 bg-white p-6">
+        <h1 className="text-lg font-bold text-red-900">دریافت رسید رزرو ناموفق بود</h1>
+        <p className="text-sm text-red-800">
+          {receiptError ?? "دریافت جزئیات رسید با خطا مواجه شد."}
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setReceiptFetchNonce((prev) => prev + 1)}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+          >
+            تلاش مجدد دریافت رسید
+          </button>
+          <Link
+            href="/my-bookings"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-100"
+          >
+            مشاهده رزروهای من
+          </Link>
+          <Link
+            href={restartHref}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-100"
+          >
+            بازگشت به صفحه مجموعه
           </Link>
         </div>
       </div>
