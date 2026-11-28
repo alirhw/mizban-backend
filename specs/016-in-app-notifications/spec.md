@@ -145,3 +145,13 @@ Scenario: 4. BR-16 isolation and auth enforcement (401 / 403 / 404) and transact
 
 ## 9. Open questions
 - None; all G1 project decisions (recipient matrix, 4 notification types, `SET_NULL` FKs, pagination `50`/`100`, read-time Persian copy without PII, no delete/purge in v1) are fixed for T-039.
+
+## 10. Frontend Owner Notification Bell & Dropdown (Follow-up (f))
+- **Location & Role Gating:** `frontend/src/components/NotificationsBell.tsx` mounted in `frontend/src/components/Header.tsx` only when `!loading && user?.role === "VENUE_OWNER"` (customers, admins, and logged-out users see no bell; no dedicated `/notifications` route; no background polling).
+- **API Client (`frontend/src/lib/api.ts`):** Hand-written `NotificationOut`, `UnreadCountOut`, `MarkAllReadOut`, `listNotifications({ limit?, offset? })`, `getUnreadCount()`, `markNotificationRead(notificationId)`, and `markAllNotificationsRead()`.
+- **Dropdown & Mark-Read Flows:**
+  - Fetches `getUnreadCount()` on mount and hides the badge when `0`.
+  - Opening the bell fetches `listNotifications({ limit: 20, offset: 0 })`, displaying server-rendered Persian `title` and `body` verbatim with `formatJalaliDate(created_at, { includeTime: true })`, unread/read distinction, empty state, and `"نمایش اعلان‌های بیشتر"` offset pagination.
+  - Clicking an unread row calls `markNotificationRead`, updates the row in place, and decrements the badge; `"علامت‌گذاری همه به‌عنوان خوانده‌شده"` calls `markAllNotificationsRead`, marks listed rows read in place, and clears the badge.
+  - `403 FORBIDDEN` renders a Persian error message without raw `error_code`.
+- **Tests:** `frontend/src/lib/__tests__/api.test.ts` and `frontend/src/lib/__tests__/NotificationsBell.test.tsx`.

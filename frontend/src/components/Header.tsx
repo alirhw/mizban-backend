@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { NotificationsBell } from "@/components/NotificationsBell";
 import { useAuth } from "@/lib/auth";
 
 export function Header() {
@@ -21,6 +22,7 @@ export function Header() {
               مدیریت نظرها
             </Link>
           ) : null}
+          {!loading && user?.role === "VENUE_OWNER" ? <NotificationsBell /> : null}
           {loading ? (
             <span className="text-stone-400">...</span>
           ) : user ? (

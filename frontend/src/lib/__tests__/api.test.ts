@@ -6,14 +6,18 @@ import {
   createVenueAddon,
   deleteVenueAddon,
   getMe,
+  getUnreadCount,
   hideReview,
   listAdminReviews,
   listMyReviews,
+  listNotifications,
   listPublicVenues,
   listTableReviews,
   listVenueAddons,
   listVenueReviews,
   logout,
+  markAllNotificationsRead,
+  markNotificationRead,
   otpRequest,
   otpVerify,
   payBookingWithWallet,
@@ -22,10 +26,13 @@ import {
   submitVenueForReview,
   updateVenueAddon,
   type DesignAddonOut,
+  type MarkAllReadOut,
+  type NotificationOut,
   type PaymentTransactionOut,
   type ReviewAdminOut,
   type ReviewListOut,
   type ReviewMineOut,
+  type UnreadCountOut,
   type VenueOwnerOut,
 } from "../api";
 
@@ -715,5 +722,121 @@ describe("api client (TD-006 session + CSRF contract)", () => {
         errorCode: "FORBIDDEN",
       });
     }
+  });
+
+  it("listNotifications and getUnreadCount call GET with params and return snapshot shapes", async () => {
+    const notifications: NotificationOut[] = [
+      {
+        id: 1,
+        type: "BOOKING_CONFIRMED",
+        booking_id: 42,
+        venue_id: 5,
+        title: "رزرو جدید تایید شد",
+        body: "یک رزرو برای میز ۳ ثبت شد.",
+        is_read: false,
+        created_at: "2026-11-28T08:00:00Z",
+      },
+    ];
+    const unread: UnreadCountOut = { unread_count: 3 };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(notifications), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(unread), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+    expect(await listNotifications({ limit: 20, offset: 0 })).toEqual(notifications);
+    expect(String(fetchMock.mock.calls[0]![0])).toContain(
+      "/api/v1/notifications/?limit=20&offset=0"
+    );
+    expect(fetchMock.mock.calls[0]![1]?.method).toBe("GET");
+
+    expect(await getUnreadCount()).toEqual(unread);
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("/api/v1/notifications/unread-count");
+    expect(fetchMock.mock.calls[1]![1]?.method).toBe("GET");
+  });
+
+  it("markNotificationRead and markAllNotificationsRead call POST and return NotificationOut / MarkAllReadOut", async () => {
+    const readOut: NotificationOut = {
+      id: 1,
+      type: "BOOKING_CONFIRMED",
+      booking_id: 42,
+      venue_id: 5,
+      title: "رزرو جدید تایید شد",
+      body: "یک رزرو برای میز ۳ ثبت شد.",
+      is_read: true,
+      created_at: "2026-11-28T08:00:00Z",
+    };
+    const markAllOut: MarkAllReadOut = { marked: 3 };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-notif" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(readOut), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(markAllOut), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+    expect(await markNotificationRead(1)).toEqual(readOut);
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("/api/v1/notifications/1/read");
+    expect(fetchMock.mock.calls[1]![1]?.method).toBe("POST");
+
+    expect(await markAllNotificationsRead()).toEqual(markAllOut);
+    expect(String(fetchMock.mock.calls[2]![0])).toContain("/api/v1/notifications/read-all");
+    expect(fetchMock.mock.calls[2]![1]?.method).toBe("POST");
+  });
+
+  it("listNotifications and markNotificationRead surface ApiError(403, FORBIDDEN)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error_code: "FORBIDDEN", message: "Forbidden", details: {} }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    await expect(listNotifications()).rejects.toMatchObject({
+      name: "ApiError",
+      status: 403,
+      errorCode: "FORBIDDEN",
+    });
+
+    resetCsrfTokenCache();
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-notif-403" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error_code: "FORBIDDEN", message: "Forbidden", details: {} }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        )
+      );
+    await expect(markNotificationRead(1)).rejects.toMatchObject({
+      name: "ApiError",
+      status: 403,
+      errorCode: "FORBIDDEN",
+    });
   });
 });

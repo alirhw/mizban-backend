@@ -815,3 +815,54 @@ export async function showReview(reviewId: number): Promise<ReviewAdminOut> {
     method: "POST",
   });
 }
+
+export interface NotificationOut {
+  id: number;
+  type: string;
+  booking_id: number | null;
+  venue_id: number | null;
+  title: string;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface UnreadCountOut {
+  unread_count: number;
+}
+
+export interface MarkAllReadOut {
+  marked: number;
+}
+
+export async function listNotifications(
+  params: { limit?: number; offset?: number } = {}
+): Promise<NotificationOut[]> {
+  const search = new URLSearchParams();
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  return apiFetch<NotificationOut[]>(`/notifications/${qs ? `?${qs}` : ""}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function getUnreadCount(): Promise<UnreadCountOut> {
+  return apiFetch<UnreadCountOut>("/notifications/unread-count", {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function markNotificationRead(notificationId: number): Promise<NotificationOut> {
+  return apiFetch<NotificationOut>(`/notifications/${notificationId}/read`, {
+    method: "POST",
+  });
+}
+
+export async function markAllNotificationsRead(): Promise<MarkAllReadOut> {
+  return apiFetch<MarkAllReadOut>("/notifications/read-all", {
+    method: "POST",
+  });
+}
