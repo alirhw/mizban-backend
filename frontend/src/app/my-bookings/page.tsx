@@ -7,14 +7,18 @@ import React, { useEffect, useReducer, useState } from "react";
 import {
   ApiError,
   cancelBooking,
+  createReview,
   getBookingReceipt,
   getMyWallet,
   listMyBookings,
+  listMyReviews,
   type CustomerBookingOut,
+  type ReviewMineOut,
   type SplitReceiptOut,
   type WalletMeOut,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatJalaliDate } from "@/lib/jalali";
 import {
   cancelReducer,
   getCancelConfirmationSummary,
@@ -42,6 +46,13 @@ export default function MyBookingsPage() {
 
   const [cancelState, dispatchCancel] = useReducer(cancelReducer, INITIAL_CANCEL_STATE);
 
+  const [reviewsByBookingId, setReviewsByBookingId] = useState<Record<number, ReviewMineOut>>({});
+  const [reviewFormBookingId, setReviewFormBookingId] = useState<number | null>(null);
+  const [reviewRating, setReviewRating] = useState<number>(0);
+  const [reviewText, setReviewText] = useState<string>("");
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [submittingReview, setSubmittingReview] = useState(false);
+
   const isCustomer = user?.role === "CUSTOMER";
   const loading = Boolean(user && isCustomer && loadedUserId !== user.id && !loadError);
 
@@ -56,11 +67,20 @@ export default function MyBookingsPage() {
     let active = true;
     const targetUserId = user.id;
 
-    Promise.all([listMyBookings(), getMyWallet()])
-      .then(([bookingList, walletData]) => {
+    Promise.all([
+      listMyBookings(),
+      getMyWallet(),
+      listMyReviews().catch(() => [] as ReviewMineOut[]),
+    ])
+      .then(([bookingList, walletData, myReviews]) => {
         if (!active) return;
+        const reviewMap: Record<number, ReviewMineOut> = {};
+        for (const r of myReviews) {
+          reviewMap[r.booking_id] = r;
+        }
         setBookings(bookingList);
         setWallet(walletData);
+        setReviewsByBookingId(reviewMap);
         setLoadError(null);
         setLoadedUserId(targetUserId);
       })
@@ -90,6 +110,76 @@ export default function MyBookingsPage() {
       setReceiptError(mapMyBookingsErrorToPersian(err));
     } finally {
       setLoadingReceipt(false);
+    }
+  }
+
+  function openReviewForm(bookingId: number) {
+    setReviewFormBookingId(bookingId);
+    setReviewRating(0);
+    setReviewText("");
+    setReviewError(null);
+  }
+
+  function mapReviewSubmitError(err: unknown): string {
+    if (err instanceof ApiError) {
+      if (err.errorCode === "REVIEW_NOT_ALLOWED") {
+        return "شما مجاز به ثبت نظر برای این رزرو نیستید.";
+      }
+      if (err.errorCode === "REVIEW_NOT_ELIGIBLE") {
+        return "امکان ثبت نظر فقط پس از تکمیل و پایان زمان رزرو وجود دارد.";
+      }
+    }
+    return mapMyBookingsErrorToPersian(err);
+  }
+
+  async function handleSubmitReview(e: React.FormEvent, bookingId: number) {
+    e.preventDefault();
+    setReviewError(null);
+
+    if (reviewRating < 1 || reviewRating > 5) {
+      setReviewError("لطفاً امتیاز از ۱ تا ۵ ستاره را انتخاب کنید.");
+      return;
+    }
+    const trimmed = reviewText.trim();
+    if (!trimmed) {
+      setReviewError("لطفاً متن نظر خود را بنویسید.");
+      return;
+    }
+    if (trimmed.length > 1000) {
+      setReviewError("متن نظر نباید بیش از ۱۰۰۰ کاراکتر باشد.");
+      return;
+    }
+
+    setSubmittingReview(true);
+    try {
+      const created = await createReview({
+        booking_id: bookingId,
+        rating: reviewRating,
+        text: trimmed,
+      });
+      setReviewsByBookingId((prev) => ({ ...prev, [bookingId]: created }));
+      setReviewFormBookingId(null);
+      setReviewRating(0);
+      setReviewText("");
+    } catch (err) {
+      if (err instanceof ApiError && err.errorCode === "REVIEW_ALREADY_EXISTS") {
+        try {
+          const myReviews = await listMyReviews();
+          const reviewMap: Record<number, ReviewMineOut> = {};
+          for (const r of myReviews) {
+            reviewMap[r.booking_id] = r;
+          }
+          setReviewsByBookingId((prev) => ({ ...prev, ...reviewMap }));
+          setReviewFormBookingId(null);
+          return;
+        } catch (fetchErr) {
+          setReviewError(mapMyBookingsErrorToPersian(fetchErr));
+          return;
+        }
+      }
+      setReviewError(mapReviewSubmitError(err));
+    } finally {
+      setSubmittingReview(false);
     }
   }
 
@@ -318,6 +408,15 @@ export default function MyBookingsPage() {
                       لغو رزرو
                     </button>
                   ) : null}
+                  {b.status === "COMPLETED" && !reviewsByBookingId[b.booking_id] ? (
+                    <button
+                      type="button"
+                      onClick={() => openReviewForm(b.booking_id)}
+                      className="min-h-[40px] rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-800"
+                    >
+                      ثبت نظر
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -333,6 +432,106 @@ export default function MyBookingsPage() {
                   </strong>
                 </div>
               </div>
+
+              {reviewsByBookingId[b.booking_id] ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs space-y-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold text-emerald-950">نظر ثبت‌شده شما</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-amber-700">
+                        ★ {reviewsByBookingId[b.booking_id]!.rating} از ۵
+                      </span>
+                      <span className="text-stone-600">
+                        {formatJalaliDate(reviewsByBookingId[b.booking_id]!.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-stone-800">{reviewsByBookingId[b.booking_id]!.text}</p>
+                </div>
+              ) : null}
+
+              {reviewFormBookingId === b.booking_id && !reviewsByBookingId[b.booking_id] ? (
+                <form
+                  onSubmit={(e) => void handleSubmitReview(e, b.booking_id)}
+                  className="rounded-lg border border-stone-200 bg-stone-50 p-4 space-y-3 text-xs"
+                >
+                  <div className="space-y-1.5">
+                    <div className="font-semibold text-stone-800">امتیاز شما (۱ تا ۵ ستاره):</div>
+                    <div
+                      role="radiogroup"
+                      aria-label="امتیاز از ۱ تا ۵ ستاره"
+                      className="flex flex-wrap gap-2"
+                    >
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          role="radio"
+                          aria-checked={reviewRating === star}
+                          aria-label={`${star} ستاره`}
+                          onClick={() => setReviewRating(star)}
+                          className={`rounded-lg border px-3 py-1.5 font-medium ${
+                            reviewRating === star
+                              ? "border-amber-500 bg-amber-50 text-amber-900"
+                              : "border-stone-300 bg-white text-stone-700"
+                          }`}
+                        >
+                          ★ {star}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label htmlFor={`review-text-${b.booking_id}`} className="font-semibold text-stone-800">
+                        متن نظر
+                      </label>
+                      <span className="text-[11px] text-stone-500">
+                        {reviewText.trim().length} / ۱۰۰۰
+                      </span>
+                    </div>
+                    <textarea
+                      id={`review-text-${b.booking_id}`}
+                      aria-label="متن نظر"
+                      rows={3}
+                      value={reviewText}
+                      onChange={(e) => setReviewText(e.target.value)}
+                      placeholder="تجربه خود از این میز و کافه را بنویسید..."
+                      className="w-full rounded-lg border border-stone-300 bg-white p-2.5 text-sm"
+                    />
+                  </div>
+
+                  {reviewError ? (
+                    <div
+                      role="alert"
+                      className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-800"
+                    >
+                      {reviewError}
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="submit"
+                      disabled={submittingReview}
+                      className="min-h-[38px] rounded-lg bg-stone-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-stone-800 disabled:opacity-50"
+                    >
+                      {submittingReview ? "در حال ثبت..." : "ارسال نظر"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewFormBookingId(null);
+                        setReviewError(null);
+                      }}
+                      className="min-h-[38px] rounded-lg border border-stone-300 bg-white px-4 py-1.5 text-xs text-stone-700"
+                    >
+                      انصراف
+                    </button>
+                  </div>
+                </form>
+              ) : null}
 
               {selectedBookingId === b.booking_id ? (
                 <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs space-y-3">

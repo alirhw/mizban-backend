@@ -2,11 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  createReview,
   createVenueAddon,
   deleteVenueAddon,
   getMe,
+  listMyReviews,
   listPublicVenues,
+  listTableReviews,
   listVenueAddons,
+  listVenueReviews,
   logout,
   otpRequest,
   otpVerify,
@@ -16,6 +20,8 @@ import {
   updateVenueAddon,
   type DesignAddonOut,
   type PaymentTransactionOut,
+  type ReviewListOut,
+  type ReviewMineOut,
   type VenueOwnerOut,
 } from "../api";
 
@@ -452,5 +458,142 @@ describe("api client (TD-006 session + CSRF contract)", () => {
       errorCode: "VENUE_NOT_SUBMITTABLE",
       message: "Venue cannot be submitted in its current state.",
     });
+  });
+
+  it("createReview calls POST /api/v1/reviews/ with payload and returns ReviewMineOut", async () => {
+    const mineOut: ReviewMineOut = {
+      id: 31,
+      booking_id: 100,
+      rating: 5,
+      text: "فضای عالی و آرام",
+      reviewer_name: "علی",
+      table_number: "3",
+      created_at: "2026-11-28T08:00:00Z",
+      is_visible: true,
+    };
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "tok-rev-create" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(mineOut), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+    const res = await createReview({ booking_id: 100, rating: 5, text: "فضای عالی و آرام" });
+    expect(res).toEqual(mineOut);
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(String(url)).toContain("/api/v1/reviews/");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(
+      JSON.stringify({ booking_id: 100, rating: 5, text: "فضای عالی و آرام" })
+    );
+  });
+
+  it("createReview surfaces 403 REVIEW_NOT_ALLOWED, 409 REVIEW_NOT_ELIGIBLE, and 409 REVIEW_ALREADY_EXISTS", async () => {
+    const cases: Array<[number, string]> = [
+      [403, "REVIEW_NOT_ALLOWED"],
+      [409, "REVIEW_NOT_ELIGIBLE"],
+      [409, "REVIEW_ALREADY_EXISTS"],
+    ];
+
+    for (const [status, errorCode] of cases) {
+      resetCsrfTokenCache();
+      fetchMock
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ csrf_token: "tok-rev-err" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ error_code: errorCode, message: "error", details: {} }),
+            { status, headers: { "Content-Type": "application/json" } }
+          )
+        );
+
+      await expect(
+        createReview({ booking_id: 100, rating: 4, text: "خوب" })
+      ).rejects.toMatchObject({
+        name: "ApiError",
+        status,
+        errorCode,
+      });
+    }
+  });
+
+  it("listVenueReviews and listTableReviews call GET with limit/offset and return ReviewListOut", async () => {
+    const listOut: ReviewListOut = {
+      average_rating: 4.5,
+      review_count: 2,
+      reviews: [
+        {
+          id: 1,
+          rating: 5,
+          text: "عالی",
+          reviewer_name: "سارا",
+          table_number: "2",
+          created_at: "2026-11-28T08:00:00Z",
+        },
+      ],
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(listOut), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(listOut), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+
+    const vRes = await listVenueReviews(5, { limit: 20, offset: 0 });
+    expect(vRes).toEqual(listOut);
+    expect(String(fetchMock.mock.calls[0]![0])).toContain(
+      "/api/v1/reviews/venues/5/?limit=20&offset=0"
+    );
+
+    const tRes = await listTableReviews(11, { limit: 10, offset: 5 });
+    expect(tRes).toEqual(listOut);
+    expect(String(fetchMock.mock.calls[1]![0])).toContain(
+      "/api/v1/reviews/tables/11/?limit=10&offset=5"
+    );
+  });
+
+  it("listMyReviews calls GET /api/v1/reviews/my/ and returns ReviewMineOut[]", async () => {
+    const myReviews: ReviewMineOut[] = [
+      {
+        id: 31,
+        booking_id: 100,
+        rating: 5,
+        text: "عالی",
+        reviewer_name: "علی",
+        table_number: "3",
+        created_at: "2026-11-28T08:00:00Z",
+        is_visible: false,
+      },
+    ];
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(myReviews), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const res = await listMyReviews();
+    expect(res).toEqual(myReviews);
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/api/v1/reviews/my/");
+    expect(fetchMock.mock.calls[0]![1]?.method).toBe("GET");
   });
 });

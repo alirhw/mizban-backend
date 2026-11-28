@@ -153,3 +153,15 @@ Scenario: 7. Customer /my/ endpoint includes hidden reviews with is_visible flag
 
 ## 9. Open questions
 - **First-name profile editing:** `accounts.User` currently stores `phone` and `role` without a `first_name` column; the `"Customer"` fallback handles this cleanly until profile fields are added. *Closed for T-037.*
+
+## 10. Frontend Review Form & Public Displays (Follow-up (d))
+- **API Client (`frontend/src/lib/api.ts`):** Hand-written `ReviewCreateIn`, `ReviewPublicOut`, `ReviewMineOut`, `ReviewListOut`, plus `createReview`, `listVenueReviews`, `listTableReviews`, and `listMyReviews`.
+- **My Bookings Review Form (`frontend/src/app/my-bookings/page.tsx`):**
+  - Displays `"ثبت نظر"` only on `COMPLETED` bookings without an existing review.
+  - Inline accessible 1–5 star `radiogroup` + required text (1..1000 chars with counter); validates client-side before sending.
+  - On `201`: displays the created `ReviewMineOut` on the booking row.
+  - On `409 REVIEW_ALREADY_EXISTS`: calls `listMyReviews()` and displays the existing review on that row instead of a bare error.
+  - On `403 REVIEW_NOT_ALLOWED` / `409 REVIEW_NOT_ELIGIBLE`: maps to Persian messages without exposing raw `error_code`.
+- **Venue Public Reviews (`frontend/src/app/venues/[slug]/page.tsx`):** Async server component fetches `listVenueReviews(venue.id, { limit, offset: 0 })`, displaying 1-decimal `average_rating` (or `"هنوز نظری ثبت نشده است."` when 0), `review_count`, visible reviews (`reviewer_name`, rating, `table_number`, `text`, `formatJalaliDate`), and `"نمایش نظرات بیشتر"` pagination via `reviews_limit`.
+- **Table Pin Public Reviews (`frontend/src/components/VenuePanoramaExplorer.tsx`):** Fetches `listTableReviews(selectedPin.id)` when a pin is selected and displays that table's average rating and visible reviews inside the selected pin detail card.
+- **Tests:** `frontend/src/lib/__tests__/api.test.ts` and `frontend/src/lib/__tests__/ReviewsFrontend.test.tsx` (jsdom component tests for venue section, table pin reviews, and my-bookings review form/validation/409 handling).

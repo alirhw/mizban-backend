@@ -8,9 +8,12 @@ import {
   getPublicSpacePanorama,
   getPublicVenueBySlug,
   listPublicVenueSpaces,
+  listVenueReviews,
   type PublicPanoramaOut,
+  type ReviewListOut,
   type SpaceOut,
 } from "@/lib/api";
+import { formatJalaliDate } from "@/lib/jalali";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +22,19 @@ const VENUE_TYPE_LABELS: Record<string, string> = {
   RESTAURANT: "رستوران",
 };
 
-export default async function VenueDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function VenueDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ reviews_limit?: string }>;
+}) {
   const { slug } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const parsedLimit = Number(resolvedSearchParams.reviews_limit ?? "20");
+  const reviewsLimit = Number.isInteger(parsedLimit)
+    ? Math.min(100, Math.max(20, parsedLimit))
+    : 20;
 
   let venue;
   try {
@@ -50,6 +64,19 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
       if (!(err instanceof ApiError && err.status === 404)) {
         throw err;
       }
+    }
+  }
+
+  let venueReviews: ReviewListOut = {
+    average_rating: null,
+    review_count: 0,
+    reviews: [],
+  };
+  try {
+    venueReviews = await listVenueReviews(venue.id, { limit: reviewsLimit, offset: 0 });
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 404)) {
+      throw err;
     }
   }
 
@@ -96,6 +123,59 @@ export default async function VenueDetailPage({ params }: { params: Promise<{ sl
           initialPanorama={initialPanorama}
         />
       </Suspense>
+
+      <div className="rounded-xl border border-stone-200 bg-white p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-stone-900">نظرات مشتریان</h2>
+          {venueReviews.average_rating !== null ? (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-bold text-amber-600">
+                ★ {venueReviews.average_rating.toFixed(1)}
+              </span>
+              <span className="text-stone-600">({venueReviews.review_count} نظر)</span>
+            </div>
+          ) : (
+            <span className="text-xs text-stone-500">({venueReviews.review_count} نظر)</span>
+          )}
+        </div>
+
+        {venueReviews.review_count === 0 ? (
+          <p className="text-sm text-stone-500">هنوز نظری ثبت نشده است.</p>
+        ) : (
+          <div className="space-y-3">
+            {venueReviews.reviews.map((review) => (
+              <div
+                key={review.id}
+                className="rounded-lg border border-stone-200 bg-stone-50 p-4 space-y-1.5 text-sm"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-stone-900">{review.reviewer_name}</span>
+                    <span className="text-xs text-stone-500">میز {review.table_number}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="font-bold text-amber-600">★ {review.rating} از ۵</span>
+                    <span className="text-stone-500">{formatJalaliDate(review.created_at)}</span>
+                  </div>
+                </div>
+                <p className="text-stone-700">{review.text}</p>
+              </div>
+            ))}
+
+            {venueReviews.reviews.length < venueReviews.review_count && reviewsLimit < 100 ? (
+              <div>
+                <Link
+                  href={`/venues/${encodeURIComponent(venue.slug)}?reviews_limit=${Math.min(100, reviewsLimit + 20)}`}
+                  scroll={false}
+                  className="inline-block rounded-lg border border-stone-300 px-4 py-2 text-xs font-medium text-stone-800 hover:bg-stone-100"
+                >
+                  نمایش نظرات بیشتر
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

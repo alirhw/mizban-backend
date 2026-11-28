@@ -2,18 +2,21 @@
 
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import { BookingFlow } from "@/components/BookingFlow";
 import {
   ApiError,
   getPublicSpacePanorama,
+  listTableReviews,
   type DesignAddonOut,
   type PublicPanoramaOut,
   type PublicTablePinOut,
+  type ReviewListOut,
   type SpaceOut,
 } from "@/lib/api";
 import { parseBookingResumeParams } from "@/lib/booking";
+import { formatJalaliDate } from "@/lib/jalali";
 import { formatToman, smokingStatusLabel } from "@/lib/panorama";
 
 const PanoramaViewer = dynamic(() => import("@/components/PanoramaViewer"), {
@@ -69,6 +72,40 @@ export function VenuePanoramaExplorer({
   const [selectedPin, setSelectedPin] = useState<PublicTablePinOut | null>(resumedPin);
   const [bookingPin, setBookingPin] = useState<PublicTablePinOut | null>(resumedPin);
   const [bookingSelectionNonce, setBookingSelectionNonce] = useState(0);
+  const [tableReviewsState, setTableReviewsState] = useState<{
+    pinId: number | null;
+    data: ReviewListOut | null;
+    loading: boolean;
+  }>({
+    pinId: null,
+    data: null,
+    loading: false,
+  });
+
+  useEffect(() => {
+    if (!selectedPin) return;
+    const pinId = selectedPin.id;
+    let active = true;
+    setTableReviewsState({ pinId, data: null, loading: true });
+
+    listTableReviews(pinId, { limit: 20, offset: 0 })
+      .then((data) => {
+        if (!active) return;
+        setTableReviewsState({ pinId, data, loading: false });
+      })
+      .catch(() => {
+        if (!active) return;
+        setTableReviewsState({
+          pinId,
+          data: { average_rating: null, review_count: 0, reviews: [] },
+          loading: false,
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedPin]);
 
   async function handleSelectSpace(spaceId: number) {
     if (spaceId === selectedSpaceId) return;
@@ -199,6 +236,47 @@ export function VenuePanoramaExplorer({
                     بستن
                   </button>
                 </div>
+              </div>
+
+              <div className="mt-4 border-t border-stone-200 pt-3 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-stone-900">نظرات این میز</h3>
+                  {tableReviewsState.pinId === selectedPin.id &&
+                  tableReviewsState.data?.average_rating !== null &&
+                  tableReviewsState.data?.average_rating !== undefined ? (
+                    <span className="text-xs font-bold text-amber-600">
+                      ★ {tableReviewsState.data.average_rating.toFixed(1)} (
+                      {tableReviewsState.data.review_count} نظر)
+                    </span>
+                  ) : null}
+                </div>
+                {tableReviewsState.loading && tableReviewsState.pinId === selectedPin.id ? (
+                  <p className="text-xs text-stone-500">در حال بارگذاری نظرات...</p>
+                ) : !tableReviewsState.data || tableReviewsState.data.review_count === 0 ? (
+                  <p className="text-xs text-stone-500">هنوز نظری برای این میز ثبت نشده است.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {tableReviewsState.data.reviews.map((review) => (
+                      <div
+                        key={review.id}
+                        className="rounded-lg border border-stone-200 bg-stone-50 p-3 text-xs space-y-1"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-stone-900">
+                            {review.reviewer_name}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-amber-600">★ {review.rating} از ۵</span>
+                            <span className="text-stone-500">
+                              {formatJalaliDate(review.created_at)}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-stone-700">{review.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ) : null}

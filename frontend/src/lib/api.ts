@@ -701,3 +701,77 @@ export async function submitVenueForReview(venueId: number): Promise<VenueOwnerO
     method: "POST",
   });
 }
+
+export interface ReviewCreateIn {
+  booking_id: number;
+  rating: number;
+  text: string;
+}
+
+export interface ReviewPublicOut {
+  id: number;
+  rating: number;
+  text: string;
+  reviewer_name: string;
+  table_number: string;
+  created_at: string;
+}
+
+export interface ReviewMineOut extends ReviewPublicOut {
+  booking_id: number;
+  is_visible: boolean;
+}
+
+export interface ReviewListOut {
+  average_rating: number | null;
+  review_count: number;
+  reviews: ReviewPublicOut[];
+}
+
+export async function createReview(payload: ReviewCreateIn): Promise<ReviewMineOut> {
+  return apiFetch<ReviewMineOut>("/reviews/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listVenueReviews(
+  venueId: number,
+  params: { limit?: number; offset?: number } = {}
+): Promise<ReviewListOut> {
+  const search = new URLSearchParams();
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  return apiFetch<ReviewListOut>(`/reviews/venues/${venueId}/${qs ? `?${qs}` : ""}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function listTableReviews(
+  tablePinId: number,
+  params: { limit?: number; offset?: number } = {}
+): Promise<ReviewListOut> {
+  const search = new URLSearchParams();
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  return apiFetch<ReviewListOut>(`/reviews/tables/${tablePinId}/${qs ? `?${qs}` : ""}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
+
+export async function listMyReviews(
+  params: { limit?: number; offset?: number } = {}
+): Promise<ReviewMineOut[]> {
+  const search = new URLSearchParams();
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  if (params.offset !== undefined) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  return apiFetch<ReviewMineOut[]>(`/reviews/my/${qs ? `?${qs}` : ""}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+}
