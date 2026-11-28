@@ -31,6 +31,7 @@ import {
   mapBookingErrorToPersian,
   resolveWalletOptionAvailability,
   type BookingResumeParams,
+  type BookingStep,
   type PaymentMethodChoice,
 } from "@/lib/booking";
 import {
@@ -48,6 +49,7 @@ export interface BookingFlowProps {
   designAddons: DesignAddonOut[];
   selectedPin: PublicTablePinOut;
   onChangeTable?: () => void;
+  onStepChange?: (step: BookingStep) => void;
   initialResume?: BookingResumeParams | null;
 }
 
@@ -78,6 +80,7 @@ export function BookingFlow({
   designAddons,
   selectedPin,
   onChangeTable,
+  onStepChange,
   initialResume = null,
 }: BookingFlowProps) {
   const router = useRouter();
@@ -142,6 +145,10 @@ export function BookingFlow({
   const userSelectedPaymentMethodRef = useRef(false);
   const stepRef = useRef(state.step);
   stepRef.current = state.step;
+
+  useEffect(() => {
+    onStepChange?.(state.step);
+  }, [onStepChange, state.step]);
 
   const [walletState, setWalletState] = useState<{
     bookingId: number | null;

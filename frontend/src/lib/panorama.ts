@@ -29,6 +29,10 @@ export function mapPinsToHotspots(pins: PublicTablePinOut[]): PanoramaHotspot[] 
     }));
 }
 
+export function getPinsWithoutCoordinates(pins: PublicTablePinOut[]): PublicTablePinOut[] {
+  return pins.filter((pin) => typeof pin.pitch !== "number" || typeof pin.yaw !== "number");
+}
+
 export function formatToman(amount: number): string {
   return `${new Intl.NumberFormat("fa-IR").format(amount)} تومان`;
 }

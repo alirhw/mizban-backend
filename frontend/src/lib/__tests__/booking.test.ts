@@ -13,6 +13,7 @@ import {
   isInsufficientWalletBalanceError,
   mapBookingErrorToPersian,
   parseBookingResumeParams,
+  parseRawResumePinId,
   resolveCallbackReceiptConfirmed,
   resolveWalletOptionAvailability,
 } from "../booking";
@@ -457,5 +458,12 @@ describe("parseBookingResumeParams & computeSlotEndIso (m8, m27)", () => {
     const start = "2099-01-01T10:00:00.000Z";
     const end = computeSlotEndIso(start);
     expect(Date.parse(end) - Date.parse(start)).toBe(90 * 60 * 1000);
+  });
+
+  it("M2: parseRawResumePinId reads positive integer pin param without allowlist", () => {
+    expect(parseRawResumePinId(new URLSearchParams("pin=22"))).toBe(22);
+    expect(parseRawResumePinId(new URLSearchParams("pin=0"))).toBeNull();
+    expect(parseRawResumePinId(new URLSearchParams("pin=abc"))).toBeNull();
+    expect(parseRawResumePinId(new URLSearchParams(""))).toBeNull();
   });
 });

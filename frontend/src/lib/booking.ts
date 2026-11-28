@@ -441,6 +441,16 @@ function isValidIsoCalendarDate(dateStr: string): boolean {
   );
 }
 
+export function parseRawResumePinId(searchParams: {
+  get(name: string): string | null;
+}): number | null {
+  const rawPin = searchParams.get("pin");
+  if (!rawPin) return null;
+
+  const pinId = Number(rawPin);
+  return Number.isInteger(pinId) && pinId > 0 ? pinId : null;
+}
+
 export function parseBookingResumeParams(
   searchParams: Pick<URLSearchParams, "get">,
   availablePinIds: number[],

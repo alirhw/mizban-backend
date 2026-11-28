@@ -62,7 +62,7 @@ export default function PanoramaViewer({
         btn.classList.add("bg-stone-900/90");
       }
     });
-  }, [selectedPinId]);
+  }, [selectedPinId, loadedUrl]);
 
   useEffect(() => {
     let cancelled = false;

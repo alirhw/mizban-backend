@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { PublicTablePinOut } from "@/lib/api";
-import { formatToman, mapPinsToHotspots, smokingStatusLabel } from "@/lib/panorama";
+import {
+  formatToman,
+  getPinsWithoutCoordinates,
+  mapPinsToHotspots,
+  smokingStatusLabel,
+} from "@/lib/panorama";
 
 function makePin(overrides: Partial<PublicTablePinOut> = {}): PublicTablePinOut {
   return {
@@ -88,5 +93,18 @@ describe("smokingStatusLabel", () => {
   it("returns Persian smoking status strings", () => {
     expect(smokingStatusLabel(true)).toBe("سیگار آزاد است");
     expect(smokingStatusLabel(false)).toBe("سیگار ممنوع است");
+  });
+});
+
+describe("getPinsWithoutCoordinates", () => {
+  it("m29: returns only pins missing numeric pitch or yaw", () => {
+    const pins: PublicTablePinOut[] = [
+      makePin({ id: 1, table_number: "A1", pitch: 10, yaw: 20 }),
+      makePin({ id: 2, table_number: "B2", pitch: null, yaw: 20 }),
+      makePin({ id: 3, table_number: "C3", pitch: 10, yaw: null }),
+    ];
+
+    expect(getPinsWithoutCoordinates(pins).map((p) => p.table_number)).toEqual(["B2", "C3"]);
+    expect(getPinsWithoutCoordinates([pins[0]!])).toEqual([]);
   });
 });

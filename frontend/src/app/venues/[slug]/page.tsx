@@ -47,22 +47,24 @@ export default async function VenueDetailPage({
   }
 
   let spaces: SpaceOut[] = [];
+  let spacesError = false;
   try {
     spaces = await listPublicVenueSpaces(slug);
   } catch (err) {
     if (!(err instanceof ApiError && err.status === 404)) {
-      throw err;
+      spacesError = true;
     }
   }
 
   const firstSpaceId = spaces[0]?.id ?? null;
   let initialPanorama: PublicPanoramaOut | null = null;
+  let initialPanoramaError = false;
   if (firstSpaceId !== null) {
     try {
       initialPanorama = await getPublicSpacePanorama(firstSpaceId);
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 404)) {
-        throw err;
+        initialPanoramaError = true;
       }
     }
   }
@@ -72,11 +74,12 @@ export default async function VenueDetailPage({
     review_count: 0,
     reviews: [],
   };
+  let venueReviewsError = false;
   try {
     venueReviews = await listVenueReviews(venue.id, { limit: reviewsLimit, offset: 0 });
   } catch (err) {
     if (!(err instanceof ApiError && err.status === 404)) {
-      throw err;
+      venueReviewsError = true;
     }
   }
 
@@ -121,6 +124,8 @@ export default async function VenueDetailPage({
           spaces={spaces}
           initialSpaceId={firstSpaceId}
           initialPanorama={initialPanorama}
+          spacesError={spacesError}
+          initialPanoramaError={initialPanoramaError}
         />
       </Suspense>
 
@@ -139,7 +144,11 @@ export default async function VenueDetailPage({
           )}
         </div>
 
-        {venueReviews.review_count === 0 ? (
+        {venueReviewsError ? (
+          <p role="alert" className="text-sm text-red-700">
+            دریافت نظرات مشتریان با خطا مواجه شد.
+          </p>
+        ) : venueReviews.review_count === 0 ? (
           <p className="text-sm text-stone-500">هنوز نظری ثبت نشده است.</p>
         ) : (
           <div className="space-y-3">
